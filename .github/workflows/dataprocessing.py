@@ -1,0 +1,1304 @@
+import itertools
+import pickle
+import json
+import os
+import stumpy
+import statistics
+import keras.models
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from datetime import datetime
+
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import KBinsDiscretizer
+from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
+
+import models
+
+plc_port = 502
+captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
+datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
+modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
+plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
+excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
+plc = '132.72.249.110'
+to_bin = ['30', '120', '15']
+most_used = ['30', '75', '120', '195', '15']
+
+
+# TODO: upload to git
+# TODO: change packets timings
+# TODO: don't use constant value registers - make a function to select those who change.
+# TODO: different number of registers in many PLCs version - drop PLCs/pad with zeroes.
+# ---------------------------------------------------------------------------------------------------------------------------#
+# helper function used to perform min-max scaling on a single column
+def scale_col(df, name):
+    scaler = MinMaxScaler()
+    np_col = df[name].to_numpy().reshape(-1, 1)
+    scaler.fit(np_col)
+    return scaler.transform(np_col)
+
+
+# gets the average registers values of a PLC
+def get_avg_vals(pkt_df, plc_ip, registers):
+    # calculate the average value of a register based on number of time read and sum of values read
+    def get_avg(reg_pair):
+        if reg_pair[1] == 0:
+            return np.nan
+        else:
+            return reg_pair[0] / reg_pair[1]
+
+    # read 0 times
+    vals_dict = {reg: [0, 0] for reg in registers}
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == plc_ip) | (pkt_df['src_ip'] == plc_ip)]
+
+    for i in range(len(plc_pkts)):
+        pkt = plc_pkts.iloc[i]
+        src_port = pkt['src_port']
+        # a value has been reported by the plc
+        if src_port == plc_port:
+            payload = pkt['payload']
+            for reg in registers:
+                # for each register that we consider and has changed
+                if reg in payload.keys():
+                    reg_pair = vals_dict[reg]
+                    # read 1 more time and the sum is increased
+                    vals_dict[reg] = [reg_pair[0] + int(payload[reg]), reg_pair[1] + 1]
+    # average the values
+    vals_avg_dict = {reg: get_avg(vals_dict[reg]) for reg in registers}
+
+    return vals_avg_dict
+
+
+# update the frequency dictionary
+def update_freqs(current_freqs, payload):
+    registers = list(payload.keys())
+
+    for reg_num in registers:
+        current_freqs[reg_num] = current_freqs.get(reg_num, 0) + 1
+    return current_freqs
+
+
+# return the n most used registers by every PLC
+def get_frequent_registers(pkt_df, n):
+    registers_freq = {}
+
+    for i in range(len(pkt_df)):
+        row = pkt_df.iloc[i]
+        src_port = row['src_port']
+        # this is a response packet
+        if src_port == 502:
+            plc_ip = row['src_ip']
+            registers_freq[plc_ip] = update_freqs(registers_freq.get(plc_ip, {}), row['payload'])
+
+    sorted_freqs = {k: sorted(v.items(), key=lambda kv: (kv[1], kv[0]), reverse=True) for k, v in
+                    registers_freq.items()}
+    frequent_regs = {k: list(map(lambda t: t[0], v))[0: min(n, len(v))] for k, v in sorted_freqs.items()}
+    return frequent_regs
+
+
+# return the most commonly used PLC. f represents the choosing criteria.
+def get_frequent_plc(pkt_df):
+    def calc_ip(plc_freq_responses_top, plc_freq_queries_top, plc_freq_readvalues_top, consider_all=False):
+        # get the ips
+        ips_rv = [ip for (ip, val) in plc_freq_readvalues_top]
+        ips_r = [ip for (ip, val) in plc_freq_responses_top]
+        ips_q = [ip for (ip, val) in plc_freq_queries_top]
+        # find ip which are in more than 1 group
+        q_r_v = list(set(ips_q) & set(ips_r) & set(ips_rv))
+        q_r = list(set(ips_q) & set(ips_r))
+
+        if q_r_v and consider_all:
+            IP = None
+            min_score = np.nan
+            for plc in q_r_v:
+                score = 0.6 * ips_r.index(plc) + 0.2 * ips_q.index(plc) + 0.2 * ips_rv.index(plc)
+                if IP is None or score < min_score:
+                    IP = plc
+                    min_score = score
+
+            return IP
+        # top responses and top queries , compare the plcs using a score
+        elif q_r:
+            IP = None
+            min_score = np.nan
+            for plc in q_r:
+                score = 0.6 * ips_r.index(plc) + 0.4 * ips_q.index(plc)
+                if IP is None or score < min_score:
+                    IP = plc
+                    min_score = score
+
+            return IP
+        else:
+            IP = ips_r[0]
+
+            return IP
+
+    plc_freq_readvalues = {}
+    plc_freq_responses = {}
+    plc_freq_queries = {}
+
+    for i in range(len(pkt_df)):
+        row = pkt_df.iloc[i]
+        src_port = row['src_port']
+        if src_port == 502:
+            plc_ip = row['src_ip']
+            payload = row['payload']
+            score = len(payload.keys())
+            # update entries
+            plc_freq_readvalues[plc_ip] = plc_freq_readvalues.get(plc_ip, 0) + score
+            plc_freq_responses[plc_ip] = plc_freq_responses.get(plc_ip, 0) + 1
+        else:
+            # one more query
+            plc_ip = row['dst_ip']
+            plc_freq_queries[plc_ip] = plc_freq_queries.get(plc_ip, 0) + 1
+
+    sorted_plc_freq_readvalues = sorted(plc_freq_readvalues.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+    sorted_plc_freq_responses = sorted(plc_freq_responses.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+    sorted_plc_freq_queries = sorted(plc_freq_queries.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+
+    plc_freq_readvalues_top = sorted_plc_freq_readvalues[0:15]
+    plc_freq_responses_top = sorted_plc_freq_responses[0:15]
+    plc_freq_queries_top = sorted_plc_freq_queries[0:15]
+
+    ip = calc_ip(plc_freq_responses_top, plc_freq_queries_top, plc_freq_readvalues_top)
+
+    return ip
+
+
+# return the PLC which had the most state switches considering the n most used registers
+def get_plc(pkt_df, n):
+    # map IP to frequent register
+    regs_dict = get_frequent_registers(pkt_df, n)
+    # get only PLC where there are at least n used registers
+    filtered_dict = {k: v for k, v in regs_dict.items() if len(v) == n}
+    # ips of those plcs
+    ips = filtered_dict.keys()
+    # the last state knows for each plc, map register to last known value
+    last_states = {ip: {reg: None for reg in filtered_dict[ip]} for ip in ips}
+    # number of state switches for each plc
+    switches = {ip: 0 for ip in ips}
+    for ip in ips:
+        # packets with that plc
+        plc_df = pkt_df.loc[(pkt_df['dst_ip'] == ip) | (pkt_df['src_ip'] == ip)]
+        # registers we look at
+        regs = regs_dict[ip]
+        for i in range(0, len(plc_df)):
+            curr_pkt = plc_df.iloc[i]
+            src_port = curr_pkt['src_port']
+            # a response packet
+            if src_port == plc_port:
+                payload = curr_pkt['payload']
+                last_state = last_states[ip]
+                # check if this is the first time we see some register
+                change_none = {reg: (last_state[reg] is None and payload.get(reg, None) is not None) for reg in regs}
+                # check if this isn't the first time we see a register and we see a different value
+                change_not_none = {
+                    reg: (last_state[reg] is not None and payload.get(reg, last_state[reg]) != last_state[reg]) for reg
+                    in regs}
+                # was there any change?
+                change = {reg: change_none[reg] or change_not_none[reg] for reg in regs}
+                if np.any(list(change.values())):
+                    switches[ip] = switches[ip] + 1
+                # build the new last know state
+                new_last_state = {reg: None for reg in regs}
+                for reg in regs:
+                    if change[reg]:
+                        new_last_state[reg] = payload[reg]
+                    else:
+                        new_last_state[reg] = last_state[reg]
+                last_states[ip] = new_last_state
+    sorted_switches = sorted(switches.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+    print(sorted_switches)
+
+
+# using RAW DATA
+def get_plcs_values_statistics(pkt_df, n):
+    # map IP to frequent registers
+    regs_dict = get_frequent_registers(pkt_df, n)
+    # get only PLC where there are at least n used registers
+    filtered_dict = {k: v for k, v in regs_dict.items() if len(v) == n}
+    # ips of those plcs
+    ips = filtered_dict.keys()
+    # the last state knows for each plc, map register to last known value
+    regs_vals = {ip: {reg: None for reg in filtered_dict[ip]} for ip in ips}
+    cols = np.concatenate((['ip'], ["register " + str(i) + " #values" for i in range(1, n + 1)],
+                           ["register " + str(i) + " stdev" for i in range(1, n + 1)]))
+    stats_df = pd.DataFrame(columns=cols)
+    for ip in ips:
+        # packets with that plc
+        plc_df = pkt_df.loc[(pkt_df['dst_ip'] == ip) | (pkt_df['src_ip'] == ip)]
+        # registers we look at
+        regs = regs_dict[ip]
+        for i in range(0, len(plc_df)):
+            curr_pkt = plc_df.iloc[i]
+            src_port = curr_pkt['src_port']
+            # a response packet
+            if src_port == plc_port:
+                payload = curr_pkt['payload']
+                # first time we see the register
+                change_none = {reg: (regs_vals[ip][reg] is None and payload.get(reg, None) is not None) for reg in regs}
+                # we see a new value
+                change_not_none = {
+                    reg: (regs_vals[ip][reg] is not None and payload.get(reg, None) not in regs_vals[ip][
+                        reg] and payload.get(reg, None) is not None) for reg
+                    in regs}
+                # one of the options
+                change = {reg: change_none[reg] or change_not_none[reg] for reg in regs}
+                if np.any(list(change.values())):
+                    # add values to the lists
+                    for reg in regs:
+                        if change[reg]:
+                            # no previous knows values
+                            if regs_vals[ip][reg] is None:
+                                regs_vals[ip][reg] = [payload[reg]]
+                            # new value, so add it to the list
+                            else:
+                                regs_vals[ip][reg].append(payload[reg])
+        vals = regs_vals[ip]
+        counter = 1
+        entry = {'ip': ip}
+        for reg, vs in vals.items():
+            values = vals[reg]
+            values = [np.float64(v) for v in values]
+            std_v = np.std(values)
+            num_vals = len(values)
+            entry["register " + str(counter) + " #values"] = num_vals
+            entry["register " + str(counter) + " stdev"] = std_v
+            counter += 1
+        temp_df = pd.DataFrame.from_dict(columns=stats_df.columns,
+                                         data={'0': [entry[col] for col in stats_df.columns]}, orient='index')
+        stats_df = pd.concat([stats_df, temp_df], ignore_index=True)
+    return stats_df
+
+
+def view_times(df):
+    times = []
+    for i in range(1, len(df)):
+        c = df.iloc[i]
+        p = df.iloc[i - 1]
+        t = (c['time'] - p['time']).total_seconds()
+        times.append(t)
+    t_df = pd.DataFrame(data=times, columns=['time'])
+    with open(excel_path + "\\times.xlsx", 'w'):
+        t_df.to_excel(excel_path + "\\times.xlsx")
+
+
+# make a df with: number of switches , number of packets staying in the same state , average switch frequency of the PLCs' register values.
+def get_switch_freq(export_to_excel=True, sheet_name="switch_freq_sheet"):
+    pkt_df = load(datasets_path, "modbus")
+    IP = plc
+
+    # filter out the packets that don't involve the most frequently used PLC
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+
+    registers = to_bin
+    last_vals = {r: None for r in registers}
+    stayed_same = {r: 0 for r in registers}
+    switches = {r: 0 for r in registers}
+    cols = np.concatenate((["switches " + r for r in registers], ["stayed same " + r for r in registers],
+                           ["average switch freq" + r for r in registers]))
+    switch_df = pd.DataFrame(columns=cols)
+
+    for i in range(len(plc_pkts)):
+        pkt = plc_pkts.iloc[i]
+        src_port = pkt['src_port']
+
+        # it's a response packet
+        if src_port == plc_port:
+            changed_regs = pkt['payload'].keys()
+            payload = pkt['payload']
+            for register in registers:
+                # check if updated this register in the current packet
+                if register in changed_regs:
+                    # first time seeing the register
+                    if last_vals[register] is None or (
+                            last_vals[register] is not None and last_vals[register] != payload[register]):
+                        last_vals[register] = payload[register]
+                        switches[register] = switches[register] + 1
+                    else:
+                        # same value as the last one known
+                        stayed_same[register] = stayed_same[register] + 1
+                else:
+                    # this register wasn't recorded in the current response packet.
+                    stayed_same[register] = stayed_same[register] + 1
+        else:
+            # this is a query packet
+            for register in registers:
+                stayed_same[register] = stayed_same[register] + 1
+    entry = dict()
+    for r in registers:
+        entry["switches " + r] = switches[r]
+        entry["stayed same " + r] = stayed_same[r]
+        if entry["switches " + r] > 0:
+            entry["average switch freq" + r] = entry["stayed same " + r] / entry["switches " + r]
+        else:
+            entry["average switch freq" + r] = -1
+    temp_df = pd.DataFrame.from_dict(columns=switch_df.columns,
+                                     data={'0': [entry[col] for col in switch_df.columns]}, orient='index')
+    switch_df = pd.concat([switch_df, temp_df], ignore_index=True)
+    if export_to_excel:
+        with open(excel_path + "\\" + sheet_name + ".xlsx", 'w'):
+            switch_df.to_excel(excel_path + "\\" + sheet_name + ".xlsx")
+    else:
+        return switch_df
+
+
+# get processed data, no binning and no scaling!
+# use this only for matrix profiles version. in other versions the calculated stats are the same as for the raw data.
+# in the matrix profiles versions the entries after the processing change so the statistics do as well.
+# find out the standard deviation and number of unique values
+def get_stats_after_processing(processed_df, n, export=True, sheet_name="post processing stats"):
+    # get the columns of the registers numbers
+    regs = processed_df.columns[1: n + 1]
+    cols = ["stdev register" + str(r) for r in regs]
+    post_processing_df = pd.DataFrame(columns=cols)
+    entry = {stdev: None for stdev in cols}
+    for r in regs:
+        reg_col = processed_df[regs]
+        stdev = statistics.stdev(reg_col)
+        entry["stdev register" + str(r)] = stdev
+    temp_df = pd.DataFrame.from_dict(columns=post_processing_df.columns,
+                                     data={'0': [entry[col] for col in post_processing_df.columns]}, orient='index')
+    post_processing_df = pd.concat([post_processing_df, temp_df], ignore_index=True)
+    if export:
+        with open(excel_path + "\\" + sheet_name + ".xlsx", 'w'):
+            post_processing_df.to_excel(excel_path + "\\" + sheet_name + ".xlsx")
+    else:
+        return post_processing_df
+
+
+# construct the packet payload according to its function code
+def make_payload(modbus_dict, src_port):
+    code = int(modbus_dict['modbus.func_code'])
+    payload = {}
+    if code == 3:
+        # it's a response packet
+        if src_port == plc_port:
+
+            registers_keys = list(modbus_dict.keys())[4::]
+            for register_key in registers_keys:
+                splitted_key = register_key.split(" ")
+                register = splitted_key[1]
+                val = splitted_key[-1]
+                payload[register] = val
+
+    return payload
+
+
+def dissect(pkt_dict):
+    layers = pkt_dict['_source']['layers']
+    time = datetime.strptime(layers['frame']['frame.time'][0: 28], '%b %d, %Y %H:%M:%S.%f')
+    src_ip, dst_ip = layers['ip']['ip.src'], layers['ip']['ip.dst']
+    tcp_src, tcp_dst = int(layers['tcp']['tcp.srcport']), int(layers['tcp']['tcp.dstport'])
+    func_code = int(layers['modbus']['modbus.func_code'])
+    payload = make_payload(layers['modbus'], tcp_src)
+    return {'time': time, 'dst_ip': dst_ip, 'src_ip': src_ip, 'dst_port': tcp_dst, 'src_port': tcp_src,
+            'func_code': func_code, 'payload': payload}
+
+
+def filter_data(json_files_dir):
+    cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
+    df = pd.DataFrame(columns=cols)
+    codes = ['3', '6', '16']
+    for filename in os.listdir(json_files_dir):
+        print("working on ", filename)
+        file = open(json_files_dir + "//" + filename, "r")
+        pkt_data = json.load(file)
+        filtered_packets = filter(lambda pkt_dict: pkt_dict['_source']['layers']['modbus']['modbus.func_code'] in codes,
+                                  pkt_data)
+        dissected_packets = map(lambda pkt_dict: dissect(pkt_dict), filtered_packets)
+        file_df = pd.DataFrame(dissected_packets)
+        df = df.append(file_df)
+
+    df = df.sort_values('time')
+
+    with open(datasets_path + "\\modbus", "wb") as df_file:
+        pickle.dump(df, df_file)
+
+
+def print_pkts(json_files_dir):
+    codes = ['3', '6', '16']
+    for filename in os.listdir(json_files_dir):
+        file = open(json_files_dir + "//" + filename, "r")
+        pkt_data = json.load(file)
+        filtered_packets = filter(
+            lambda pkt_dict: pkt_dict['_source']['layers']['modbus']['modbus.func_code'] == "3" and
+                             pkt_dict['_source']['layers']['tcp']['tcp.srcport'] == "502",
+            pkt_data)
+        lst_flt = list(filtered_packets)
+        mapped_pkts = list(map(lambda pkt_dict: pkt_dict['_source']['layers']['modbus'], lst_flt))
+        print(mapped_pkts[0])
+
+
+def load(dir_path, filename):
+    with open(dir_path + "\\" + filename, "rb") as file:
+        obj = pickle.load(file)
+        return obj
+
+
+def dump(dir_path, filename, obj):
+    with open(dir_path + "\\" + filename, "wb") as file:
+        pickle.dump(obj, file)
+
+
+# ---------------------------------------------------------------------------------------------------------------------------#
+# helper functions to bin data
+def k_means_binning(df, col_name, n_bins):
+    data = df[col_name].to_numpy().reshape(-1, 1)
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit(data)
+    labeled_data = k_means.transform(data)
+    return labeled_data
+
+
+def equal_width_discretization(df, col_name, n_bins):
+    data = df[col_name].to_numpy().reshape(-1, 1)
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit(data)
+    labeled_data = k_means.transform(data)
+    return labeled_data
+
+
+def equal_frequency_discretization(df, col_name, n_bins):
+    data = df[col_name].to_numpy().reshape(-1, 1)
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit(data)
+    labeled_data = k_means.transform(data)
+    return labeled_data
+
+
+# ---------------------------------------------------------------------------------------------------------------------------#
+# construct the data. each entry saves the time passed from the last packet and registers values
+def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True):
+    # using only 1 PLC
+    IP = plc
+
+    # filter out the packets that don't involve the most frequently used PLC
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+
+    # get the most frequently used registers by the PLC
+    # frequent_regs = get_frequent_registers(plc_pkts, n)
+
+    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
+    registers = to_bin
+    cols = np.concatenate((['time'], registers))
+    avgs = get_avg_vals(plc_pkts, IP, registers)
+    last_values = {r: np.nan for r in registers}
+
+    time_vals_df = pd.DataFrame(columns=cols)
+
+    for i in range(1, len(plc_pkts)):
+        # entries from the original data frame
+        prev = plc_pkts.iloc[i - 1]
+        curr = plc_pkts.iloc[i]
+
+        # the new entry
+        new = {}
+
+        # previous entry in the constructed data frame
+        prev_entry = {}
+
+        if i != 1:
+            prev_entry = time_vals_df.iloc[i - 2]
+
+        # inter-arrival time
+        delta_t = curr['time'] - prev['time']
+        new['time'] = delta_t.total_seconds()
+
+        src_port = curr['src_port']
+
+        new = entry_func(src_port, curr, registers, new, prev_entry, i, avgs, prev, last_values)
+        temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
+                                         data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
+        time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
+
+    for reg_num in registers:
+        time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
+        if binner is not None and reg_num in to_bin:
+            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
+        if scale:
+            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+
+    if scale:
+        time_vals_df['time'] = scale_col(time_vals_df, 'time')
+
+    return time_vals_df
+
+
+# consider only the values of the n most used registers of the plc
+def process_data_no_time(pkt_df, n, binner=None, bins=None):
+    with_time_df = process_data_v1(pkt_df, n, binner, bins, make_entry_v1)
+    no_time = with_time_df.drop(['time'], axis=1)
+    return no_time
+
+
+def make_entry_v1(src_port, curr, registers, new, prev_entry, i, avgs, prev, last_values):
+    if src_port == plc_port:
+        payload = curr['payload']
+        updated_regs = payload.keys()
+        # set the columns of the registers values received from the packet
+        for reg_num in registers:
+            if reg_num in updated_regs:
+                new[reg_num] = np.float64(payload[reg_num])
+            else:
+                # the value of this register wasn't recorded in the packet. get the last value known
+                if i == 1:
+                    new[reg_num] = np.nan
+                else:
+                    new[reg_num] = np.float64(prev_entry[reg_num])
+    else:
+        # a query packet
+        for reg_num in registers:
+            if i == 1:
+                new[reg_num] = np.nan
+            else:
+                new[reg_num] = np.float64(prev_entry[reg_num])
+
+    return new
+
+
+def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, last_values):
+    if src_port == plc_port:
+        payload = curr['payload']
+        updated_regs = payload.keys()
+
+        # set the columns of the registers values received from the packet. save the change
+        for reg_num in registers:
+            prev_reg_val = prev['payload'].get(reg_num, np.nan)
+            if reg_num in updated_regs and prev_reg_val is not np.nan:
+                # we need to calculate the value change from the last known value.
+                new[reg_num] = abs(np.float64(payload[reg_num]) - np.float64(prev_reg_val))
+                last_values[reg_num] = np.float64(payload[reg_num])
+            else:
+                avg = avgs[reg_num]
+                if payload.get(reg_num, np.nan) is not np.nan:
+                    new[reg_num] = abs(avg - np.float64(payload[reg_num]))
+                    last_values[reg_num] = np.float64(payload[reg_num])
+                elif prev_reg_val is not np.nan:
+                    new[reg_num] = abs(avg - np.float64(prev_reg_val))
+                elif last_values[reg_num] is not np.nan:
+                    new[reg_num] = abs(avg - np.float64(last_values[reg_num]))
+                else:
+                    new[reg_num] = np.nan
+
+    else:
+        # a query packet
+        for reg_num in registers:
+            if i == 1:
+                new[reg_num] = np.nan
+            else:
+                prev_reg_val = prev['payload'].get(reg_num, np.nan)
+                avg = avgs[reg_num]
+                if prev_reg_val is not np.nan:
+                    new[reg_num] = abs(avg - np.float64(prev_reg_val))
+                else:
+                    new[reg_num] = abs(avg - np.float64(last_values.get(reg_num, np.nan)))
+
+    return new
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# GAVE BAD RESULTS.
+# save inter-arrival time, values of registers ,
+# time since registers got those values, similarity score to previous known state
+def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True):
+    # using only 1 PLC
+    IP = plc
+
+    # filter out the packets that don't involve the most frequently used PLC
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+
+    # get the most frequently used registers by the PLC
+    # frequent_regs = get_frequent_registers(pkt_df, n)
+    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
+    registers = to_bin
+    times = ['time_' + str(r_num) for r_num in registers]
+    cols = np.concatenate((['time'], registers, times))
+
+    time_vals_df = pd.DataFrame(columns=cols)
+
+    for i in range(1, len(plc_pkts)):
+        # entries from the original data frame
+        prev = plc_pkts.iloc[i - 1]
+        curr = plc_pkts.iloc[i]
+        # the new entry
+        new = {}
+
+        # previous entry in the constructed data frame
+        prev_entry = {}
+
+        if i != 1:
+            prev_entry = time_vals_df.iloc[i - 2]
+
+        # inter-arrival time
+        delta_t = curr['time'] - prev['time']
+        new['time'] = delta_t.total_seconds()
+
+        src_port = curr['src_port']
+
+        if src_port == plc_port:
+            payload = curr['payload']
+            updated_regs = payload.keys()
+
+            # set the columns of the registers values received from the packet
+            for reg_num in registers:
+                reg_key = 'time_' + str(reg_num)  # key for the time matching the register
+                if reg_num in updated_regs:
+                    new[reg_num] = np.float64(payload[reg_num])
+                    if i != 1 and new[reg_num] == prev_entry[reg_num]:
+                        new[reg_key] = prev_entry[reg_key] + new['time']
+                    else:
+                        # this register was changed in this packet but, we know of the change only now.
+                        # so in the time between the last message and this one we didn't see any change
+                        if i != 1:
+                            prev_entry[reg_key] += new['time']
+                        new[reg_key] = 0
+                else:
+                    # the value of this register wasn't recorded in the packet. get the last value known
+                    if i == 1:
+                        new[reg_num] = np.nan
+                        new[reg_key] = np.nan
+                    else:
+                        new[reg_num] = np.float64(prev_entry[reg_num])
+                        new[reg_key] = prev_entry[reg_key] + new['time']
+        else:
+            # a query packet
+            for reg_num in registers:
+                reg_key = 'time_' + str(reg_num)  # key for the time matching the register
+                if i == 1:
+                    new[reg_num] = np.nan
+                    new[reg_key] = np.nan
+                else:
+                    new[reg_num] = np.float64(prev_entry[reg_num])
+                    new[reg_key] = prev_entry[reg_key] + new['time']
+
+        temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
+                                         data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
+        time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
+
+    for reg_num in registers:
+        reg_key = 'time_' + str(reg_num)
+        time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
+        time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
+        if binner is not None:
+            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
+        if scale:
+            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+            time_vals_df[reg_key] = scale_col(time_vals_df, reg_key)
+
+    if scale:
+        time_vals_df['time'] = scale_col(time_vals_df, 'time')
+
+    return time_vals_df
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# save inter-arrival time, values of registers ,time being in this state,
+# number of packets received while being in this state and the similarity score to previous known state
+def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
+    # using only 1 PLC
+    IP = plc
+
+    # filter out the packets that don't involve the most frequently used PLC
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+
+    # get the most frequently used registers by the PLC
+    frequent_regs = get_frequent_registers(plc_pkts, n)
+    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
+    registers = frequent_regs[IP]
+    regs_copy = registers.copy()
+    cols = np.concatenate((['time', 'similarity', 'time_in_state', 'msgs_in_state'], regs_copy))
+
+    time_vals_df = pd.DataFrame(columns=cols)
+
+    for i in range(1, len(plc_pkts)):
+        # entries from the original data frame
+        prev = plc_pkts.iloc[i - 1]
+        curr = plc_pkts.iloc[i]
+        similarity = 0
+        # the new entry
+        new = {}
+
+        # previous entry in the constructed data frame
+        prev_entry = {}
+        df_len = len(time_vals_df)
+        if df_len > 0:
+            prev_entry = time_vals_df.iloc[df_len - 1]
+
+        # inter-arrival time
+        delta_t = curr['time'] - prev['time']
+        new['time'] = delta_t.total_seconds()
+
+        src_port = curr['src_port']
+
+        # init columns
+        if i == 1:
+            new['time_in_state'] = 0
+            new['msgs_in_state'] = 1
+
+        # a response packet
+        if src_port == plc_port:
+            payload = curr['payload']
+            updated_regs = payload.keys()
+
+            # set the columns of the registers values received from the packet and calculate similarity
+            for reg_num in registers:
+                if reg_num in updated_regs:
+                    new[reg_num] = np.float64(payload[reg_num])
+                    # compare to the packet before and update similarity accordingly
+                    prev_reg = prev_entry.get(reg_num, np.nan)
+                    if df_len != 0 and new[reg_num] == prev_reg:
+                        similarity += 1
+                else:
+                    # the value of this register wasn't recorded in the packet. get the last value known
+                    if df_len == 0:
+                        new[reg_num] = np.nan
+                    else:
+                        new[reg_num] = np.float64(prev_entry[reg_num])
+                        # no known value change
+                        similarity += 1
+
+            # decide if we need to add another entry.
+            if df_len != 0:
+                similarity /= len(registers)
+            else:
+                similarity = np.nan
+
+            new['similarity'] = similarity
+
+            if similarity == 1:
+                time_vals_df.iloc[df_len - 1, 2] += new['time']
+                time_vals_df.iloc[df_len - 1, 3] += 1
+            else:
+                new['time_in_state'] = 0
+                new['msgs_in_state'] = 1
+
+                if df_len > 0:
+                    time_vals_df.iloc[df_len - 1, 2] += new['time']
+                temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
+                                                 data={'0': [new[col] for col in time_vals_df.columns]},
+                                                 orient='index')
+                time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
+        else:
+            # a query packet
+            if df_len == 0:
+                for reg_num in registers:
+                    new[reg_num] = np.nan
+
+                new['similarity'] = 1  # due to the same reason below
+                new['time_in_state'] = new['time']  # due to the same reason below
+                if prev['func_code'] == 3:
+                    new[
+                        'msgs_in_state'] = 2  # there is one packet before that, and we don't know about a state change
+                else:
+                    new['msgs_in_state'] = 1  # prev is a write packet
+                temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
+                                                 data={'0': [new[col] for col in time_vals_df.columns]},
+                                                 orient='index')
+                time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
+            else:
+                # there was no state change. so we got 1 more packet in the same state and stayed longer in it
+                time_vals_df.iloc[df_len - 1, 2] += new['time']
+                time_vals_df.iloc[df_len - 1, 3] += 1
+
+    for reg_num in registers:
+        time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
+        if binner is not None and reg_num in to_bin:
+            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
+        if scale:
+            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+
+    for col_name in ['time', 'time_in_state', 'msgs_in_state', 'similarity']:
+        time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
+        if scale:
+            time_vals_df[col_name] = scale_col(time_vals_df, col_name)
+
+    return time_vals_df
+
+
+# this data processing is similar to v3 but adds an entry to the dataframe everytime
+def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
+    # using only 1 PLC
+    IP = plc
+
+    # filter out the packets that don't involve the most frequently used PLC
+    plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+
+    # get the most frequently used registers by the PLC
+    # frequent_regs = get_frequent_registers(plc_pkts, n)
+    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
+    registers = to_bin
+    regs_copy = registers.copy()
+    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
+
+    time_vals_df = pd.DataFrame(columns=cols)
+
+    for i in range(1, len(plc_pkts)):
+        # entries from the original data frame
+        prev = plc_pkts.iloc[i - 1]
+        curr = plc_pkts.iloc[i]
+        similarity = 0
+        # the new entry
+        new = {}
+
+        # previous entry in the constructed data frame
+        prev_entry = {}
+        df_len = len(time_vals_df)
+        if df_len > 0:
+            prev_entry = time_vals_df.iloc[df_len - 1]
+
+        # inter-arrival time
+        delta_t = curr['time'] - prev['time']
+        new['time'] = delta_t.total_seconds()
+
+        src_port = curr['src_port']
+
+        # init columns
+        if i == 1:
+            new['time_in_state'] = 0
+
+        # a response packet
+        if src_port == plc_port:
+            payload = curr['payload']
+            updated_regs = payload.keys()
+
+            # set the columns of the registers values received from the packet and calculate similarity
+            for reg_num in registers:
+                if reg_num in updated_regs:
+                    new[reg_num] = np.float64(payload[reg_num])
+                    # compare to the packet before and update similarity accordingly
+                    prev_reg = prev_entry.get(reg_num, np.nan)
+                    if df_len != 0 and new[reg_num] == prev_reg:
+                        similarity += 1
+                else:
+                    # the value of this register wasn't recorded in the packet. get the last value known
+                    if df_len == 0:
+                        new[reg_num] = np.nan
+                    else:
+                        new[reg_num] = np.float64(prev_entry[reg_num])
+                    # no known value change
+                    similarity += 1
+
+                similarity /= len(registers)
+
+            if similarity == 1 and df_len > 0:
+                # we stayed in the stayed for some more time
+                new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
+            else:
+                new['time_in_state'] = 0
+                # if this holds than df_len is 0
+                if similarity == 1:
+                    new['time_in_state'] = new['time']
+                # if this holds than similarity is different from 1, still need to update the time in state to account for the time until
+                # the arrival of the current packet
+                if df_len > 0:
+                    time_vals_df.iloc[df_len - 1, 1] += new['time']
+        else:
+            # a query packet
+            if df_len == 0:
+                for reg_num in registers:
+                    new[reg_num] = np.nan
+
+                new['time_in_state'] = new['time']  # this is a query packet so, we don't know about a state change
+            else:
+                # there was no state change.
+                new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
+                for reg_num in registers:
+                    new[reg_num] = prev_entry[reg_num]
+
+        # in any case we add the new entry to the dataframe.
+        temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
+                                         data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
+        time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
+
+    for reg_num in registers:
+        time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
+        if binner is not None and reg_num in to_bin:
+            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
+        if scale:
+            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+
+    for col_name in ['time', 'time_in_state']:
+        time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
+        if scale:
+            time_vals_df[col_name] = scale_col(time_vals_df, col_name)
+
+    return time_vals_df
+
+
+def grid_search_binning():
+    binners = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
+    names = {k_means_binning: "k_means", equal_frequency_discretization: "equal_frequency",
+             equal_width_discretization: "equal_width"}
+    n_bins = [5, 6, 7, 8, 9, 10]
+    pkt_df = load(datasets_path, "modbus")
+    options = itertools.product(binners, n_bins)
+    for binner_bins in options:
+        binner = binner_bins[0]
+        bins = binner_bins[1]
+        model_name = "v1_single_plc_make_entry_v1_20_packets_MP_min_{}_{}".format(names[binner], bins)
+        processed_df = process_data_v1(pkt_df, 5, binner, bins, make_entry_v1)
+        models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name, np.max)
+
+
+def grid_search_no_bins():
+    lengths = [20, 25, 30, 35, 40]
+    entry_makers = [make_entry_v1, make_entry_v2]
+    maker_names = {make_entry_v1: "v1", make_entry_v2: "v2"}
+    options = itertools.product(entry_makers, lengths)
+    pkt_df = load(datasets_path, "modbus")
+    for maker_len in options:
+        maker = maker_len[0]
+        len = maker_len[1]
+        model_name = "v1_single_plc_make_entry_{}_{}_packets".format(maker_names[maker], len)
+        processed_df = process_data_v1(pkt_df, 5, None, None, maker)
+        dump(datasets_path, model_name, processed_df)
+        models.simple_LSTM(processed_df, len, 42, model_name)
+    for len in lengths:
+        model_name = "v2_single_plc_{}_packets".format(len)
+        processed_df = process_data_v2(pkt_df, 5, None, None)
+        dump(datasets_path, model_name, processed_df)
+        models.simple_LSTM(processed_df, len, 42, model_name)
+
+
+def compare_models(models_folder, metric, metric_name, plot_name):
+    plt.clf()
+    bins = [5, 6, 7, 8, 9, 10]
+    scores = []
+    print("plotting")
+    for model_folder in os.listdir(modeles_path + "\\" + models_folder):
+        model_path = modeles_path + "\\" + models_folder + "\\" + model_folder
+        model = keras.models.load_model(model_path)
+        X_test = load(datasets_path + "\\" + models_folder, "X_test_" + model_folder)
+        y_test = load(datasets_path + "\\" + models_folder, "y_test_" + model_folder)
+        y_pred = model.predict(X_test)
+        score = metric(y_test, y_pred)
+        scores.append(score)
+    plt.scatter(bins, scores)
+    plt.title(plot_name)
+    plt.xlabel("number of bins")
+    plt.ylabel(metric_name)
+    with open(plots_path + "\\" + plot_name, "w"):
+        plt.savefig(plots_path + "\\" + plot_name + " plot.png")
+
+
+# we take a series and brake it into sub-series and look at the "distance" between the subseries and
+# the whole series. given a series of matrix profiles processed "packets" the next element which we will try to
+# predict is the difference of the first sub-series from the series in the next "whole series".
+# that way we look at the relation between a series of packets and another series of packets and not a series of packets to a single packet
+# ASSUMPTION: series_len is an even number
+def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_finder):
+    # convert columns to float for MASS algorithm
+    float_df = pkt_data
+    for col in float_df.columns:
+        float_df[col] = float_df[col].astype(float)
+
+    # get distance vector of a single series
+    def calc_dv(series, window):
+        j = 0
+        series_dv = pd.DataFrame(columns=series.columns)
+
+        # while we can take another window
+        while j < len(series) - window + 1:
+            curr_w = series.iloc[j: j + window]
+            curr_dv = pd.DataFrame(columns=series.columns)
+
+            # get distance vector for each column
+            for col in curr_w.columns:
+                curr_dv_col = stumpy.mass(curr_w[col], series[col])
+                curr_dv[col] = curr_dv_col
+
+            starting_index = j
+            exclusion_start = max(0, starting_index - (window / 2))
+            exclusion_end = starting_index + (window / 2)
+            dv_low = curr_dv.iloc[:int(exclusion_start)]
+            dv = dv_low
+
+            if exclusion_end < len(curr_dv):
+                dv_high = curr_dv.iloc[int(exclusion_end):]
+                dv = pd.concat([dv_low, dv_high], axis=0, ignore_index=True)
+
+            # look at the distances across all columns. get the row with the min/max distance considering all columns.
+            row_dists = [np.sum(np.square(dv.iloc[i].to_numpy())) for i in range(0, len(dv))]
+            chosen_dist = dv.iloc[index_finder(row_dists)]
+            chosen_dist_dict = {}
+            for i in range(len(series_dv.columns)):
+                c = series_dv.columns[i]
+                chosen_dist_dict[c] = chosen_dist[i]
+            temp_df = pd.DataFrame.from_dict(data={'0': [chosen_dist_dict[c] for c in series_dv.columns]},
+                                             columns=series_dv.columns, orient='index')
+            series_dv = pd.concat([series_dv, temp_df], axis=0, ignore_index=True)
+            # slide
+            j += 1
+
+        return series_dv
+
+    i = 0
+    dvs = pd.DataFrame(columns=pkt_data.columns)
+
+    # while we can still take another series
+    while i < len(float_df) - series_len + 1:
+        curr_series = float_df.iloc[i: i + series_len]
+        dv = calc_dv(curr_series, window)
+        dvs = pd.concat([dvs, dv], axis=0, ignore_index=True)
+        # jump
+        i += jump
+    return dvs
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# involve many PLCs in the data representation.
+# receives unprocessed data:
+# ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
+def plc_statistics(pkt_df, data_processor, n, binner, n_bins, columns, entry_maker=None, cluster=False, clustering=None,
+                   n_clusters=-1, drop_time=False):
+    plcs_values_stats = get_plcs_values_statistics(pkt_df, n)
+    # map IP to frequent registers
+    regs_dict = get_frequent_registers(pkt_df, n)
+    # get only PLC where there are at least n used registers
+    filtered_dict = {k: v for k, v in regs_dict.items() if len(v) == n}
+    plcs = filtered_dict.keys()
+    plc_df = pkt_df.copy()
+    plc_df = plc_df[plc_df['src_ip'] in plcs or plc_df['dst_ip'] in plcs]
+    prev_time = pd.DataFrame(columns=['prev_time'])
+    prev_time['prev_time'] = plc_df['time']
+    prev_time = prev_time.shift(periods=1)
+    plc_df = pd.concat([plc_df, prev_time], axis=1, ignore_index=True)
+    involved = np.array([])
+
+    for i in range(len(pkt_df)):
+        row = pkt_df.iloc[i]
+        dst_port = row['dst_port']
+        # a query packet
+        if dst_port == plc_port:
+            involved_plc = row['dst_ip']
+        else:
+            # a response packet
+            involved_plc = row['src_ip']
+        involved = np.append(involved, involved_plc)
+
+    plc_df['involved'] = involved
+
+    grouped = plc_df.groupby(by='involved')
+    # now iterate over groups and calculate the statistics
+    dict_keys = ['IP', 'avg_time_between_packets',
+                 'avg_time_between_responses',
+                 'avg_time_between_queries',
+                 'std_time_between_queries',
+                 'std_time_between_responses',
+                 'std_time_between_packets']
+    statistics_dict = {k: [] for k in dict_keys}
+    statistics_df = pd.DataFrame(columns=columns)
+    # ['time', 'involved', 'dst_ip', 'src_ip' ,'dst_port', 'src_port', 'func_code', 'payload']
+    for name, group in grouped:
+        # these are for the single PLC
+        time_between_responses = []
+        time_between_queries = []
+        time_between_packets = []
+
+        last_response_time = None
+        last_query_time = None
+
+        # this is time from last packet in the original dataframe which involves many PLCs
+        inter_arrival_list = []
+
+        # calculate statistics of the PLC
+        for j in range(1, len(group)):
+            prev = group.iloc[j - 1]
+            curr = group.iloc[j]
+            time = curr['time']
+            # for this specific PLC. used for 'avg_time_between_packets' in entry.
+            inter_arrival_time = (curr['time'] - prev['time']).total_seconds()
+            # time from last packet recorded in the dataframe
+            time_from_last_pkt = (time - curr['prev_time']).total_seconds()
+            inter_arrival_list.append(time_from_last_pkt)
+            R = curr['src_port'] == plc_port
+            if R:
+                # a response packet
+                # if not first response then add the inter-response time
+                if last_response_time is not None:
+                    time_between_responses.append((time - last_response_time).total_seconds())
+                last_response_time = time
+            else:
+                # a query packet
+                # if not first query then add the inter-query time
+                if last_query_time is not None:
+                    time_between_queries.append((time - last_query_time).total_seconds())
+                last_query_time = time
+
+            time_between_packets.append(inter_arrival_time)
+
+        # calculate statistics
+        avg_time_between_queries = statistics.mean(time_between_queries)
+        avg_time_between_responses = statistics.mean(time_between_responses)
+        avg_time_between_packets = statistics.mean(time_between_packets)
+        std_time_between_queries = statistics.stdev(time_between_queries)
+        std_time_between_responses = statistics.stdev(time_between_responses)
+        std_time_between_packets = statistics.stdev(time_between_packets)
+
+        # update dictionary
+        statistics_dict['IP'].append(name)
+        statistics_dict['avg_time_between_packets'].append(avg_time_between_packets)
+        statistics_dict['avg_time_between_responses'].append(avg_time_between_responses)
+        statistics_dict['avg_time_between_queries'].append(avg_time_between_queries)
+        statistics_dict['std_time_between_queries'].append(std_time_between_queries)
+        statistics_dict['std_time_between_responses'].append(std_time_between_responses)
+        statistics_dict['std_time_between_packets'].append(std_time_between_packets)
+
+        # get the registers that require binning
+        regs_to_bin = []
+        plc_values_stats = plcs_values_stats.loc[plcs_values_stats['ip'] == name]
+        my_regs = get_frequent_registers(group, n)
+        reg_num = 1
+        while reg_num <= n:
+            col = "register " + str(reg_num) + " stdev"
+            if plc_values_stats[col] >= 20:
+                regs_to_bin.append(my_regs[reg_num - 1])
+        # now we need to process the data
+        if entry_maker is None:
+            processed_group = data_processor(group, n, binner, n_bins, regs_to_bin)
+        else:
+            processed_group = data_processor(group, n, binner, n_bins, entry_maker, regs_to_bin)
+        # rename the columns to concatenate the dataframes.
+        processed_group.columns = columns
+        # we first need to calculate stats for all PLCs.
+        plc_stats_df = pd.DataFrame(columns=dict_keys[1:])
+        length = len(group)
+        cols_dict = {}
+        for col_name in dict_keys[1:]:
+            cols_dict[col_name] = np.repeat(statistics_dict[col_name][-1], length)
+            plc_stats_df[col_name] = cols_dict[col_name]
+        # to be able to replace ip with cluster number
+        ip_df = pd.DataFrame(columns='involved')
+        ip_df['involved'] = str(name) * length
+        inter_arrival_times = pd.concat([pd.DataFrame([t], columns='inter_arrival') for t in inter_arrival_list],
+                                        ignore_index=True)
+        group_df_with_stats = pd.concat([processed_group, plc_stats_df], axis=1, ignore_index=True)
+        group_df_with_stats_and_times = pd.concat([group_df_with_stats, inter_arrival_times], axis=1, ignore_index=True)
+        group_df_with_stats_and_times = pd.concat([group_df_with_stats_and_times, ip_df], axis=1, ignore_index=True)
+        statistics_df = pd.concat([statistics_df, group_df_with_stats_and_times], ignore_index=True)
+
+    # now statistics_df has : [columns from data processor, statistics, inter arrival time considering all the PLCs]
+    # optionally drop inter-arrival time regrading single PLC
+    if drop_time:
+        statistics_df = statistics_df.drop('time', axis=1)
+    if cluster:
+        # create the df for the clustering algorithm
+        clustering_df = pd.DataFrame.from_dict(statistics_dict)
+        clustering_df = clustering_df.set_index('IP')
+
+        # a mapping of IP -> cluster number
+        cluster_map = clustering(clustering_df, n_clusters)
+
+        # remove the statistics columns and replace with cluster number
+        # go over all the IPs, for each IP get cluster number
+        no_stats_df = statistics_df.drop(dict_keys[1:], axis=1)
+        no_stats_df['cluster_num'] = no_stats_df['involved'].apply(lambda ip: cluster_map.loc[ip])
+        no_stats_df = no_stats_df.drop('involved', axis=1)
+        return no_stats_df
+
+    statistics_df = statistics_df.drop('involved', axis=1)
+
+    return statistics_df
+
+
+# KMeans clustering
+def kmeans_cluster(plc_statistics, clusters):
+    model = KMeans(n_clusters=clusters)
+    model.fit(plc_statistics)
+    labels = model.predict(plc_statistics)
+    cluster_map = pd.DataFrame()
+    cluster_map['PLC_IP'] = pd.Index.values
+    cluster_map['cluster_num'] = labels
+    cluster_map.set_index('PLC_IP')
+    return cluster_map
+
+
+# KMeans clustering
+def agglomerative_clustering(plc_statistics, clusters):
+    model = AgglomerativeClustering(n_clusters=clusters)
+    model.fit(plc_statistics)
+    labels = model.fit_predict(plc_statistics)
+    cluster_map = pd.DataFrame()
+    cluster_map['PLC_IP'] = pd.Index.values
+    cluster_map['cluster_num'] = labels
+    cluster_map.set_index('PLC_IP')
+    return cluster_map
+
+
+# ---------------------------------------------------------------------------------------------------------------------------
+# bring the data to excel
+def export_results(models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
+                   s=None, w=None, j=None):
+    print("working...")
+    regular_cols = ['data_version', 'series length', 'binning', 'n_bins', 'mse', 'r2',
+                    'prediction length', 'number of layers']
+    mp_cols = np.concatenate((regular_cols, ['MP series', 'MP window', 'MP jump']))
+    comparisons_file = excel_path + "\\" + sheet_name + ".xlsx"
+    if s is None:
+        results_df = pd.DataFrame(columns=regular_cols)
+    else:
+        results_df = pd.DataFrame(
+            columns=mp_cols)
+    for model_folder in os.listdir(modeles_path + '\\' + models_folder):
+        model_path = modeles_path + "\\" + models_folder + "\\" + model_folder
+        X_test = load(datasets_path + "\\" + models_folder, "X_test_" + model_folder)
+        y_test = load(datasets_path + "\\" + models_folder, "y_test_" + model_folder)
+        model = keras.models.load_model(model_path)
+        y_pred = model.predict(X_test)
+        r2 = 0
+        mse = 0
+        if pred_len != 1:
+            for i in range(pred_len):
+                y_p = [s[i] for s in y_pred]
+                y_t = [s[i] for s in y_test]
+                r2 += r2_score(y_t, y_p)
+                mse += mean_squared_error(y_t, y_p)
+            r2 /= pred_len
+            mse /= pred_len
+        else:
+            r2 = r2_score(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+        if pred_len == 1:
+            y_pred_df = pd.DataFrame(y_pred, columns=columns)
+            y_true_df = pd.DataFrame(y_test, columns=columns)
+
+            excel_df = pd.DataFrame()
+            for col in y_true_df.columns:
+                true_col = 'true' + col
+                pred_col = 'pred' + col
+                excel_df[true_col] = y_true_df[col]
+                excel_df[pred_col] = y_pred_df[col]
+
+            with open(excel_path + "\\data_" + model_folder, 'w'):
+                excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
+        splitted = model_folder.split(sep='_')
+        bins = int(splitted[-1])
+        if s is None:
+            result_df = pd.DataFrame([[data_version, series_length, binning, bins, mse, r2, pred_len, layer]],
+                                     columns=regular_cols)
+        else:
+            result_df = pd.DataFrame([[data_version, series_length, binning, bins, mse, r2, pred_len, layer, s, w, j]],
+                                     columns=mp_cols)
+        results_df = pd.concat([results_df, result_df], ignore_index=True, axis=0)
+
+    with pd.ExcelWriter(comparisons_file, mode='w') as writer:
+        results_df.to_excel(writer, sheet_name=sheet_name)
+
+
+if __name__ == '__main__':
+    """registers = to_bin
+    times = ['time_' + str(r_num) for r_num in registers]
+    cols = np.concatenate((['time'], registers, times))
+    export_results('EqualFreq_v2_RNN_1_layer', cols, 'EqualFreq v2 RNN 1 layer', 'v2', 20, 'EqualFreq')
+    export_results('EqualWidth_v2_RNN_1_layer', cols, 'EqualWidth v2 RNN 1 layer', 'v2', 20, 'EqualWidth')
+    export_results('KMeans_v2_RNN_1_layer', cols, 'KMeans v2 RNN 1 layer', 'v2', 20, 'KMeans')"""
+
+    registers = to_bin
+    cols = np.concatenate((['time'], registers))
+    export_results('EqualFreq_v1_1_MP_s40_w10_j20', cols, 'EqualFreq v1.2 MP ', 'v1.2', 31, 'EqualFreq', layer=1, pred_len=1, s=40, w=10, j=20)
+    export_results('EqualWidth_v1_1_MP_s40_w10_j20', cols, 'EqualWidth v1.2 RNN 1 layer', 'v1.2', 31, 'EqualWidth', layer=1, pred_len=1, s=40, w=10, j=20)
+    export_results('KMeans_v1_1_MP_s40_w10_j20', cols, 'KMeans v1.2 RNN 1 layer', 'v1.2', 31, 'KMeans', layer=1, pred_len=1, s=40, w=10, j=20)
+
