@@ -1,21 +1,20 @@
 import itertools
-import pickle
 import json
 import os
-import stumpy
+import pickle
 import statistics
-import keras.models
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
 from datetime import datetime
 
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.preprocessing import KBinsDiscretizer
-from sklearn.metrics import r2_score
+import keras.models
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import stumpy
+from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+from sklearn.preprocessing import KBinsDiscretizer
+from sklearn.preprocessing import MinMaxScaler
 
 import models
 
@@ -32,7 +31,7 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: implement algorithms to compare with.
 # TODO: implement embedding.
-# TODO: different number of registers in many PLCs version - drop PLCs/pad with zeroes.
+# TODO: learn HTM.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -1138,17 +1137,11 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 if __name__ == '__main__':
     """registers = to_bin
-    times = ['time_' + str(r_num) for r_num in registers]
-    cols = np.concatenate((['time'], registers, times))
-    export_results('EqualFreq_v2_RNN_1_layer', cols, 'EqualFreq v2 RNN 1 layer', 'v2', 20, 'EqualFreq')
-    export_results('EqualWidth_v2_RNN_1_layer', cols, 'EqualWidth v2 RNN 1 layer', 'v2', 20, 'EqualWidth')
-    export_results('KMeans_v2_RNN_1_layer', cols, 'KMeans v2 RNN 1 layer', 'v2', 20, 'KMeans')"""
-
-    registers = to_bin
-    cols = np.concatenate((['time'], registers))
-    export_results('EqualFreq_v1_1_MP_s40_w10_j20', cols, 'EqualFreq v1.2 MP ', 'v1.2', 31, 'EqualFreq', layer=1,
-                   pred_len=1, s=40, w=10, j=20)
-    export_results('EqualWidth_v1_1_MP_s40_w10_j20', cols, 'EqualWidth v1.2 RNN 1 layer', 'v1.2', 31, 'EqualWidth',
-                   layer=1, pred_len=1, s=40, w=10, j=20)
-    export_results('KMeans_v1_1_MP_s40_w10_j20', cols, 'KMeans v1.2 RNN 1 layer', 'v1.2', 31, 'KMeans', layer=1,
-                   pred_len=1, s=40, w=10, j=20)
+    regs_copy = registers.copy()
+    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
+    export_results('EqualFreq_v3_2_RNN_1_layer', cols, 'EqualFreq v3_2 RNN 1 layer', 'v3_2', 20, 'EqualFreq')
+    export_results('EqualWidth_v3_2_RNN_1_layer', cols, 'EqualWidth v3_2 RNN 1 layer', 'v3_2', 20, 'EqualWidth')
+    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')"""
+    a = [[1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4]]
+    b = np.random.rand(10)
+    print(spearmanr(a, b))

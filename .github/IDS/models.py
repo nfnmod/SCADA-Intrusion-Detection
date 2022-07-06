@@ -101,34 +101,6 @@ def matrix_profiles_LSTM(pkt_data, series_len, window, jump, np_seed, model_name
     return simple_LSTM(dvs, lstm_series_length, np_seed, model_name)
 
 
-def custom_train_test_split_series_pred(pkt_data, series_len, np_seed, train):
-    n_features = len(pkt_data.columns)
-
-    # make sure the number of packets is a multiple of series_len
-    data_len = len(pkt_data)
-    data_len -= data_len % series_len
-
-    y = []
-    X_grouped = []
-
-    # save the data as sequence of length series_len
-    i = 0
-
-    while i < data_len - 2 * series_len:
-        X_sequence = pkt_data.iloc[i: i + series_len].to_numpy().reshape(series_len, n_features)
-        y_sequence = pkt_data.iloc[i + series_len: i + 2 * series_len].to_numpy().reshape(series_len, n_features)
-
-        X_grouped.append(X_sequence)
-        y.append(y_sequence)
-        i += 1
-
-    X_grouped = np.array(X_grouped)
-    y = np.array(y)
-    X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
-
-    return X_train, X_test, y_train, y_test
-
-
 def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
     n_features = len(pkt_data.columns)
 
@@ -158,10 +130,3 @@ def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
 
     return X_train, X_test, y_train, y_test
 
-
-if __name__ == '__main__':
-    model = tensorflow.keras.Sequential()
-    model.add(layers.LSTM(units=4, input_shape=(20, 4), return_sequences=True))
-    model.add(layers.LSTM(units=4, input_shape=(20, 4), return_sequences=True))
-    model.add(layers.TimeDistributed(layers.Dense(4)))
-    print(model.summary())
