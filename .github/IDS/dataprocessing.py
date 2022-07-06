@@ -29,8 +29,7 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: implement algorithms to compare with.
-# TODO: implement embedding.
+# TODO: implement TIRP.
 # TODO: learn HTM.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -213,6 +212,31 @@ def get_plc(pkt_df, n):
     sorted_switches = sorted(switches.items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
     print(sorted_switches)
 
+
+# works for a single PLC.
+def get_frequent_registers_values(pkts, registers):
+    # map a register to a dictionary. the dict maps values to frequencies
+    regs_vals = {r: dict() for r in registers}
+    for i in range(len(pkts)):
+        curr = pkts[i]
+        src_port = curr['src_port']
+        # response packet
+        if src_port == plc_port:
+            payload = curr['payload']
+            changed = payload.keys()
+            for r in registers:
+                # value of register
+                val = payload[r]
+                if r in changed:
+                    # the dict
+                    reg_values = regs_vals[r]
+                    # increase frequency of value
+                    reg_values[val] = reg_values.get(val, 0) + 1
+    for r in registers:
+        r_dict = regs_vals[r]
+        # sort the values by frequencies, get the most frequent one , get only the value.
+        regs_vals[r] = sorted(r_dict, key=lambda kv: (kv[1], kv[0]), reverse=True)[0][1]
+    return regs_vals
 
 # using RAW DATA
 def get_plcs_values_statistics(pkt_df, n):
@@ -724,7 +748,7 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True):
 # ---------------------------------------------------------------------------------------------------------------------------
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
-def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
+def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_vals=None):
     # using only 1 PLC
     IP = plc
 
@@ -736,8 +760,8 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
     registers = frequent_regs[IP]
     regs_copy = registers.copy()
-    cols = np.concatenate((['time', 'similarity', 'time_in_state', 'msgs_in_state'], regs_copy))
-
+    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
+    # ['time', 'similarity', 'time_in_state', 'msgs_in_state']
     time_vals_df = pd.DataFrame(columns=cols)
 
     for i in range(1, len(plc_pkts)):
@@ -763,7 +787,6 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
         # init columns
         if i == 1:
             new['time_in_state'] = 0
-            new['msgs_in_state'] = 1
 
         # a response packet
         if src_port == plc_port:
@@ -782,6 +805,8 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
                     # the value of this register wasn't recorded in the packet. get the last value known
                     if df_len == 0:
                         new[reg_num] = np.nan
+                        if frequent_vals is not None:
+                            new[reg_num] = np.float64(frequent_vals[reg_num])
                     else:
                         new[reg_num] = np.float64(prev_entry[reg_num])
                         # no known value change
@@ -793,17 +818,13 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
             else:
                 similarity = np.nan
 
-            new['similarity'] = similarity
-
             if similarity == 1:
-                time_vals_df.iloc[df_len - 1, 2] += new['time']
-                time_vals_df.iloc[df_len - 1, 3] += 1
+                time_vals_df.iloc[df_len - 1, 1] += new['time']
             else:
                 new['time_in_state'] = 0
-                new['msgs_in_state'] = 1
 
                 if df_len > 0:
-                    time_vals_df.iloc[df_len - 1, 2] += new['time']
+                    time_vals_df.iloc[df_len - 1, 1] += new['time']
                 temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                                  data={'0': [new[col] for col in time_vals_df.columns]},
                                                  orient='index')
@@ -813,22 +834,17 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
             if df_len == 0:
                 for reg_num in registers:
                     new[reg_num] = np.nan
+                    if frequent_vals is not None:
+                        new[reg_num] = np.float64(frequent_vals[reg_num])
 
-                new['similarity'] = 1  # due to the same reason below
                 new['time_in_state'] = new['time']  # due to the same reason below
-                if prev['func_code'] == 3:
-                    new[
-                        'msgs_in_state'] = 2  # there is one packet before that, and we don't know about a state change
-                else:
-                    new['msgs_in_state'] = 1  # prev is a write packet
                 temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                                  data={'0': [new[col] for col in time_vals_df.columns]},
                                                  orient='index')
                 time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
             else:
                 # there was no state change. so we got 1 more packet in the same state and stayed longer in it
-                time_vals_df.iloc[df_len - 1, 2] += new['time']
-                time_vals_df.iloc[df_len - 1, 3] += 1
+                time_vals_df.iloc[df_len - 1, 1] += new['time']
 
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
@@ -837,7 +853,7 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True):
         if scale:
             time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
 
-    for col_name in ['time', 'time_in_state', 'msgs_in_state', 'similarity']:
+    for col_name in ['time', 'time_in_state']:
         time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
         if scale:
             time_vals_df[col_name] = scale_col(time_vals_df, col_name)
@@ -967,7 +983,7 @@ def grid_search_binning():
         bins = binner_bins[1]
         model_name = "v1_single_plc_make_entry_v1_20_packets_MP_min_{}_{}".format(names[binner], bins)
         processed_df = process_data_v1(pkt_df, 5, binner, bins, make_entry_v1)
-        models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name, np.max)
+        models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name)
 
 
 def grid_search_no_bins():
@@ -1136,12 +1152,9 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    """registers = to_bin
+    registers = to_bin
     regs_copy = registers.copy()
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
     export_results('EqualFreq_v3_2_RNN_1_layer', cols, 'EqualFreq v3_2 RNN 1 layer', 'v3_2', 20, 'EqualFreq')
     export_results('EqualWidth_v3_2_RNN_1_layer', cols, 'EqualWidth v3_2 RNN 1 layer', 'v3_2', 20, 'EqualWidth')
-    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')"""
-    a = [[1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4], [1, 2], [3, 4]]
-    b = np.random.rand(10)
-    print(spearmanr(a, b))
+    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')

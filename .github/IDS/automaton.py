@@ -138,8 +138,9 @@ def make_automaton(registers, frequent_values, pkts):
 
 
 # detect anomalies using the automaton: unknown state/transition or violation of time constrains
-def detect(automaton, pkts, registers, frequent_values):
-    processed = dataprocessing.process_data_v3(pkts, 5, None, None, False)
+def detect(automaton, pkts, registers):
+    frequent_values = dataprocessing.get_frequent_registers_values(pkts, registers)
+    processed = dataprocessing.process_data_v3(pkts, 5, None, None, False, frequent_values)
     decisions = []
     for i in range(len(processed) - 1):
         curr_pkt = processed[i]
