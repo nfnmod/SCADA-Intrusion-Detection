@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
-from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
@@ -31,6 +30,10 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: implement TIRP.
 # TODO: learn HTM.
+# TODO: "self fixing" LSTM.
+# TODO: finish embedding - do a state-time column instead of a register value duration column.
+# TODO: embedding - decide how to mix np.nan update with the prev_entry update.
+# TODO: learn googles algorithm.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -237,6 +240,7 @@ def get_frequent_registers_values(pkts, registers):
         # sort the values by frequencies, get the most frequent one , get only the value.
         regs_vals[r] = sorted(r_dict, key=lambda kv: (kv[1], kv[0]), reverse=True)[0][1]
     return regs_vals
+
 
 # using RAW DATA
 def get_plcs_values_statistics(pkt_df, n):
@@ -969,6 +973,195 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
             time_vals_df[col_name] = scale_col(time_vals_df, col_name)
 
     return time_vals_df
+
+
+# inter-arrival time,
+# time in state so far / value duration of each register,
+# state-switching time: upper and lower limit in the neighborhood,
+# registers delta from previous packet.
+# ----------------------------------------------------- #
+# [d1, d2, d3, t-state, ss-upper, ss-lower, inter-arrival time]
+# ----------------------------------------------------- #
+# in another version : use matrix profiles on the inter-arrival times in some window, get average on the distance vector.
+# can do the state switches for single registers
+# ----------------------------------------------------- #
+# this version has packets of the form:
+# [d1, d2, d3, t1, t2, t3, ss-upper, ss-lower, inter-arrival time]
+def embedding_v1(pkt_df, neighborhood=20, binner=None, n_bins=None, scale=True):
+    IP = plc
+    # plc packets
+    plc_pkts = pkt_df.loc[(pkt_df['src_ip'] == IP) | (pkt_df['dst_ip'] == IP)]
+
+    registers = to_bin
+    registers_times = ['time_' + reg for reg in registers]
+    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min'], registers, registers_times))
+    embedded_df = pd.DataFrame(columns=cols)
+
+    avgs = get_avg_vals(plc_pkts, IP, registers)
+    last_values = {r: np.nan for r in registers}
+
+    # initialize last_values, there is a neighborhood that we don't process
+    for i in range(neighborhood):
+        curr = plc_pkts.iloc[i]
+        src_port = curr['src_port']
+        if src_port == plc_port:
+            payload = curr['payload']
+            changed = payload.keys()
+            # update last value known for the registers if they are in the data payload
+            for r in registers:
+                if r in changed:
+                    last_values[r] = payload[r]
+    # iterate over the dataframe, look at 20 packets and embed the 21st packet. slide one packet forward
+    for i in range(neighborhood, len(plc_pkts) - 1):
+        # 20 previous packets
+        prev_pkts = plc_pkts.iloc[i - neighborhood:i, :]
+        curr_pkt = plc_pkts.iloc[i]
+        prev_entry = {}
+
+        if i != neighborhood:
+            prev_entry = embedded_df.iloc[i - (neighborhood + 1)]
+
+        # build the new df entry
+        new = dict()
+        time = (curr_pkt['time'] - plc_pkts.iloc[i - 1]['time']).total_seconds()
+        new['time'] = time
+
+        src_port = curr_pkt['src_port']
+
+        # we need to initialize the value durations
+        # this is different from v2. In v2 we know the values in the previous packet and their duration
+        # here we know the delta of the value . So, we need to keep track of the durations and update them
+        # when processing new packets. this check for how long the last value is in the register. iterate over the first
+        # neighborhood backwards.
+        durations = {r: 0 for r in registers}
+        if i == neighborhood:
+            accumalate_time = {r: True for r in registers}
+            # backwards
+            for j in range(neighborhood, 0, -1):
+                p = plc_pkts.iloc[j]
+                p_prev = plc_pkts.iloc[j - 1]
+                inter_arrival = (p['time'] - p_prev['time']).total_seconds()
+
+                src_port = p['src_port']
+
+                # query , increase durations
+                if src_port != plc_port:
+                    for r in durations.keys():
+                        if accumalate_time[r]:
+                            durations[r] += durations[r] + inter_arrival
+                else:
+                    # response
+                    payload = p['payload']
+                    changed = payload.keys()
+                    for r in durations.keys():
+                        # we know of a value for that register and it's in the payload
+                        if last_values[r] is not np.nan and r in changed:
+                            last_value = last_values[r]
+                            payload_value = payload[r]
+                            # if they are the same and we have not seen a different value yet
+                            if last_value == payload_value and accumalate_time[r]:
+                                durations[r] += inter_arrival
+                            # if we see a different value then we don't want to keep incrementing the duration anymore
+                            # so we set the acc flag to false.
+                            if last_value != payload_value:
+                                accumalate_time[r] = False
+        # a response packet
+        if src_port == plc_port:
+            payload = curr_pkt['payload']
+            changed = payload.keys
+            for r in registers:
+                # we saw a value before and we see a value in the current payload
+                if last_values[r] is not np.nan and r in changed:
+                    delta = np.float64(np.abs(last_values[r] - payload[r]))
+                    # different value
+                    if last_values[r] != payload[r]:
+                        last_values[r] = payload[r]
+                        new['time_' + r] = 0
+                        durations[r] = 0
+                        # we know of the change only now, if possible update the duration of the previous value
+                        if i != neighborhood:
+                            prev_entry['time_' + r] += time
+                    else:
+                        # same value as the last known value, increase duration and that's it
+                        durations[r] += time
+                        new['time_' + r] = durations[r]
+                # first time we see a value for the register
+                elif last_values[r] is np.nan and r in changed:
+                    delta = np.float64(np.abs(avgs[r] - payload[r]))
+                    last_values[r] = payload[r]
+                    durations[r] = 0
+                # if we get here it means that r is not in changed and we never saw a value for it
+                elif last_values[r] is np.nan:
+                    delta = np.nan
+                    new['time_' + r] = np.nan  # decide how to mix this update with the prev_entry update
+                # if we get here it means that r is not in changed and that last_values[r] != nan
+                # inc duration of the last known value
+                else:
+                    delta = np.float64(np.abs(avgs[r] - last_values[r]))
+                    durations[r] += time
+                    new['time_' + r] = durations[r]
+                new[r] = delta
+        # calculate state switches times
+        num_state_switches = 0
+        time_in_same_state = 0
+        state_switch_times = []
+        last_known_state = dict()
+        first = prev_pkts.iloc[0]
+        if first['src_port'] == plc_port:
+            payload = first['payload']
+            for r in registers:
+                last_known_state[r] = payload.get(r, np.nan)
+
+        for p_i in range(1, len(prev_pkts)):
+            pkt = prev_pkts.iloc[p_i]
+            prev_pkt = prev_pkts.iloc[p_i - 1]
+            t = (pkt['time'] - prev_pkt['time']).total_seconds()
+            port = pkt['src_port']
+
+            same = True
+            if port == plc_port:
+                # response, check that state is the same
+                payload = pkt['payload']
+                for reg in registers:
+                    if reg in payload.keys():
+                        val = payload[reg]
+                        if val != last_known_state[reg]:
+                            same = False
+                            last_known_state[reg] = payload[reg]
+            else:
+                # query, state is the same
+                time_in_same_state += t
+            if same:
+                time_in_same_state += time
+            else:
+                num_state_switches += 1
+                state_switch_times.append(time_in_same_state)
+                time_in_same_state = 0
+        mean_state_switch_time = statistics.mean(state_switch_times)
+        stdev_state_switch_time = statistics.stdev(state_switch_times)
+        state_switch_upper = mean_state_switch_time + 3 * stdev_state_switch_time
+        state_switch_lower = mean_state_switch_time - 3 * stdev_state_switch_time
+        new['state_switch_max'] = state_switch_upper
+        new['state_switch_min'] = state_switch_lower
+        temp_df = pd.DataFrame.from_dict(columns=cols, data={'0': [new[c] for c in cols]}, orient='index')
+        embedded_df = pd.concat([embedded_df, temp_df], axis=0, ignore_index=True)
+
+    # fill missing values and bin
+    for reg_num in registers:
+        reg_key = 'time_' + str(reg_num)
+        embedded_df[reg_num] = embedded_df[reg_num].fillna(embedded_df[reg_num].mean())
+        embedded_df[reg_key] = embedded_df[reg_key].fillna(embedded_df[reg_key].mean())
+        if binner is not None:
+            embedded_df[reg_num] = binner(embedded_df, reg_num, n_bins)
+        if scale:
+            embedded_df[reg_num] = scale_col(embedded_df, reg_num)
+            embedded_df[reg_key] = scale_col(embedded_df, reg_key)
+    # scale
+    if scale:
+        for c in ['time', 'state_switch_max', 'state_switch_min']:
+            embedded_df[c] = scale_col(embedded_df, c)
+
+    return embedded_df
 
 
 def grid_search_binning():
