@@ -31,8 +31,8 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: implement TIRP.
 # TODO: learn HTM.
 # TODO: "self fixing" LSTM.
-# TODO: finish embedding - do a state-time column instead of a register value duration column.
-# TODO: embedding - decide how to mix np.nan update with the prev_entry update.
+# TODO: add option for MP in embedding.
+# TODO: add option for looking at time-in-state in embedding.
 # TODO: learn googles algorithm.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -987,14 +987,14 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
 # ----------------------------------------------------- #
 # this version has packets of the form:
 # [d1, d2, d3, t1, t2, t3, ss-upper, ss-lower, inter-arrival time]
-def embedding_v1(pkt_df, neighborhood=20, binner=None, n_bins=None, scale=True):
+def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True):
     IP = plc
     # plc packets
     plc_pkts = pkt_df.loc[(pkt_df['src_ip'] == IP) | (pkt_df['dst_ip'] == IP)]
 
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
-    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min'], registers, registers_times))
+    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers, registers_times))
     embedded_df = pd.DataFrame(columns=cols)
 
     avgs = get_avg_vals(plc_pkts, IP, registers)
@@ -1031,7 +1031,7 @@ def embedding_v1(pkt_df, neighborhood=20, binner=None, n_bins=None, scale=True):
         # we need to initialize the value durations
         # this is different from v2. In v2 we know the values in the previous packet and their duration
         # here we know the delta of the value . So, we need to keep track of the durations and update them
-        # when processing new packets. this check for how long the last value is in the register. iterate over the first
+        # when processing new packets. this checks for how long the last value is in the register. iterate over the first
         # neighborhood backwards.
         durations = {r: 0 for r in registers}
         if i == neighborhood:
@@ -1065,42 +1065,8 @@ def embedding_v1(pkt_df, neighborhood=20, binner=None, n_bins=None, scale=True):
                             # so we set the acc flag to false.
                             if last_value != payload_value:
                                 accumalate_time[r] = False
-        # a response packet
-        if src_port == plc_port:
-            payload = curr_pkt['payload']
-            changed = payload.keys
-            for r in registers:
-                # we saw a value before and we see a value in the current payload
-                if last_values[r] is not np.nan and r in changed:
-                    delta = np.float64(np.abs(last_values[r] - payload[r]))
-                    # different value
-                    if last_values[r] != payload[r]:
-                        last_values[r] = payload[r]
-                        new['time_' + r] = 0
-                        durations[r] = 0
-                        # we know of the change only now, if possible update the duration of the previous value
-                        if i != neighborhood:
-                            prev_entry['time_' + r] += time
-                    else:
-                        # same value as the last known value, increase duration and that's it
-                        durations[r] += time
-                        new['time_' + r] = durations[r]
-                # first time we see a value for the register
-                elif last_values[r] is np.nan and r in changed:
-                    delta = np.float64(np.abs(avgs[r] - payload[r]))
-                    last_values[r] = payload[r]
-                    durations[r] = 0
-                # if we get here it means that r is not in changed and we never saw a value for it
-                elif last_values[r] is np.nan:
-                    delta = np.nan
-                    new['time_' + r] = np.nan  # decide how to mix this update with the prev_entry update
-                # if we get here it means that r is not in changed and that last_values[r] != nan
-                # inc duration of the last known value
-                else:
-                    delta = np.float64(np.abs(avgs[r] - last_values[r]))
-                    durations[r] += time
-                    new['time_' + r] = durations[r]
-                new[r] = delta
+        regs_times_maker(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry,
+                                        time, avgs, plc_pkts.iloc[i - 1]['payload'])
         # calculate state switches times
         num_state_switches = 0
         time_in_same_state = 0
@@ -1162,6 +1128,103 @@ def embedding_v1(pkt_df, neighborhood=20, binner=None, n_bins=None, scale=True):
             embedded_df[c] = scale_col(embedded_df, c)
 
     return embedded_df
+
+
+def embed_v1_with_deltas_regs_times(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry, time,
+                                    avgs, prev_payload):
+    # a response packet
+    if src_port == plc_port:
+        payload = curr_pkt['payload']
+        changed = payload.keys
+        for r in registers:
+            # we saw a value before and we see a value in the current payload
+            if last_values[r] is not np.nan and r in changed:
+                delta = np.float64(np.abs(last_values[r] - payload[r]))
+                # different value
+                if last_values[r] != payload[r]:
+                    last_values[r] = payload[r]
+                    new['time_' + r] = 0
+                    durations[r] = 0
+                    # we know of the change only now, if possible update the duration of the previous value
+                    if i != neighborhood:
+                        prev_entry['time_' + r] += time
+                else:
+                    # same value as the last known value, increase duration and that's it
+                    durations[r] += time
+                    new['time_' + r] = durations[r]
+            # first time we see a value for the register
+            elif last_values[r] is np.nan and r in changed:
+                delta = np.float64(np.abs(avgs[r] - payload[r]))
+                last_values[r] = payload[r]
+                durations[r] = 0
+                new['time_' + r] = 0
+            # if we get here it means that r is not in changed and we never saw a value for it
+            elif last_values[r] is np.nan:
+                delta = np.nan
+                new['time_' + r] = np.nan  # decide how to mix this update with the prev_entry update
+            # if we get here it means that r is not in changed and that last_values[r] != nan
+            # inc duration of the last known value
+            else:
+                delta = np.float64(np.abs(avgs[r] - last_values[r]))
+                durations[r] += time
+                new['time_' + r] = durations[r]
+            new[r] = delta
+    # a query packet
+    else:
+        for reg in registers:
+            durations[reg] += time
+            new['time_' + reg] = durations[reg]
+            prev_delta_reg = prev_payload.get(reg, np.NaN)
+            if prev_delta_reg is not np.NaN:
+                new[reg] = np.float64(np.abs(prev_delta_reg - avgs[reg]))
+            else:
+                new[reg] = np.float64(np.abs(last_values[reg] - avgs[reg]))
+
+
+def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry, time,
+                                    avgs, plc_pkts):
+    # a response packet
+    if src_port == plc_port:
+        payload = curr_pkt['payload']
+        changed = payload.keys
+        for r in registers:
+            # we see a value in the current payload
+            if r in changed:
+                new[r] = np.float64(payload[r])
+                # different value
+                if last_values[r] != payload[r]:
+                    last_values[r] = payload[r]
+                    new['time_' + r] = 0
+                    durations[r] = 0
+                    # we know of the change only now, if possible update the duration of the previous value
+                    if i != neighborhood:
+                        prev_entry['time_' + r] += time
+                else:
+                    # same value as the last known value, increase duration and that's it
+                    durations[r] += time
+                    new['time_' + r] = durations[r]
+            # first time we see a value for the register
+            elif last_values[r] is np.nan and r in changed:
+                new[r] = np.float64(payload[r])
+                new['time_' + r] = 0
+                last_values[r] = payload[r]
+                durations[r] = 0
+            # if we get here it means that r is not in changed and we never saw a value for it
+            elif last_values[r] is np.nan:
+                new[r] = np.nan
+                new['time_' + r] = np.nan  # decide how to mix this update with the prev_entry update
+            # if we get here it means that r is not in changed and that last_values[r] != nan
+            # inc duration of the last known value
+            else:
+                new[r] = last_values[r]
+                durations[r] += time
+                new['time_' + r] = durations[r]
+    # a query packet
+    else:
+        for reg in registers:
+            durations[reg] += time
+            new['time_' + reg] = durations[reg]
+            new[reg] = prev_entry[reg]
 
 
 def grid_search_binning():
