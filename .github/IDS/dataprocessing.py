@@ -30,10 +30,12 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: implement TIRP.
 # TODO: learn HTM.
-# TODO: "self fixing" LSTM.
 # TODO: add option for MP in embedding.
 # TODO: add option for looking at time-in-state in embedding.
-# TODO: learn googles algorithm.
+# TODO: label preparation - inject , create labels, splits to test and train
+# TODO: create train data sets if needed.
+# TODO: convert data.
+# TODO: test embedding.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -994,7 +996,8 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
 
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
-    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers, registers_times))
+    cols = np.concatenate(
+        (['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers, registers_times))
     embedded_df = pd.DataFrame(columns=cols)
 
     avgs = get_avg_vals(plc_pkts, IP, registers)
@@ -1066,7 +1069,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                             if last_value != payload_value:
                                 accumalate_time[r] = False
         regs_times_maker(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry,
-                                        time, avgs, plc_pkts.iloc[i - 1]['payload'])
+                         time, avgs, plc_pkts.iloc[i - 1]['payload'], registers)
         # calculate state switches times
         num_state_switches = 0
         time_in_same_state = 0
@@ -1131,7 +1134,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
 
 
 def embed_v1_with_deltas_regs_times(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry, time,
-                                    avgs, prev_payload):
+                                    avgs, prev_payload, registers):
     # a response packet
     if src_port == plc_port:
         payload = curr_pkt['payload']
@@ -1182,7 +1185,7 @@ def embed_v1_with_deltas_regs_times(src_port, curr_pkt, last_values, neighborhoo
 
 
 def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry, time,
-                                    avgs, plc_pkts):
+                                    avgs, plc_pkts, registers):
     # a response packet
     if src_port == plc_port:
         payload = curr_pkt['payload']
@@ -1408,9 +1411,12 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    registers = to_bin
+    """registers = to_bin
     regs_copy = registers.copy()
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
     export_results('EqualFreq_v3_2_RNN_1_layer', cols, 'EqualFreq v3_2 RNN 1 layer', 'v3_2', 20, 'EqualFreq')
     export_results('EqualWidth_v3_2_RNN_1_layer', cols, 'EqualWidth v3_2 RNN 1 layer', 'v3_2', 20, 'EqualWidth')
-    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')
+    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')"""
+    a1 = np.array([[[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]])
+    a2 = np.array([[[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]])
+    print(a1 - a2)

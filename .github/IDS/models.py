@@ -1,8 +1,12 @@
 import numpy as np
 import tensorflow
+from keras.wrappers.scikit_learn import KerasClassifier
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.model_selection import train_test_split
+from sklearn.svm import OneClassSVM
+from sklearn.svm import SVC
+from sklearn.linear_model import SGDOneClassSVM
 from tensorflow.keras import layers
 
 import dataprocessing
@@ -43,6 +47,109 @@ def predict_series_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8):
 
 def simple_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8):
     return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM)
+
+
+def build_One_Class_SVM(kernel, nu):
+    svm = OneClassSVM(kernel=kernel, nu=nu)
+    return svm
+
+
+def build_SGD(nu):
+    sgd = SGDOneClassSVM(nu=nu)
+    return sgd
+
+
+def build_SVC(kernel, c):
+    svc = SVC(kernel=kernel, C=c)
+    return svc
+
+
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+                                       model_name):
+    params_dict = dict()
+    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
+    params_dict['nu'] = [0.35, 0.5]
+    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
+                                                            test_labels, np_seed,
+                                                            params_dict, model_name)
+    best_kernel = best.best_params_['kernel']
+    best_nu = best.best_params_['nu']
+    model = build_One_Class_SVM(best_kernel, best_nu)
+    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+
+
+def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+                                 model_name):
+    params_dict = dict()
+    params_dict['nu'] = [0.35, 0.5]
+    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
+                                                            test_labels, np_seed,
+                                                            params_dict, model_name)
+    best_nu = best.best_params_['nu']
+    model = build_SGD(best_nu)
+    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+
+
+def post_lstm_classifier_SVC(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+                             model_name):
+    params_dict = dict()
+    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
+    params_dict['c'] = [0.001, 0.01, 1]
+    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
+                                                            test_labels, np_seed,
+                                                            params_dict, model_name)
+    best_kernel = best.best_params_['kernel']
+    best_c = best.best_params_['c']
+    model = build_SGD(best_kernel, best_c)
+    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+
+
+def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+                         model_name, params, creator=build_One_Class_SVM):
+    """
+
+    :param lstm_model: an LSTM model fitted on normal traffic
+    :param x_train: the data the model was trained on
+    :param y_train: the data the model was trained on
+    :param x_test: the data the model was tested on
+    :param y_test: the data the model was teste on
+    :param train_labels: the labels of the training data
+    :param test_labels: the labels of the test data
+    :param np_seed: for randomizing shuffling
+    :param model_name: for saving files
+    :return: a classifier for the differences. (try to tell if the packet is anomalous according to the deviation of the LSTM
+    # from the reality.
+    """
+    # predict and get the difference from the truth.
+    # this is the training data for the SVM
+    pred = lstm_model.predict(x_train)
+    diff_x_train = np.abs(pred - y_train)
+    diff_y_train = train_labels  # training labels
+
+    # now train the SVM to classify the distances.
+    # this is the test data for the SVM
+    pred_test = lstm_model.predict(x_test)
+    diff_x_test = np.abs(pred_test - y_test)
+    diff_y_test = test_labels
+
+    kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
+
+    # make the params
+    params_dict = params
+    classifier = KerasClassifier(build_fn=creator)
+
+    # use precision recall curves
+    search = GridSearchCV(estimator=classifier, param_grid=params_dict, cv=kf, scoring='average_precision')
+
+    # fit and recreate model
+    best_svm = search.fit(diff_x_train, diff_y_train)
+
+    # save model and data sets
+    dataprocessing.dump(dataprocessing.datasets_path, "X_train_{}".format(model_name), diff_x_train)
+    dataprocessing.dump(dataprocessing.datasets_path, "y_train_{}".format(model_name), diff_y_train)
+    dataprocessing.dump(dataprocessing.datasets_path, "X_test_{}".format(model_name), diff_x_test)
+    dataprocessing.dump(dataprocessing.datasets_path, "y_test_{}".format(model_name), diff_y_test)
+    return best_svm, diff_x_train, diff_y_train
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
@@ -129,4 +236,3 @@ def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
     X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
 
     return X_train, X_test, y_train, y_test
-
