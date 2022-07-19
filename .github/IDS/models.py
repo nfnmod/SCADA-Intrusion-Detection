@@ -100,7 +100,7 @@ def post_lstm_classifier_SVC(lstm_model, x_train, y_train, x_test, y_test, train
                                                             params_dict, model_name)
     best_kernel = best.best_params_['kernel']
     best_c = best.best_params_['c']
-    model = build_SGD(best_kernel, best_c)
+    model = build_SVC(best_kernel, best_c)
     tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
 
 
