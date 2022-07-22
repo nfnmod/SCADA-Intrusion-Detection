@@ -30,8 +30,7 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: implement TIRP.
 # TODO: learn HTM.
-# TODO: create train data sets if needed.
-# TODO: convert data.
+# TODO: create train data sets if needed-for classifiers.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -1041,7 +1040,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         # when processing new packets. this checks for how long the last value is in the register.
         durations = {r: np.nan for r in registers}
         if i == neighborhood:
-            p0 = plc_pkts[0]
+            p0 = plc_pkts.iloc[0]
             if p0['src_port'] == plc_port:
                 payload = p0['payload']
                 for r in payload.keys():
@@ -1173,7 +1172,7 @@ def embed_v1_with_deltas_regs_times(src_port, curr_pkt, last_values, neighborhoo
     # a response packet
     if src_port == plc_port:
         payload = curr_pkt['payload']
-        changed = payload.keys
+        changed = payload.keys()
         for r in registers:
             # we saw a value before and we see a value in the current payload
             if last_values[r] is not np.nan and r in changed:
@@ -1244,7 +1243,7 @@ def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhoo
     # a response packet
     if src_port == plc_port:
         payload = curr_pkt['payload']
-        changed = payload.keys
+        changed = payload.keys()
         for r in registers:
             # we see a value in the current payload
             if r in changed and last_values[r] is not np.nan:

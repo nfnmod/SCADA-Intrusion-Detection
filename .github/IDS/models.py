@@ -64,47 +64,32 @@ def build_SVC(kernel, c):
     return svc
 
 
-def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
                                        model_name):
     params_dict = dict()
     params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
     params_dict['nu'] = [0.35, 0.5]
-    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
-                                                            test_labels, np_seed,
-                                                            params_dict, model_name)
+    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed, model_name, params_dict)
     best_kernel = best.best_params_['kernel']
     best_nu = best.best_params_['nu']
     model = build_One_Class_SVM(best_kernel, best_nu)
+    model.fit(diff_x_train)
     tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
 
 
-def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
                                  model_name):
     params_dict = dict()
     params_dict['nu'] = [0.35, 0.5]
-    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
-                                                            test_labels, np_seed,
-                                                            params_dict, model_name)
+    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed, model_name, params_dict)
     best_nu = best.best_params_['nu']
     model = build_SGD(best_nu)
+    model.fit(diff_x_train)
     tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
 
 
-def post_lstm_classifier_SVC(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
-                             model_name):
-    params_dict = dict()
-    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
-    params_dict['c'] = [0.001, 0.01, 1]
-    best, x_diff_train, y_diff_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels,
-                                                            test_labels, np_seed,
-                                                            params_dict, model_name)
-    best_kernel = best.best_params_['kernel']
-    best_c = best.best_params_['c']
-    model = build_SVC(best_kernel, best_c)
-    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
 
-
-def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_labels, test_labels, np_seed,
+def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
                          model_name, params, creator=build_One_Class_SVM):
     """
 
@@ -113,7 +98,6 @@ def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_lab
     :param y_train: the data the model was trained on
     :param x_test: the data the model was tested on
     :param y_test: the data the model was teste on
-    :param train_labels: the labels of the training data
     :param test_labels: the labels of the test data
     :param np_seed: for randomizing shuffling
     :param model_name: for saving files
