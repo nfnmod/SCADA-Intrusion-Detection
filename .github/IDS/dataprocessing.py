@@ -32,8 +32,6 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: learn HTM.
 # TODO: create train data sets if needed.
 # TODO: convert data.
-# TODO: remove label usage in SVMs.
-# TODO: test data processing, run models.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -987,7 +985,8 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
 # ----------------------------------------------------- #
 # this version has packets of the form:
 # [d1, d2, d3, t1, t2, t3, ss-upper, ss-lower, inter-arrival time]
-def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True, state_duration=False, matrix_profiles=False, w=-1, j=-1):
+def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True,
+                 state_duration=False, matrix_profiles=False, w=-1, j=-1):
     IP = plc
     # plc packets
     plc_pkts = pkt_df.loc[(pkt_df['src_ip'] == IP) | (pkt_df['dst_ip'] == IP)]
@@ -1021,7 +1020,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                     last_values[r] = payload[r]
     # iterate over the dataframe, look at 20 packets and embed the 21st packet. slide one packet forward
     for i in range(neighborhood, len(plc_pkts)):
-        # 20 previous packets
+        # neighborhood previous packets
         prev_pkts = plc_pkts.iloc[i - neighborhood:i, :]
         curr_pkt = plc_pkts.iloc[i]
         prev_entry = {}
@@ -1038,14 +1037,18 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
 
         # we need to initialize the value durations
         # this is different from v2. In v2 we know the values in the previous packet and their duration
-        # here we know the delta of the value . So, we need to keep track of the durations and update them
-        # when processing new packets. this checks for how long the last value is in the register. iterate over the first
-        # neighborhood backwards.
+        # here we know the delta of the value(in some versions). So, we need to keep track of the durations and update them
+        # when processing new packets. this checks for how long the last value is in the register.
         durations = {r: np.nan for r in registers}
         if i == neighborhood:
-            accumalate_time = {r: True for r in registers}
-            # backwards
-            for j in range(neighborhood, 0, -1):
+            p0 = plc_pkts[0]
+            if p0['src_port'] == plc_port:
+                payload = p0['payload']
+                for r in payload.keys():
+                    if r in registers:
+                        durations[r] = 0
+            # forward iteration.
+            for j in range(1, neighborhood):
                 p = plc_pkts.iloc[j]
                 p_prev = plc_pkts.iloc[j - 1]
                 inter_arrival = (p['time'] - p_prev['time']).total_seconds()
@@ -1055,31 +1058,44 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 # query , increase durations
                 if src_port != plc_port:
                     for r in durations.keys():
-                        if accumalate_time[r]:
-                            if durations[r] is np.nan:
-                                durations[r] = 0
+                        # we need durations[r] to be not nan. If it's nan then we don't accumulate the time for that register
+                        # yet.
+                        if durations[r] is not np.nan:
                             durations[r] += durations[r] + inter_arrival
                 else:
                     # response
                     payload = p['payload']
                     changed = payload.keys()
+                    # If last_values[r] is np.nan for some register than we will never encounter it in some
+                    # packet payload and the duration will stay np.nan. So, it's sufficient to consider only cases where
+                    # last_values[r] is not np.nan.
                     for r in durations.keys():
                         # we know of a value for that register and it's in the payload
                         if last_values[r] is not np.nan and r in changed:
                             last_value = last_values[r]
                             payload_value = payload[r]
-                            # if they are the same and we have not seen a different value yet
-                            if last_value == payload_value and accumalate_time[r]:
-                                if durations[r] is np.nan:
+                            # if they are the same.
+                            if last_value == payload_value:
+                                if durations[r] is np.nan:  # first time seeing a value for the register.
                                     durations[r] = 0
+                                # same values so increase duration of value.
                                 durations[r] += inter_arrival
-                            # if we see a different value then we don't want to keep incrementing the duration anymore
-                            # so we set the acc flag to false.
+                            # if we see a different value then we know of a duration of 0 for now.
                             if last_value != payload_value:
-                                accumalate_time[r] = False
+                                durations[r] = 0
+                        # we know of a value for the register but not seen in this packet
+                        elif last_values[r] is not np.nan:
+                            # if the duration is nan it means that the register never got a value so far.
+                            # so we don't inc any duration. If it got some value, it means that the duration isn't nan.
+                            # If the value it got is the last_value we will inc the time and get the correct duration.
+                            # However, if it's not the last value than in some future packet we will see the last value,
+                            # 0 the duration and be in the first case and get the correct duration.
+                            if durations[r] is not np.nan:
+                                durations[r] = inter_arrival
+                        # in all other cases last_values[r] is nan so we don't consider them.
 
         regs_times_maker(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry,
-                             time, avgs, plc_pkts.iloc[i - 1]['payload'], registers, state_duration)
+                         time, avgs, plc_pkts.iloc[i - 1]['payload'], registers, state_duration)
         # calculate state switches times
         num_state_switches = 0
         time_in_same_state = 0
@@ -1107,11 +1123,8 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                         if val != last_known_state[reg]:
                             same = False
                             last_known_state[reg] = payload[reg]
-            else:
-                # query, state is the same
-                time_in_same_state += t
             if same:
-                time_in_same_state += time
+                time_in_same_state += t
             else:
                 num_state_switches += 1
                 state_switch_times.append(time_in_same_state)
@@ -1133,18 +1146,23 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
     for reg_num in registers:
         reg_key = 'time_' + str(reg_num)
         embedded_df[reg_num] = embedded_df[reg_num].fillna(embedded_df[reg_num].mean())
-        embedded_df[reg_key] = embedded_df[reg_key].fillna(embedded_df[reg_key].mean())
+        if not state_duration:
+            embedded_df[reg_key] = embedded_df[reg_key].fillna(embedded_df[reg_key].mean())
         if binner is not None:
             embedded_df[reg_num] = binner(embedded_df, reg_num, n_bins)
         if scale:
             embedded_df[reg_num] = scale_col(embedded_df, reg_num)
-            embedded_df[reg_key] = scale_col(embedded_df, reg_key)
+            if not state_duration:
+                embedded_df[reg_key] = scale_col(embedded_df, reg_key)
     # scale
     if scale:
         cs = ['time', 'state_switch_max', 'state_switch_min']
         if state_duration:
             cs.append('time_in_state')
-        for c in ['time', 'state_switch_max', 'state_switch_min']:
+        if matrix_profiles:
+            mp_len = neighborhood - w + 1
+            cs.append(['mp_time_' + str(i) for i in range(mp_len)])
+        for c in cs:
             embedded_df[c] = scale_col(embedded_df, c)
 
     return embedded_df
@@ -1185,7 +1203,7 @@ def embed_v1_with_deltas_regs_times(src_port, curr_pkt, last_values, neighborhoo
             elif last_values[r] is np.nan:
                 delta = np.nan
                 if not state_duration:
-                    new['time_' + r] = np.nan  # decide how to mix this update with the prev_entry update
+                    new['time_' + r] = np.nan
             # if we get here it means that r is not in changed and that last_values[r] != nan
             # inc duration of the last known value
             else:
@@ -1273,6 +1291,8 @@ def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhoo
     # a query packet
     else:
         for reg in registers:
+            if durations[reg] is np.nan:
+                durations[reg] = 0
             durations[reg] += time
             if not state_duration:
                 new['time_' + reg] = durations[reg]
@@ -1283,6 +1303,7 @@ def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhoo
             new['time_in_state'] = np.nan
         else:
             new['time_in_state'] = min(durations.values())
+
 
 def grid_search_binning():
     binners = [k_means_binning, equal_frequency_discretization, equal_width_discretization]

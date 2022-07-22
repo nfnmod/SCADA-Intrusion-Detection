@@ -241,6 +241,55 @@ class TestDataConversions(unittest.TestCase):
         # [col9 == res['9'], col2 == res['2'], col_time_2 == res['time_2'], col_time_9 == res['time_9']])
         # print(check)
 
+    def test_embedding(self):
+        cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
+
+        datestrs = ["Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.933460",
+                    "Mar 22, 2022 21:13:37.127180",
+                    "Mar 22, 2022 21:13:37.153783",
+                    "Mar 22, 2022 21:13:37.308402",
+                    "Mar 22, 2022 21:13:37.339604",
+                    "Mar 22, 2022 21:13:37.714403",
+                    "Mar 22, 2022 21:13:37.939062",
+                    "Mar 22, 2022 21:13:37.965069",
+                    "Mar 22, 2022 21:13:38.750953"]
+
+        times = [datetime.strptime(date_str, '%b %d, %Y %H:%M:%S.%f') for date_str in datestrs]
+
+        dst_ips = np.repeat('0', 10)
+        src_ips = np.repeat('1', 10)
+
+        dst_ports = np.repeat(80, 10)
+        src_ports = np.concatenate((np.repeat(502, 8), np.repeat(54312, 2)))
+
+        func_codes = np.repeat(3, 10)
+
+        registers_freqs = {'1': 7, '2': 7, '3': 7, '4': 7, '9': 8}
+
+        payloads = [{'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {'1': 42, '2': 654, '3': 11, '4': 42, '9': 0},
+                    {'1': 76, '2': 34, '3': 222, '4': 65, '9': 11},
+                    {'7': 45, '6': 10, '5': 8, '13': 34, '9': 0},
+                    {'1': 4543, '2': 543, '3': 765, '4': 876, '9': 112},
+                    {'1': 54, '2': 0, '3': 0, '4': 10, '9': 1},
+                    {'1': 45, '2': 43, '3': 43, '4': 34, '9': 444},
+                    {'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {},
+                    {}]
+
+        df = pd.DataFrame(columns=cols)
+        df['time'] = times
+        df['dst_ip'] = dst_ips
+        df['src_ip'] = src_ips
+        df['dst_port'] = dst_ports
+        df['src_port'] = src_ports
+        df['func_code'] = func_codes
+        df['payload'] = payloads
+
+        processed_df = dataprocessing.embedding_v1(df, 3, regs_times_maker=dataprocessing.embed_v1_with_deltas_regs_times, scale=False)
+        print(processed_df)
+
 
 if __name__ == 'main':
     TestDataConversions()

@@ -124,7 +124,6 @@ def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_lab
     # this is the training data for the SVM
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    diff_y_train = train_labels  # training labels
 
     # now train the SVM to classify the distances.
     # this is the test data for the SVM
@@ -142,14 +141,13 @@ def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, train_lab
     search = GridSearchCV(estimator=classifier, param_grid=params_dict, cv=kf, scoring='average_precision')
 
     # fit and recreate model
-    best_svm = search.fit(diff_x_train, diff_y_train)
+    best_svm = search.fit(diff_x_train)
 
     # save model and data sets
     dataprocessing.dump(dataprocessing.datasets_path, "X_train_{}".format(model_name), diff_x_train)
-    dataprocessing.dump(dataprocessing.datasets_path, "y_train_{}".format(model_name), diff_y_train)
     dataprocessing.dump(dataprocessing.datasets_path, "X_test_{}".format(model_name), diff_x_test)
     dataprocessing.dump(dataprocessing.datasets_path, "y_test_{}".format(model_name), diff_y_test)
-    return best_svm, diff_x_train, diff_y_train
+    return best_svm, diff_x_train
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
