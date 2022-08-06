@@ -69,7 +69,8 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_t
     params_dict = dict()
     params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
     params_dict['nu'] = [0.35, 0.5]
-    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed, model_name, params_dict)
+    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
+                                              model_name, params_dict)
     best_kernel = best.best_params_['kernel']
     best_nu = best.best_params_['nu']
     model = build_One_Class_SVM(best_kernel, best_nu)
@@ -81,18 +82,19 @@ def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, t
                                  model_name):
     params_dict = dict()
     params_dict['nu'] = [0.35, 0.5]
-    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed, model_name, params_dict)
+    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
+                                              model_name, params_dict)
     best_nu = best.best_params_['nu']
     model = build_SGD(best_nu)
     model.fit(diff_x_train)
     tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
 
 
-
 def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
                          model_name, params, creator=build_One_Class_SVM):
     """
 
+    :param creator:
     :param lstm_model: an LSTM model fitted on normal traffic
     :param x_train: the data the model was trained on
     :param y_train: the data the model was trained on

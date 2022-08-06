@@ -29,8 +29,9 @@ most_used = ['30', '75', '120', '195', '15']
 
 
 # TODO: implement TIRP.
-# TODO: learn HTM.
-# TODO: create train data sets if needed-for classifiers.
+# TODO: implement HTM.
+# TODO: implement new data processing methods with symbolic temporal abstraction for the states and values.
+# TODO: create train data sets for classifiers if needed.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -1129,13 +1130,13 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 state_switch_times.append(time_in_same_state)
                 time_in_same_state = 0
         if num_state_switches == 0:
-          mean_state_switch_time = np.nan
+            mean_state_switch_time = np.nan
         else:
-          mean_state_switch_time = statistics.mean(state_switch_times)
+            mean_state_switch_time = statistics.mean(state_switch_times)
         if num_state_switches > 1:
-          stdev_state_switch_time = statistics.stdev(state_switch_times)
+            stdev_state_switch_time = statistics.stdev(state_switch_times)
         else:
-          stdev_state_switch_time = 0
+            stdev_state_switch_time = 0
         state_switch_upper = mean_state_switch_time + 3 * stdev_state_switch_time
         state_switch_lower = mean_state_switch_time - 3 * stdev_state_switch_time
         new['state_switch_max'] = state_switch_upper
@@ -1475,8 +1476,8 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
                 excel_df[true_col] = y_true_df[col]
                 excel_df[pred_col] = y_pred_df[col]
 
-            with open(excel_path + "\\data_" + model_folder, 'w'):
-                excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
+            # with open(excel_path + "\\data_" + model_folder, 'w'):
+                # excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
         splitted = model_folder.split(sep='_')
         bins = int(splitted[-1])
         if s is None:
@@ -1492,12 +1493,11 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    """registers = to_bin
-    regs_copy = registers.copy()
-    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
-    export_results('EqualFreq_v3_2_RNN_1_layer', cols, 'EqualFreq v3_2 RNN 1 layer', 'v3_2', 20, 'EqualFreq')
-    export_results('EqualWidth_v3_2_RNN_1_layer', cols, 'EqualWidth v3_2 RNN 1 layer', 'v3_2', 20, 'EqualWidth')
-    export_results('KMeans_v3_2_RNN_1_layer', cols, 'KMeans v3_2 RNN 1 layer', 'v3_2', 20, 'KMeans')"""
-    a1 = np.array([[[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]])
-    a2 = np.array([[[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]])
-    print(a1 - a2)
+    """models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
+                   s=None, w=None, j=None"""
+    registers = to_bin
+    registers_times = ['time_' + reg for reg in registers]
+    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
+    export_results('EqualFreq_embedding_regs_values_state_duration', cols, 'EqualFreq embedding regs values, state duration', 'embedding regs values, state duration', 20, 'EqualFreq')
+    export_results('EqualWidth_embedding_regs_values_state_duration', cols, 'EqualWidth embedding regs values, state duration', 'embedding regs values, state duration', 20, 'EqualWidth')
+    export_results('KMeans_embedding_regs_values_state_duration', cols, 'KMeans embedding regs values, state duration', 'embedding regs values, state duration', 20, 'KMeans')
