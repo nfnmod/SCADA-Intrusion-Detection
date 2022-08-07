@@ -30,7 +30,6 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: implement TIRP.
 # TODO: implement HTM.
-# TODO: implement new data processing methods with symbolic temporal abstraction for the states and values.
 # TODO: create train data sets for classifiers if needed.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -656,7 +655,7 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
 # GAVE BAD RESULTS.
 # save inter-arrival time, values of registers ,
 # time since registers got those values, similarity score to previous known state
-def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True):
+def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False):
     # using only 1 PLC
     IP = plc
 
@@ -685,6 +684,10 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True):
         if i != 1:
             prev_entry = time_vals_df.iloc[i - 2]
 
+        if abstract:
+            for reg in registers:
+                new['time_' + reg] = np.nan
+
         # inter-arrival time
         delta_t = curr['time'] - prev['time']
         new['time'] = delta_t.total_seconds()
@@ -700,46 +703,83 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True):
                 reg_key = 'time_' + str(reg_num)  # key for the time matching the register
                 if reg_num in updated_regs:
                     new[reg_num] = np.float64(payload[reg_num])
-                    if i != 1 and new[reg_num] == prev_entry[reg_num]:
-                        new[reg_key] = prev_entry[reg_key] + new['time']
-                    else:
-                        # this register was changed in this packet but, we know of the change only now.
-                        # so in the time between the last message and this one we didn't see any change
-                        if i != 1:
-                            prev_entry[reg_key] += new['time']
-                        new[reg_key] = 0
+                    if not abstract:
+                        if i != 1 and new[reg_num] == prev_entry[reg_num]:
+                            new[reg_key] = prev_entry[reg_key] + new['time']
+                        else:
+                            # this register was changed in this packet but, we know of the change only now.
+                            # so in the time between the last message and this one we didn't see any change
+                            if i != 1:
+                                prev_entry[reg_key] += new['time']
+                            new[reg_key] = 0
                 else:
                     # the value of this register wasn't recorded in the packet. get the last value known
                     if i == 1:
                         new[reg_num] = np.nan
-                        new[reg_key] = np.nan
+                        if not abstract:
+                            new[reg_key] = np.nan
                     else:
                         new[reg_num] = np.float64(prev_entry[reg_num])
-                        new[reg_key] = prev_entry[reg_key] + new['time']
+                        if not abstract:
+                            new[reg_key] = prev_entry[reg_key] + new['time']
         else:
             # a query packet
             for reg_num in registers:
                 reg_key = 'time_' + str(reg_num)  # key for the time matching the register
                 if i == 1:
                     new[reg_num] = np.nan
-                    new[reg_key] = np.nan
+                    if not abstract:
+                        new[reg_key] = np.nan
                 else:
                     new[reg_num] = np.float64(prev_entry[reg_num])
-                    new[reg_key] = prev_entry[reg_key] + new['time']
+                    if not abstract:
+                        new[reg_key] = prev_entry[reg_key] + new['time']
 
         temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                          data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
         time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
-
-    for reg_num in registers:
-        reg_key = 'time_' + str(reg_num)
-        time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
-        time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
-        if binner is not None:
+    if abstract:
+        # fill missing values for registers and bin. prepare dataframe for the time calculation.
+        for reg_num in registers:
+            time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
             time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
-        if scale:
-            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
-            time_vals_df[reg_key] = scale_col(time_vals_df, reg_key)
+        # iterate over dataframe. update the duration of the values in the registers after the values were binned.
+        for n in range(len(time_vals_df)):
+            curr = time_vals_df.iloc[n]
+            # first packet may have times which are nans.
+            if n == 0:
+                for reg in registers:
+                    reg_key = 'time_' + reg
+                    if curr[reg_key] is np.nan:
+                        time_vals_df.iloc[0, time_vals_df.columns.get_loc(reg_key)] = 0
+            else:
+                prev = time_vals_df.iloc[n - 1]
+                for reg in registers:
+                    curr_reg = curr[reg]
+                    prev_reg = prev[reg]
+                    register_col_num = time_vals_df.columns.get_loc('time_' + reg)
+                    if curr_reg == prev_reg:
+                        time_vals_df.iloc[n, register_col_num] += curr['time']
+                    else:
+                        time_vals_df.iloc[n, register_col_num] = 0
+                        time_vals_df.iloc[n - 1, register_col_num] += curr['time']
+        for reg_num in registers:
+            reg_key = 'time_' + str(reg_num)
+            # fill missing values for times.
+            time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
+            if scale:
+                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+                time_vals_df[reg_key] = scale_col(time_vals_df, reg_key)
+    else:
+        for reg_num in registers:
+            reg_key = 'time_' + str(reg_num)
+            time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
+            time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
+            if binner is not None:
+                time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
+            if scale:
+                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+                time_vals_df[reg_key] = scale_col(time_vals_df, reg_key)
 
     if scale:
         time_vals_df['time'] = scale_col(time_vals_df, 'time')
@@ -864,7 +904,7 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
 
 
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
-def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
+def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False):
     # using only 1 PLC
     IP = plc
 
@@ -903,6 +943,8 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
         # init columns
         if i == 1:
             new['time_in_state'] = 0
+        elif abstract:
+            new['time_in_state'] = np.nan
 
         # a response packet
         if src_port == plc_port:
@@ -927,19 +969,19 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
                     similarity += 1
 
                 similarity /= len(registers)
-
-            if similarity == 1 and df_len > 0:
-                # we stayed in the stayed for some more time
-                new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
-            else:
-                new['time_in_state'] = 0
-                # if this holds than df_len is 0
-                if similarity == 1:
-                    new['time_in_state'] = new['time']
-                # if this holds than similarity is different from 1, still need to update the time in state to account for the time until
-                # the arrival of the current packet
-                if df_len > 0:
-                    time_vals_df.iloc[df_len - 1, 1] += new['time']
+            if not abstract:
+                if similarity == 1 and df_len > 0:
+                    # we stayed in the stayed for some more time
+                    new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
+                else:
+                    new['time_in_state'] = 0
+                    # if this holds than df_len is 0
+                    if similarity == 1:
+                        new['time_in_state'] = new['time']
+                    # if this holds than similarity is different from 1, still need to update the time in state to account for the time until
+                    # the arrival of the current packet
+                    if df_len > 0:
+                        time_vals_df.iloc[df_len - 1, 1] += new['time']
         else:
             # a query packet
             if df_len == 0:
@@ -949,7 +991,8 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
                 new['time_in_state'] = new['time']  # this is a query packet so, we don't know about a state change
             else:
                 # there was no state change.
-                new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
+                if not abstract:
+                    new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
                 for reg_num in registers:
                     new[reg_num] = prev_entry[reg_num]
 
@@ -964,6 +1007,23 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True):
             time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
         if scale:
             time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
+
+    if abstract:
+        # now we calculate the time_in_state after the temporal abstraction of registers values by binning.
+        for n in range(1, len(time_vals_df)):
+            curr = time_vals_df.iloc[n]
+            prev = time_vals_df.iloc[n - 1]
+            similarity = 0
+            for reg in registers:
+                curr_reg = curr[reg]
+                prev_reg = prev[reg]
+                if curr_reg == prev_reg:
+                    similarity += 1
+            similarity /= len(registers)
+            if similarity == 1:
+                time_vals_df.iloc[n, 1] += curr['time']
+            else:
+                time_vals_df.iloc[n - 1, 1] += curr['time']
 
     for col_name in ['time', 'time_in_state']:
         time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
@@ -1142,7 +1202,14 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         new['state_switch_max'] = state_switch_upper
         new['state_switch_min'] = state_switch_lower
         if matrix_profiles:
-            mp_df = matrix_profiles_pre_processing(prev_pkts.loc['time'], neighborhood, w, j, np.min)
+            times_data = np.array([], dtype=np.float)
+            for p_i in range(neighborhood, 0, -1):
+                p_c = prev_pkts.iloc[p_i]
+                p_p = prev_pkts.iloc[p_i - 1]
+                secs = np.float((p_c['time'] - p_p['time']).total_seconds())
+                np.append(times_data, secs)
+            times_df = pd.DataFrame(columns=['time'], data=times_data)
+            mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.min)
             for j in range(neighborhood - w + 1):
                 new['mp_time_' + str(i)] = mp_df.iloc[j]
         temp_df = pd.DataFrame.from_dict(columns=cols, data={'0': [new[c] for c in cols]}, orient='index')
