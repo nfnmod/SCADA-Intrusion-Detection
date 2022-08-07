@@ -1208,11 +1208,11 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 p_c = prev_pkts.iloc[p_i + 1]
                 secs = np.float((p_c['time'] - p_p['time']).total_seconds())
                 np.append(times_data, secs)
-            np.append(times_data, np.float((curr_pkt['time'] - prev_pkts[neighborhood - 1]['time']).total_seconds()))
+            np.append(times_data, np.float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
-            mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.min)
+            mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.argmin)
             for j in range(neighborhood - w + 1):
-                new['mp_time_' + str(i)] = mp_df.iloc[j]
+                new['mp_time_' + str(j)] = mp_df.iloc[j]
         temp_df = pd.DataFrame.from_dict(columns=cols, data={'0': [new[c] for c in cols]}, orient='index')
         embedded_df = pd.concat([embedded_df, temp_df], axis=0, ignore_index=True)
 
