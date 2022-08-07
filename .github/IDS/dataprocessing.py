@@ -1203,11 +1203,12 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         new['state_switch_min'] = state_switch_lower
         if matrix_profiles:
             times_data = np.array([], dtype=np.float)
-            for p_i in range(neighborhood, 0, -1):
-                p_c = prev_pkts.iloc[p_i]
-                p_p = prev_pkts.iloc[p_i - 1]
+            for p_i in range(neighborhood - 1):
+                p_p = prev_pkts.iloc[p_i]
+                p_c = prev_pkts.iloc[p_i + 1]
                 secs = np.float((p_c['time'] - p_p['time']).total_seconds())
                 np.append(times_data, secs)
+            np.append(times_data, np.float((curr_pkt['time'] - prev_pkts[neighborhood - 1]['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
             mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.min)
             for j in range(neighborhood - w + 1):
