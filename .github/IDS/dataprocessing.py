@@ -1202,13 +1202,13 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         new['state_switch_max'] = state_switch_upper
         new['state_switch_min'] = state_switch_lower
         if matrix_profiles:
-            times_data = np.array([], dtype=np.float)
+            times_data = np.array([], dtype=float)
             for p_i in range(neighborhood - 1):
                 p_p = prev_pkts.iloc[p_i]
                 p_c = prev_pkts.iloc[p_i + 1]
-                secs = np.float((p_c['time'] - p_p['time']).total_seconds())
+                secs = float((p_c['time'] - p_p['time']).total_seconds())
                 np.append(times_data, secs)
-            np.append(times_data, np.float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
+            np.append(times_data, float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
             mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.argmin)
             for j in range(neighborhood - w + 1):
@@ -1235,7 +1235,8 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
             cs.append('time_in_state')
         if matrix_profiles:
             mp_len = neighborhood - w + 1
-            cs.append(['mp_time_' + str(i) for i in range(mp_len)])
+            for i in range(mp_len):
+                cs.append('mp_time_' + str(i))
         for c in cs:
             embedded_df[c] = embedded_df[c].fillna(embedded_df[c].mean())
             embedded_df[c] = scale_col(embedded_df, c)
