@@ -10,12 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
+import models
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
-
-import models
 
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
@@ -28,9 +27,6 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: implement TIRP.
-# TODO: implement HTM.
-# TODO: create train data sets for classifiers if needed.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
@@ -1208,7 +1204,8 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 p_c = prev_pkts.iloc[p_i + 1]
                 secs = float((p_c['time'] - p_p['time']).total_seconds())
                 np.append(times_data, secs)
-            np.append(times_data, float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
+            np.append(times_data,
+                      float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
             mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.argmin)
             for j in range(neighborhood - w + 1):
@@ -1546,7 +1543,7 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
                 excel_df[pred_col] = y_pred_df[col]
 
             # with open(excel_path + "\\data_" + model_folder, 'w'):
-                # excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
+            # excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
         splitted = model_folder.split(sep='_')
         bins = int(splitted[-1])
         if s is None:
@@ -1567,6 +1564,11 @@ if __name__ == '__main__':
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
     cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
-    export_results('EqualFreq_embedding_regs_values_state_duration', cols, 'EqualFreq embedding regs values, state duration', 'embedding regs values, state duration', 20, 'EqualFreq')
-    export_results('EqualWidth_embedding_regs_values_state_duration', cols, 'EqualWidth embedding regs values, state duration', 'embedding regs values, state duration', 20, 'EqualWidth')
-    export_results('KMeans_embedding_regs_values_state_duration', cols, 'KMeans embedding regs values, state duration', 'embedding regs values, state duration', 20, 'KMeans')
+    export_results('EqualFreq_embedding_regs_values_state_duration', cols,
+                   'EqualFreq embedding regs values, state duration', 'embedding regs values, state duration', 20,
+                   'EqualFreq')
+    export_results('EqualWidth_embedding_regs_values_state_duration', cols,
+                   'EqualWidth embedding regs values, state duration', 'embedding regs values, state duration', 20,
+                   'EqualWidth')
+    export_results('KMeans_embedding_regs_values_state_duration', cols, 'KMeans embedding regs values, state duration',
+                   'embedding regs values, state duration', 20, 'KMeans')

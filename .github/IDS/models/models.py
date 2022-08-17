@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow
+import data
 from keras.wrappers.scikit_learn import KerasClassifier
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.model_selection import GridSearchCV, KFold
@@ -8,8 +9,13 @@ from sklearn.svm import OneClassSVM
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDOneClassSVM
 from tensorflow.keras import layers
-
-import dataprocessing
+# TODO: create multi-encoder: get list of fields, create a scalar encoder for each field, add encoder.
+# TODO: create SP region.
+# TODO: create TM region.
+# TODO: create classifier region.
+# TODO: learn to how compute scores on the test-set results.
+# TODO: learn about anomaly regions.
+# TODO: create train data sets for classifiers if needed.
 
 n_features = -1
 series_length = -1
@@ -75,7 +81,7 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_t
     best_nu = best.best_params_['nu']
     model = build_One_Class_SVM(best_kernel, best_nu)
     model.fit(diff_x_train)
-    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
 
 
 def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
@@ -87,7 +93,7 @@ def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, t
     best_nu = best.best_params_['nu']
     model = build_SGD(best_nu)
     model.fit(diff_x_train)
-    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
 
 
 def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
@@ -130,9 +136,9 @@ def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labe
     best_svm = search.fit(diff_x_train)
 
     # save model and data sets
-    dataprocessing.dump(dataprocessing.datasets_path, "X_train_{}".format(model_name), diff_x_train)
-    dataprocessing.dump(dataprocessing.datasets_path, "X_test_{}".format(model_name), diff_x_test)
-    dataprocessing.dump(dataprocessing.datasets_path, "y_test_{}".format(model_name), diff_y_test)
+    data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
+    data.dump(data.datasets_path, "X_test_{}".format(model_name), diff_x_test)
+    data.dump(data.datasets_path, "y_test_{}".format(model_name), diff_y_test)
     return best_svm, diff_x_train
 
 
@@ -144,10 +150,10 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     X_train, X_test, y_train, y_test = custom_train_test_split(pkt_data, series_len, np_seed, train)
 
-    dataprocessing.dump(dataprocessing.datasets_path, "X_train_{}".format(model_name), X_train)
-    dataprocessing.dump(dataprocessing.datasets_path, "y_train_{}".format(model_name), y_train)
-    dataprocessing.dump(dataprocessing.datasets_path, "X_test_{}".format(model_name), X_test)
-    dataprocessing.dump(dataprocessing.datasets_path, "y_test_{}".format(model_name), y_test)
+    data.dump(data.datasets_path, "X_train_{}".format(model_name), X_train)
+    data.dump(data.datasets_path, "y_train_{}".format(model_name), y_train)
+    data.dump(data.datasets_path, "X_test_{}".format(model_name), X_test)
+    data.dump(data.datasets_path, "y_test_{}".format(model_name), y_test)
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
@@ -165,7 +171,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     model = model_creator(best_params['epochs'], best_params['batch_size'])
     model.fit(X_train, y_train)
-    tensorflow.keras.models.save_model(model, dataprocessing.modeles_path + model_name)
+    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
 
     print('Best Score: %s' % best_model.best_score_)
     print('Best Hyper parameters: %s' % best_model.best_params_)
@@ -185,10 +191,10 @@ def build_LSTM(epochs, batch_size):
 
 
 def matrix_profiles_LSTM(pkt_data, series_len, window, jump, np_seed, model_name):
-    dvs = dataprocessing.matrix_profiles_pre_processing(pkt_data, series_len, window, jump, np.argmin)
+    dvs = data.matrix_profiles_pre_processing(pkt_data, series_len, window, jump, np.argmin)
     lstm_series_length = series_len - window + 1
 
-    dataprocessing.dump(dataprocessing.datasets_path, model_name, dvs)
+    data.dump(data.datasets_path, model_name, dvs)
     return simple_LSTM(dvs, lstm_series_length, np_seed, model_name)
 
 
