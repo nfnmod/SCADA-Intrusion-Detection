@@ -15,13 +15,11 @@ def inject_anomaly(pkt_df, injection_length, step_over, percentage):
                         harder it should be to detect the anomaly.
     :return: a dataset with injected anomalies.
     """
-    pkt_df['anomaly'] = 0
     i = 0
     length = len(pkt_df)
     while i < length - injection_length + 1:
         # inject
         pkt_df.iloc[i: i + injection_length, 0] += pkt_df.iloc[i: i + injection_length, 0] * (percentage / 100)
-        pkt_df.iloc[i: i + injection_length, len(pkt_df.columns) - 1] = 1
         # step over
         i += (step_over + injection_length)
     return pkt_df
