@@ -1,14 +1,17 @@
+import os
+
+import keras
 import numpy as np
 import tensorflow
-import data
-from keras.wrappers.scikit_learn import KerasClassifier
 from keras.wrappers.scikit_learn import KerasRegressor
+from sklearn.linear_model import SGDOneClassSVM
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.model_selection import train_test_split
 from sklearn.svm import OneClassSVM
-from sklearn.svm import SVC
-from sklearn.linear_model import SGDOneClassSVM
 from tensorflow.keras import layers
+
+import data
+
 # TODO: create multi-encoder: get list of fields, create a scalar encoder for each field, add encoder.
 # TODO: create SP region.
 # TODO: create TM region.
@@ -65,81 +68,67 @@ def build_SGD(nu):
     return sgd
 
 
-def build_SVC(kernel, c):
-    svc = SVC(kernel=kernel, C=c)
-    return svc
+# train classifier with models from the first folder and train sets from the other folder.
+# MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
+def make_classifier(models_folder, data_folder, binning):
+    for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
+        model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
+        model = keras.models.load_model(model_path)
+        for bins in range(5, 11):
+            x_train = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            y_train = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM')
+            post_lstm_classifier_SGD_SVM(model, x_train, y_train, model_folder + '_SGD')
 
 
-def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
-                                       model_name):
-    params_dict = dict()
-    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
-    params_dict['nu'] = [0.35, 0.5]
-    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
-                                              model_name, params_dict)
-    best_kernel = best.best_params_['kernel']
-    best_nu = best.best_params_['nu']
-    model = build_One_Class_SVM(best_kernel, best_nu)
-    model.fit(diff_x_train)
-    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
-
-
-def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
-                                 model_name):
-    params_dict = dict()
-    params_dict['nu'] = [0.35, 0.5]
-    best, diff_x_train = post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
-                                              model_name, params_dict)
-    best_nu = best.best_params_['nu']
-    model = build_SGD(best_nu)
-    model.fit(diff_x_train)
-    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
-
-
-def post_lstm_classifier(lstm_model, x_train, y_train, x_test, y_test, test_labels, np_seed,
-                         model_name, params, creator=build_One_Class_SVM):
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name):
     """
 
-    :param creator:
     :param lstm_model: an LSTM model fitted on normal traffic
     :param x_train: the data the model was trained on
     :param y_train: the data the model was trained on
-    :param x_test: the data the model was tested on
-    :param y_test: the data the model was teste on
-    :param test_labels: the labels of the test data
-    :param np_seed: for randomizing shuffling
     :param model_name: for saving files
-    :return: a classifier for the differences. (try to tell if the packet is anomalous according to the deviation of the LSTM
+    :return: a classifier for the differences. (try to tell if the packet is anomalous according to the deviation of the LSTM)
     # from the reality.
     """
+
+    params_dict = dict()
+    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
+    params_dict['nu'] = [0.35, 0.5]
+
+    # predict and get the difference from the truth.
+    # this is the training data for the SVM.
+    # when testing, inject anomalies into x_test and the corresponding y_test entries. the LSTM prediction should differ in a
+    # different way than it does for benign packets.
+    pred = lstm_model.predict(x_train)
+    diff_x_train = np.abs(pred - y_train)
+    data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
+
+    for kernel in params_dict['kernel']:
+        k = kernel
+        for nu in params_dict['nu']:
+            n = nu
+            model = build_One_Class_SVM(k, n)
+            model.fit(diff_x_train)
+            tensorflow.keras.models.save_model(model,
+                                               data.modeles_path + model_name + 'nu_{}'.format(n) + 'kernel_{}'.format(
+                                                   k))
+
+
+def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, model_name):
+    params_dict = dict()
+    params_dict['nu'] = [0.35, 0.5]
+
     # predict and get the difference from the truth.
     # this is the training data for the SVM
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-
-    # now train the SVM to classify the distances.
-    # this is the test data for the SVM
-    pred_test = lstm_model.predict(x_test)
-    diff_x_test = np.abs(pred_test - y_test)
-    diff_y_test = test_labels
-
-    kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
-
-    # make the params
-    params_dict = params
-    classifier = KerasClassifier(build_fn=creator)
-
-    # use precision recall curves
-    search = GridSearchCV(estimator=classifier, param_grid=params_dict, cv=kf, scoring='average_precision')
-
-    # fit and recreate model
-    best_svm = search.fit(diff_x_train)
-
-    # save model and data sets
     data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
-    data.dump(data.datasets_path, "X_test_{}".format(model_name), diff_x_test)
-    data.dump(data.datasets_path, "y_test_{}".format(model_name), diff_y_test)
-    return best_svm, diff_x_train
+
+    for nu in params_dict['nu']:
+        model = build_SGD(nu)
+        model.fit(diff_x_train)
+        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'nu_{}'.format(nu))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):

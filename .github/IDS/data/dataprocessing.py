@@ -1393,26 +1393,6 @@ def grid_search_binning():
         models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name)
 
 
-def grid_search_no_bins():
-    lengths = [20, 25, 30, 35, 40]
-    entry_makers = [make_entry_v1, make_entry_v2]
-    maker_names = {make_entry_v1: "v1", make_entry_v2: "v2"}
-    options = itertools.product(entry_makers, lengths)
-    pkt_df = load(datasets_path, "modbus")
-    for maker_len in options:
-        maker = maker_len[0]
-        len = maker_len[1]
-        model_name = "v1_single_plc_make_entry_{}_{}_packets".format(maker_names[maker], len)
-        processed_df = process_data_v1(pkt_df, 5, None, None, maker)
-        dump(datasets_path, model_name, processed_df)
-        models.simple_LSTM(processed_df, len, 42, model_name)
-    for len in lengths:
-        model_name = "v2_single_plc_{}_packets".format(len)
-        processed_df = process_data_v2(pkt_df, 5, None, None)
-        dump(datasets_path, model_name, processed_df)
-        models.simple_LSTM(processed_df, len, 42, model_name)
-
-
 def compare_models(models_folder, metric, metric_name, plot_name):
     plt.clf()
     bins = [5, 6, 7, 8, 9, 10]
