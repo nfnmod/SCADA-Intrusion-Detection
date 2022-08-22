@@ -1017,9 +1017,10 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
                     similarity += 1
             similarity /= len(registers)
             if similarity == 1:
-                time_vals_df.iloc[n, 1] += curr['time']
+                time_vals_df.iloc[n, 1] = curr['time'] + time_vals_df.iloc[n - 1, 1]
             else:
                 time_vals_df.iloc[n - 1, 1] += curr['time']
+                time_vals_df.iloc[n, 1] = 0
 
     for col_name in ['time', 'time_in_state']:
         time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
