@@ -12,12 +12,6 @@ from tensorflow.keras import layers
 
 import data
 
-# TODO: create multi-encoder: get list of fields, create a scalar encoder for each field, add encoder.
-# TODO: create SP region.
-# TODO: create TM region.
-# TODO: create classifier region.
-# TODO: learn to how compute scores on the test-set results.
-# TODO: learn about anomaly regions.
 # TODO: create train data sets for classifiers if needed.
 
 n_features = -1

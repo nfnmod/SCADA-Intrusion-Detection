@@ -6,10 +6,9 @@ timings and the frequency of the anomalies in the data.
 import numpy as np
 
 
-def inject_anomaly(x_test, y_test, injection_length, step_over, percentage):
+def inject_anomaly(x_test, injection_length, step_over, percentage):
     """
     :param x_test: the benign dataset of packets.
-    :param y_test: the real packets, no anomalies introduced.
     :param injection_length: the number of subsequent infected packets in a series.
     :param step_over: the number of packets not to inject an anomaly into after injecting anomalies to injection_length packets
     :param percentage: determines how much should the timing be change, in the range of (-100, infinity) the closer to zero the
