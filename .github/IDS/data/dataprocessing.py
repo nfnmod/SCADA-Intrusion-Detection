@@ -1496,7 +1496,7 @@ def create_data_for_HTM():
     for binner_bins in options:
         binner = binner_bins[0]
         bins = binner_bins[1]
-        processed_df = process_data_v1(pkt_df, 5, binner=None, n_bins=None, entry_func=make_entry_v1, scale=False)
+        processed_df = process_data_v1(pkt_df, 5, binner=None, n_bins=None, entry_func=make_entry_v1, scale=True)
         # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
         # for testing the HTM network.
         X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
@@ -1513,7 +1513,7 @@ def create_data_for_HTM():
         train_path.parent.mkdir(parents=True, exist_ok=True)
         test_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(train_path_str, 'w') as train_file:
+        with open(train_path_str, 'w', newline='') as train_file:
             train_writer = csv.writer(train_file)
             # write the field names.
             train_cols = list(X_train.columns)
@@ -1525,7 +1525,7 @@ def create_data_for_HTM():
             train_writer.writerow([])
         X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
 
-        with open(test_path_str, 'w') as test_file:
+        with open(test_path_str, 'w', newline='') as test_file:
             test_writer = csv.writer(test_file)
             # write the field names.
             test_cols = list(X_test.columns)
