@@ -30,6 +30,8 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
+# TODO: find out min and max inter arrival times for injection of anomalies.
+# TODO: write code for comparing classifiers, allow to compare when using different injections.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
