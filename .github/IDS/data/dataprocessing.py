@@ -1,3 +1,4 @@
+import csv
 import itertools
 import json
 import os
@@ -10,6 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
+from sklearn.model_selection import train_test_split
+from pathlib import Path
+
 import models
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
@@ -1479,8 +1483,63 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
     return dvs
 
 
+# process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
+# The csv file is formatted by the requirements of HTM.
+def create_data_for_HTM():
+    binners = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
+    names = {k_means_binning: "k_means", equal_frequency_discretization: "equal_frequency",
+             equal_width_discretization: "equal_width"}
+    n_bins = [5, 6, 7, 8, 9, 10]
+    data_version = 'v1_1'
+    pkt_df = load(datasets_path, "modbus")
+    options = itertools.product(binners, n_bins)
+    for binner_bins in options:
+        binner = binner_bins[0]
+        bins = binner_bins[1]
+        processed_df = process_data_v1(pkt_df, 5, binner=None, n_bins=None, entry_func=make_entry_v1, scale=False)
+        # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
+        # for testing the HTM network.
+        X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
+        # 1. write column names.
+        # 2. write columns data types.
+        # 3. write df to csv without the columns names.
+        folder = datasets_path + '\\HTM\\' + '{}_{}'.format(names[binner], data_version)
+
+        train_path_str = folder + '\\' + "X_train_single_plc_v1_1_HTM_{}_{}.csv".format(names[binner], bins)
+        test_path_str = folder + '\\' + "X_test_single_plc_v1_1_HTM_{}_{}.csv".format(names[binner], bins)
+        train_path = Path(train_path_str)
+        test_path = Path(test_path_str)
+
+        train_path.parent.mkdir(parents=True, exist_ok=True)
+        test_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(train_path_str, 'w') as train_file:
+            train_writer = csv.writer(train_file)
+            # write the field names.
+            train_cols = list(X_train.columns)
+            train_writer.writerow(train_cols)
+            # write the field types.
+            train_cols_types = ['float'] * len(train_cols)
+            train_writer.writerow(train_cols_types)
+            # use no flags.
+            train_writer.writerow([])
+        X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
+
+        with open(test_path_str, 'w') as test_file:
+            test_writer = csv.writer(test_file)
+            # write the field names.
+            test_cols = list(X_test.columns)
+            test_writer.writerow(test_cols)
+            # write the field types.
+            test_cols_types = ['float'] * len(test_cols)
+            test_writer.writerow(test_cols_types)
+            # use no flags.
+            test_writer.writerow([])
+        X_test.to_csv(path_or_buf=test_path, index=False, header=False, mode='a')
+
+
 # ---------------------------------------------------------------------------------------------------------------------------
-# bring the data to excel
+# bring the data to excel, used to analyze the performance of regressors.
 def export_results(models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
                    s=None, w=None, j=None):
     print("working...")
@@ -1539,9 +1598,20 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
         results_df.to_excel(writer, sheet_name=sheet_name)
 
 
+def compare_classifiers(models_folder, columns, sheet_name, data_version, binning, s=None, w=None, j=None):
+    """
+    code for comparing performance of classifiers.
+    1) go over the model folder, for each model:
+        a. predict on the data set from the test data-sets folder
+        b. calculate metric
+    format of test data folder: binning parameters_data version_injection parameters. have an x_test, y_test, y_labels for each.
+    """
+    return None
+
+
 if __name__ == '__main__':
     """models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
-                   s=None, w=None, j=None"""
+                   s=None, w=None, j=None
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
     cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
@@ -1552,4 +1622,5 @@ if __name__ == '__main__':
                    'EqualWidth embedding regs values, state duration', 'embedding regs values, state duration', 20,
                    'EqualWidth')
     export_results('KMeans_embedding_regs_values_state_duration', cols, 'KMeans embedding regs values, state duration',
-                   'embedding regs values, state duration', 20, 'KMeans')
+                   'embedding regs values, state duration', 20, 'KMeans')"""
+    create_data_for_HTM()

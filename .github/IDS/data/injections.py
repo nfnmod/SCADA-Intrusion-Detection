@@ -5,6 +5,9 @@ timings and the frequency of the anomalies in the data.
 """
 import numpy as np
 
+min_inter_arrival = 0
+max_inter_arrival = 0
+
 
 def inject_anomaly(x_test, injection_length, step_over, percentage):
     """
@@ -27,18 +30,25 @@ def inject_anomaly(x_test, injection_length, step_over, percentage):
 
     # inject.
     i = 0
+    y_labels = np.zeros((-1, len(x_test)))
     length = len(pkt_df)
     while i < length - injection_length + 1:
         # inject
-        pkt_df.iloc[i: i + injection_length, 0] += pkt_df.iloc[i: i + injection_length, 0] * (percentage / 100)
+        pkt_df.iloc[i: i + injection_length, 0] += (pkt_df.iloc[i: i + injection_length, 0] * (
+                    max_inter_arrival - min_inter_arrival) + min_inter_arrival) * (percentage / 100)
         # step over
         i += (step_over + injection_length)
-
+        # save labels
+        for packet_num in range(i, i + injection_length):
+            if packet_num >= series_len:
+                y_labels[packet_num - series_len] = 1
+    # rescale the time.
+    pkt_df['time'] = (pkt_df['time'] - min_inter_arrival) / (max_inter_arrival - min_inter_arrival)
     # now we reconstruct the data set but, now it has anomalies in it!
     y = []
     X_grouped = []
 
-    # save the data as sequence of length series_len
+    # save the data as sequence of length series_len.
     i = 0
 
     while i < length - series_len:
@@ -53,5 +63,4 @@ def inject_anomaly(x_test, injection_length, step_over, percentage):
     y = np.array(y)
     x_test_anomalous = np.asarray(X_grouped).astype(np.float32)
     y_test_anomalous = np.asarray(y).astype(np.float32)
-    return x_test_anomalous, y_test_anomalous
-
+    return x_test_anomalous, y_test_anomalous, y_labels

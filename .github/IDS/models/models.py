@@ -63,6 +63,7 @@ def build_SGD(nu):
 
 
 # train classifier with models from the first folder and train sets from the other folder.
+# Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
 def make_classifier(models_folder, data_folder, binning):
     for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
