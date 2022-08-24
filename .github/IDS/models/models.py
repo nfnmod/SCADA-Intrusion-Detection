@@ -1,9 +1,11 @@
+import itertools
 import os
 
 import keras
 import numpy as np
 import tensorflow
 from keras.wrappers.scikit_learn import KerasRegressor
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDOneClassSVM
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.model_selection import train_test_split
@@ -12,7 +14,8 @@ from tensorflow.keras import layers
 
 import data
 
-# TODO: create train data sets for classifiers if needed.
+# TODO: create train data sets for classifiers if needed- before training.
+
 
 n_features = -1
 series_length = -1
@@ -73,7 +76,6 @@ def make_classifier(models_folder, data_folder, binning):
             x_train = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning, bins)
             y_train = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning, bins)
             post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM')
-            post_lstm_classifier_SGD_SVM(model, x_train, y_train, model_folder + '_SGD')
 
 
 def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name):
@@ -112,7 +114,9 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
 
 def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, model_name):
     params_dict = dict()
-    params_dict['nu'] = [0.35, 0.5]
+    params_dict['n_estimators'] = [50, 100]
+    params_dict['criterion'] = ['gini', 'entropy', 'log_loss']
+    params_dict['max_features'] = ['sqrt', 'log2', None]
 
     # predict and get the difference from the truth.
     # this is the training data for the SVM
@@ -120,10 +124,17 @@ def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, model_name):
     diff_x_train = np.abs(pred - y_train)
     data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
 
-    for nu in params_dict['nu']:
-        model = build_SGD(nu)
-        model.fit(diff_x_train)
-        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'nu_{}'.format(nu))
+    parameters_combinations = itertools.product(params_dict['criterion'], params_dict['max_features'])
+    parameters_combinations = itertools.product(params_dict['n_estimators'], parameters_combinations)
+
+    for combination in parameters_combinations:
+        estimators = combination[0]
+        criterion = combination[1][0]
+        max_features = combination[1][1]
+        model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
+        model.fit(diff_x_train, np.zeros((-1, len(x_train))))
+        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'estimators_{}_'.format(estimators) + 'criterion{}_'.format(
+                                                   criterion) + 'features_{}'.format(max_features))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):

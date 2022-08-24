@@ -30,8 +30,10 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
+
 # TODO: find out min and max inter arrival times for injection of anomalies.
-# TODO: write code for comparing classifiers, allow to compare when using different injections.
+
+# TODO: write code for comparing classifiers, allow to compare when using different injections- after training.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -1400,6 +1402,21 @@ def grid_search_binning():
         models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name)
 
 
+def grid_train_classifiers():
+    """the function will train classifiers.
+    one data processing version for each training grid.
+    train across all possible combinations of binning and number of bins"""
+    models_folders = ['EqualFreq_v1_1', 'EqualWidth_v1_1', 'KMeans_v1_1']
+    data_folders = ['EqualFreq_v1_1', 'EqualWidth_v1_1', 'KMeans_v1_1']
+    binning = {'EqualFreq_v1_1': 'equal_frequency', 'EqualWidth_v1_1': 'equal_width', 'KMeans_v1_1': 'k_means'}
+    zipped = itertools.product(models_folders, data_folders)
+    for folder_pair in zipped:
+        models_folder = folder_pair[0]
+        data_folder = folder_pair[1]
+        models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
+                                      binning=binning[data_folder])
+
+
 def compare_models(models_folder, metric, metric_name, plot_name):
     plt.clf()
     bins = [5, 6, 7, 8, 9, 10]
@@ -1505,7 +1522,7 @@ def create_data_for_HTM():
         # 1. write column names.
         # 2. write columns data types.
         # 3. write df to csv without the columns names.
-        folder = datasets_path + '\\HTM\\' + '{}_{}'.format(names[binner], data_version)
+        folder = datasets_path + '\\' + 'HTM_{}_{}'.format(names[binner], data_version)
 
         train_path_str = folder + '\\' + "X_train_single_plc_v1_1_HTM_{}_{}.csv".format(names[binner], bins)
         test_path_str = folder + '\\' + "X_test_single_plc_v1_1_HTM_{}_{}.csv".format(names[binner], bins)
