@@ -6,7 +6,7 @@ import data
 # TODO: see if the time needs an upscale.
 # TODO: test.
 # TODO: check about parameters sizes for input preparation- w, k.
-# TODO: check about the classifiers used.
+# TODO: implement the random forest classifier.
 
 def define_entities(data_path, df_data=None, load_data=True):
     if load_data:

@@ -1,5 +1,6 @@
 import itertools
 import os
+import pickle
 
 import keras
 import numpy as np
@@ -73,8 +74,12 @@ def make_classifier(models_folder, data_folder, binning):
         model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
         model = keras.models.load_model(model_path)
         for bins in range(5, 11):
-            x_train = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning, bins)
-            y_train = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            with open(x_train_path, 'rb') as x_train_f:
+                x_train = pickle.load(x_train_f)
+            with open(y_train_path, 'rb') as y_train_f:
+                y_train = pickle.load(y_train_f)
             post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM')
 
 
@@ -91,7 +96,7 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
 
     params_dict = dict()
     params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
-    params_dict['nu'] = [0.35, 0.5]
+    params_dict['nu'] = [0.05, 0.1, 0.15, 0.2]
 
     # predict and get the difference from the truth.
     # this is the training data for the SVM.
