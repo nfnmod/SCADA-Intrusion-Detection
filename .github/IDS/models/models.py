@@ -117,7 +117,7 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
                                                    k))
 
 
-def post_lstm_classifier_SGD_SVM(lstm_model, x_train, y_train, model_name):
+def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name):
     params_dict = dict()
     params_dict['n_estimators'] = [50, 100]
     params_dict['criterion'] = ['gini', 'entropy', 'log_loss']
