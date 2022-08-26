@@ -23,7 +23,7 @@ from sklearn.preprocessing import MinMaxScaler
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
 datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
-modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
+modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\trained_models'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
 plc = '132.72.249.110'
