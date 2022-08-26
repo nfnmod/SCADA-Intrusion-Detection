@@ -1,13 +1,36 @@
 # this class is responsible for preparing the input for the KarmaLego algorithm.
+from sklearn.preprocessing import KBinsDiscretizer
+
 import data
 
 
-# TODO: add functions for binning.
-# TODO: see if the time needs an upscale.
+# TODO: parameters for input preparation- w, k.
+# TODO: random forest classifier- feature extraction from KarmaLego output and training.
+# TODO: convert sw_events dict to csv.
 # TODO: test.
-# TODO: check about parameters sizes for input preparation- w, k.
-# TODO: implement the random forest classifier.
 
+
+# ---------------------------------------------------------------------------------------------------------------------------#
+# helper functions to bin data
+def k_means_binning(values, n_bins):
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit(values)
+    labeled_data = k_means.transform(values)
+    return labeled_data
+
+
+def equal_width_discretization(values, n_bins):
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit(values)
+    labeled_data = k_means.transform(values)
+    return labeled_data
+
+
+def equal_frequency_discretization(values, n_bins):
+    k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit(values)
+    labeled_data = k_means.transform(values)
+    return labeled_data
+
+
+# ---------------------------------------------------------------------------------------------------------------------------#
 def define_entities(data_path, df_data=None, load_data=True):
     if load_data:
         df = data.load(data.datasets_path, data_path)
@@ -32,12 +55,13 @@ def define_entities(data_path, df_data=None, load_data=True):
     return entities
 
 
-# compute the events.
-def define_events(data_path, b, k, w, consider_last=False):
+# compute the events in the sliding windows.
+def define_events_in_sliding_windows(data_path, b, k, w, consider_last=False):
     df = data.load(data.datasets_path, data_path)
     start_time = (df.iloc[0])['time']
     entities = define_entities(data_path, df, False)
     entities_events = {e: [] for e in entities}
+    sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = {}
     symbol_counter = 0
 
@@ -71,7 +95,7 @@ def define_events(data_path, b, k, w, consider_last=False):
                                 w_reg_val = float(w_pkt['payload'].get(str(reg_num), None))
                                 if w_IP == IP and w_reg_val is not None:
                                     values.append(w_reg_val)
-                                    times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                                    times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
                         values = b(values, k)  # bin.
@@ -98,14 +122,21 @@ def define_events(data_path, b, k, w, consider_last=False):
                                     event = entities_events[entity][-1]
                                     event_value = event[2][1]
                                     if event_value == v:
-                                        new_finish = round((finish - start_time).total_seconds())
+                                        new_finish = round((finish - start_time).total_seconds() * 1000)
                                         new_event = (event[0], new_finish, event[2])
                                         entities_events[entity][-1] = new_event
                                     # if it's a new value then the event will be recorded when the window slides one step further.
                                 else:
                                     # n = 1
-                                    new_finish = round((finish - start_time).total_seconds())
+                                    new_finish = round((finish - start_time).total_seconds() * 1000)
                                     event = (times[0], new_finish, (entities[entity], values[0]))
                                     entities_events[entity].append(event)
 
-                return entities_events
+        sw_events[i] = entities_events
+    return sw_events
+
+
+def make_input(data_path, b, k, w, consider_last=False):
+    sw_events = define_events_in_sliding_windows(data_path, b, k, w, consider_last)
+    for sw_num in sorted(sw_events.keys()):
+        window_events = sw_events[sw_num]
