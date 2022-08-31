@@ -81,6 +81,7 @@ def make_classifier(models_folder, data_folder, binning):
             with open(y_train_path, 'rb') as y_train_f:
                 y_train = pickle.load(y_train_f)
             post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM')
+            post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF')
 
 
 def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name):

@@ -1,14 +1,18 @@
 # this class is responsible for preparing the input for the KarmaLego algorithm.
+import csv
+import itertools
+
+import numpy as np
 from sklearn.preprocessing import KBinsDiscretizer
 
 import data
 
 
-# TODO: parameters for input preparation- w, k.
+# TODO: parameters value ranges for input preparation- w, k.
 # TODO: random forest classifier- feature extraction from KarmaLego output and training.
-# TODO: convert sw_events dict to csv.
+# TODO: consider which registers are needed and which are not (constant value register/changing registers), effects define_entities .
+# TODO: write a function that will calculate the registers that are needed to be taken into consideration, effects define_entities .
 # TODO: test.
-
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
@@ -32,6 +36,13 @@ def equal_frequency_discretization(values, n_bins):
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 def define_entities(data_path, df_data=None, load_data=True):
+    """
+
+    :param data_path: read data from that path.
+    :param df_data: the function may be called after loading data, holds the data itself.
+    :param load_data: control the loading of data.
+    :return:
+    """
     if load_data:
         df = data.load(data.datasets_path, data_path)
     else:
@@ -55,19 +66,47 @@ def define_entities(data_path, df_data=None, load_data=True):
     return entities
 
 
+def get_pkt_entities(pkt):
+    """
+
+    :param pkt: a response packet
+    :return: the entites in the packet.
+    """
+    IP = pkt['src_ip']
+    payload = pkt['payload']
+    # entities in the packet.
+    packet_entities = [(IP, int(reg)) for reg in payload.keys()]
+    return packet_entities
+
+
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(data_path, b, k, w, consider_last=False):
+def define_events_in_sliding_windows(data_path, b, k, w, consider_last=True):
+    """
+
+    :param data_path: path to data used for TIRPs.
+    :param b: binning method.
+    :param k: number of bins.
+    :param w: window size.
+    :param consider_last: make the last event last until the start of the next window.
+    :return:
+    """
     df = data.load(data.datasets_path, data_path)
     start_time = (df.iloc[0])['time']
     entities = define_entities(data_path, df, False)
-    entities_events = {e: [] for e in entities}
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = {}
     symbol_counter = 0
 
     for i in range(len(df) - w):
         checked_entities = []
-        window = df.iloc[i, i + w]
+        window = df.iloc[i: i + w]
+        window_entities = []
+        for w_i in range(len(window)):
+            w_pkt = window[w_i]
+            src = w_pkt['src_port']
+            if src == data.plc_port:
+                np.concatenate((window_entities, get_pkt_entities(w_pkt)))
+        entities_events = {e: [] for e in window_entities}
         for j in range(w):
             pkt = window.iloc[i]
             # we want to look for entities in the packet.
@@ -75,7 +114,7 @@ def define_events_in_sliding_windows(data_path, b, k, w, consider_last=False):
                 IP = pkt['src_ip']
                 payload = pkt['payload']
                 # entities in the packet.
-                packet_entities = [(IP, int(reg)) for reg in payload.keys()]
+                packet_entities = get_pkt_entities(pkt)
                 for entity in packet_entities:
                     # find the values the entity received in the window and bin them.
                     # find the times at which the entity has received the values.
@@ -131,12 +170,61 @@ def define_events_in_sliding_windows(data_path, b, k, w, consider_last=False):
                                     new_finish = round((finish - start_time).total_seconds() * 1000)
                                     event = (times[0], new_finish, (entities[entity], values[0]))
                                     entities_events[entity].append(event)
-
-        sw_events[i] = entities_events
+        # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
+        converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
+        sw_events[i] = converted_events
     return sw_events
 
 
-def make_input(data_path, b, k, w, consider_last=False):
+def make_input(data_path, b, k, w, consider_last=True):
+    binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
+               equal_width_discretization: 'equal_width'}
+    # get a dictionary mapping from sw_number to the events in it.
     sw_events = define_events_in_sliding_windows(data_path, b, k, w, consider_last)
+    base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     for sw_num in sorted(sw_events.keys()):
+        # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
+        writeable = {}
+        entity_counter = 0
+        # counter number of entities which had some events. if there are none then there is nothing to
+        # run the algorithm on so just pass on to the next window.
+        for entity_id in sorted(window_events.keys()):
+            entity_events = window_events[entity_id]
+            if len(entity_events) > 0:
+                entity_counter += 1
+                writeable[entity_id] = entity_events
+        if entity_counter == 0:
+            continue
+        else:
+            window_path = base_path + '_#window_{}.csv'.format(sw_num)
+            entity_index = 0
+            with open(window_path, 'w', newline='') as window_file:
+                # now write the events of each entity to the file.
+                writer = csv.writer(window_file)
+                writer.writerow('startToncepts')
+                writer.writerow('numberOfEntities,{}'.format(entity_counter))
+                for writeable_entity in writeable.keys():
+                    events_to_write = writeable[writeable_entity]
+                    writer.writerow('{},{}'.format(writeable_entity, entity_index))
+                    entity_index += 1
+                    events_row = ''
+                    for event in events_to_write:
+                        start = event[0]
+                        finish = event[1]
+                        symbol_number = event[2]
+                        events_row += '{},{},{};'.format(start, finish, symbol_number)
+                    writer.writerow(events_row)
+
+
+def grid_input_preparation(data_path):
+    binning_methods = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
+    number_of_bins = range(5, 11)
+    windows = range(50, 225, 25)
+    bins_window_options = itertools.product(number_of_bins, windows)
+    options = itertools.product(binning_methods, bins_window_options)
+    for option in options:
+        b = option[0]
+        k = option[1][0]
+        w = option[1][1]
+        make_input(data_path, b, k, w, consider_last=True)

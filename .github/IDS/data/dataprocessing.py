@@ -23,7 +23,7 @@ from sklearn.preprocessing import MinMaxScaler
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
 datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
-modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\trained_models'
+modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
 plc = '132.72.249.110'
@@ -1591,8 +1591,8 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
             r2 = r2_score(y_test, y_pred)
             mse = mean_squared_error(y_test, y_pred)
         if pred_len == 1:
-            y_pred_df = pd.DataFrame(y_pred, columns=columns)
-            y_true_df = pd.DataFrame(y_test, columns=columns)
+            """y_pred_df = pd.DataFrame(y_pred, columns=columns)
+             y_true_df = pd.DataFrame(y_test, columns=columns)
 
             excel_df = pd.DataFrame()
             for col in y_true_df.columns:
@@ -1602,7 +1602,7 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
                 excel_df[pred_col] = y_pred_df[col]
 
             # with open(excel_path + "\\data_" + model_folder, 'w'):
-            # excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")
+            # excel_df.to_excel(excel_path + "\\data_" + model_folder + ".xlsx")"""
         splitted = model_folder.split(sep='_')
         bins = int(splitted[-1])
         if s is None:
@@ -1633,13 +1633,15 @@ if __name__ == '__main__':
                    s=None, w=None, j=None
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
-    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
-    export_results('EqualFreq_embedding_regs_values_state_duration', cols,
-                   'EqualFreq embedding regs values, state duration', 'embedding regs values, state duration', 20,
+    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))"""
+    cols = []
+    data_version = 'v3_2 abstract'
+    export_results('EqualFreq_v3_2_abstract', cols,
+                   'EqualFreq v3_2 abstract', data_version, 20,
                    'EqualFreq')
-    export_results('EqualWidth_embedding_regs_values_state_duration', cols,
-                   'EqualWidth embedding regs values, state duration', 'embedding regs values, state duration', 20,
+    export_results('EqualWidth_v3_2_abstract', cols,
+                   'EqualWidth v3_2 abstract', data_version, 20,
                    'EqualWidth')
-    export_results('KMeans_embedding_regs_values_state_duration', cols, 'KMeans embedding regs values, state duration',
-                   'embedding regs values, state duration', 20, 'KMeans')"""
-    create_data_for_HTM()
+    export_results('KMeans_v3_2_abstract', cols,
+                   'KMeans v3_2 abstract',
+                   data_version, 20, 'KMeans')
