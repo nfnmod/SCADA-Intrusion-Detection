@@ -156,21 +156,21 @@ def detect(automaton, pkts, registers):
             switched_state[reg] = switched_state_pkt[str(reg)]
         if new_state(state, automaton.states, registers) or new_state(switched_state, automaton.states, registers):
             # unknown states, anomaly detected
-            decisions.append(True)
+            decisions.append(1)
         else:
             change = state_difference(state, switched_state)
             transition = Transition(state, switched_state, change, -1)
             if new_transition(transition, automaton.transitions):
                 # unknown transition, anomaly detected
-                decisions.append(True)
+                decisions.append(1)
             else:
                 same_transition = find_same(transition, automaton.transitions)
                 upper = same_transition.upper_limit
                 lower = same_transition.lower_limit
                 if state_duration > upper or state_duration < lower:
                     # bad state duration, anomaly detected
-                    decisions.append(True)
+                    decisions.append(1)
                 else:
                     # everything is ok, no anomaly
-                    decisions.append(False)
+                    decisions.append(0)
     return decisions

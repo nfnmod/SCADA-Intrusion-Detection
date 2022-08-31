@@ -10,8 +10,7 @@ import data
 
 # TODO: parameters value ranges for input preparation- w, k.
 # TODO: random forest classifier- feature extraction from KarmaLego output and training.
-# TODO: consider which registers are needed and which are not (constant value register/changing registers), effects define_entities .
-# TODO: write a function that will calculate the registers that are needed to be taken into consideration, effects define_entities .
+# TODO: write a function that will calculate the changing registers of each PLC, consider them only, effects define_entities .
 # TODO: test.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
