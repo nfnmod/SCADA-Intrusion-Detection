@@ -244,11 +244,15 @@ def get_frequent_registers_values(pkts, registers):
 
 
 # using RAW DATA
-def get_plcs_values_statistics(pkt_df, n):
+def get_plcs_values_statistics(pkt_df, n, to_df=True):
     # map IP to frequent registers
     regs_dict = get_frequent_registers(pkt_df, n)
     # get only PLC where there are at least n used registers
-    filtered_dict = {k: v for k, v in regs_dict.items() if len(v) == n}
+    if to_df:
+        filtered_dict = {k: v for k, v in regs_dict.items() if len(v) == n}
+    else:
+        filtered_dict = {k: v for k, v in regs_dict.items()}
+    stats_dict = {ip: None for ip in regs_dict.keys()}
     # ips of those plcs
     ips = filtered_dict.keys()
     # the last state knows for each plc, map register to last known value
@@ -289,6 +293,7 @@ def get_plcs_values_statistics(pkt_df, n):
         vals = regs_vals[ip]
         counter = 1
         entry = {'ip': ip}
+        stats_entry = {}
         for reg, vs in vals.items():
             values = vals[reg]
             values = [np.float64(v) for v in values]
@@ -296,11 +301,18 @@ def get_plcs_values_statistics(pkt_df, n):
             num_vals = len(values)
             entry["register " + str(counter) + " #values"] = num_vals
             entry["register " + str(counter) + " stdev"] = std_v
+            stats_entry[reg] = [num_vals, std_v]
             counter += 1
-        temp_df = pd.DataFrame.from_dict(columns=stats_df.columns,
-                                         data={'0': [entry[col] for col in stats_df.columns]}, orient='index')
-        stats_df = pd.concat([stats_df, temp_df], ignore_index=True)
-    return stats_df
+        if to_df:
+            temp_df = pd.DataFrame.from_dict(columns=stats_df.columns,
+                                             data={'0': [entry[col] for col in stats_df.columns]}, orient='index')
+            stats_df = pd.concat([stats_df, temp_df], ignore_index=True)
+        else:
+            stats_dict[ip] = stats_entry
+    if to_df:
+        return stats_df
+    else:
+        return stats_dict
 
 
 def get_most_frequently_switching_registers(pkt_df, plc_ip, n_reg):
@@ -1633,7 +1645,7 @@ if __name__ == '__main__':
                    s=None, w=None, j=None
     registers = to_bin
     registers_times = ['time_' + reg for reg in registers]
-    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))"""
+    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
     cols = []
     data_version = 'v3_2 abstract'
     export_results('EqualFreq_v3_2_abstract', cols,
@@ -1644,4 +1656,7 @@ if __name__ == '__main__':
                    'EqualWidth')
     export_results('KMeans_v3_2_abstract', cols,
                    'KMeans v3_2 abstract',
-                   data_version, 20, 'KMeans')
+                   data_version, 20, 'KMeans')"""
+    pkt_df = load(datasets_path, "modbus")
+    d = get_plcs_values_statistics(pkt_df, 5, to_df=False)
+    print(d)

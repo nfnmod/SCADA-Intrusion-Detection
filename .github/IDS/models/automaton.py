@@ -126,7 +126,7 @@ def make_automaton(registers, frequent_values, pkts):
             same_transition = find_same(transition, transitions)
             t_id = same_transition.id
             transitions_times[t_id].append(state_duration)
-    # now we have build all the transitions and states. we can now make time constraints
+    # now we have built all the transitions and states. we can now make time constraints
     for transition in transitions:
         id = transition.id
         times = transitions_times[id]

@@ -7,12 +7,16 @@ from sklearn.preprocessing import KBinsDiscretizer
 
 import data
 
+payload_col_number = 6
+
 
 # TODO: parameters value ranges for input preparation- w, k.
 # TODO: random forest classifier- feature extraction from KarmaLego output and training.
-# TODO: write a function that will calculate the changing registers of each PLC, consider them only, effects define_entities .
 # TODO: test.
 
+# TODO: fix problems with dict.
+# TODO: write code for injection for TIRP and automaton.
+# TODO: split the data for the TIRP train and test, consider only response packets (same thing applies for automaton).
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):
@@ -34,18 +38,36 @@ def equal_frequency_discretization(values, n_bins):
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
-def define_entities(data_path, df_data=None, load_data=True):
-    """
+# the function will leave in the payload only the registers which change their values
+def process_payload(df, stats_dict):
+    for i in range(len(df)):
+        pkt = df.iloc[i]
+        src = pkt['src_port']
 
-    :param data_path: read data from that path.
-    :param df_data: the function may be called after loading data, holds the data itself.
-    :param load_data: control the loading of data.
+        if src == data.plc_port:
+            payload = pkt['payload']
+            plc_ip = pkt['src_ip']
+            regs_vals_stds = stats_dict[plc_ip]
+            new_payload = {}
+            for reg in payload.keys():
+                reg_stats = regs_vals_stds.get(reg, None)
+                if reg_stats is not None:
+                    num_vals = reg_stats[0]
+                    std = reg_stats[1]  # maybe use in the future.
+                    # pick only the registers which have changing values.
+                    if num_vals > 1:
+                        new_payload[reg] = payload[reg]
+
+            # done processing this payload, now switch the original and the new one.
+            df.iloc[i, payload_col_number] = new_payload
+
+
+def define_entities(df_data):
+    """
+    :param df_data: holds the data itself.
     :return:
     """
-    if load_data:
-        df = data.load(data.datasets_path, data_path)
-    else:
-        df = df_data
+    df = df_data
     entity_counter = 0
     entities = {}
     for i in range(len(df)):
@@ -79,19 +101,20 @@ def get_pkt_entities(pkt):
 
 
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(data_path, b, k, w, consider_last=True):
+def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True):
     """
 
-    :param data_path: path to data used for TIRPs.
+    :param stats_dict:
+    :param df:
     :param b: binning method.
     :param k: number of bins.
     :param w: window size.
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
-    df = data.load(data.datasets_path, data_path)
     start_time = (df.iloc[0])['time']
-    entities = define_entities(data_path, df, False)
+    process_payload(df, stats_dict)  # works in place.
+    entities = define_entities(df)
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = {}
     symbol_counter = 0
@@ -175,11 +198,11 @@ def define_events_in_sliding_windows(data_path, b, k, w, consider_last=True):
     return sw_events
 
 
-def make_input(data_path, b, k, w, consider_last=True):
+def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events = define_events_in_sliding_windows(data_path, b, k, w, consider_last)
+    sw_events = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
@@ -196,7 +219,7 @@ def make_input(data_path, b, k, w, consider_last=True):
         if entity_counter == 0:
             continue
         else:
-            window_path = base_path + '_#window_{}.csv'.format(sw_num)
+            window_path = base_path + '\\#window_{}.csv'.format(sw_num)
             entity_index = 0
             with open(window_path, 'w', newline='') as window_file:
                 # now write the events of each entity to the file.
@@ -216,14 +239,26 @@ def make_input(data_path, b, k, w, consider_last=True):
                     writer.writerow(events_row)
 
 
-def grid_input_preparation(data_path):
+# split the raw data set into train and test. train classifier on train set.
+# when injecting anomalies change the times in the raw data and then make input for the classifier.
+# important to keep track of the malicious packets' indices.
+def grid_input_preparation():
     binning_methods = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
     number_of_bins = range(5, 11)
     windows = range(50, 225, 25)
+    pkt_df = data.load(data.datasets_path, "modbus")
+    IP = data.plc
+    plc_df = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+    stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
     bins_window_options = itertools.product(number_of_bins, windows)
     options = itertools.product(binning_methods, bins_window_options)
     for option in options:
         b = option[0]
         k = option[1][0]
         w = option[1][1]
-        make_input(data_path, b, k, w, consider_last=True)
+        make_input(pkt_df, b, k, w, stats_dict, consider_last=True)
+        print("made input !")
+
+
+if __name__ == '__main__':
+    grid_input_preparation()

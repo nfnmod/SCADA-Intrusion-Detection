@@ -6,3 +6,5 @@ from .dataprocessing import dump
 from .dataprocessing import matrix_profiles_pre_processing
 from .dataprocessing import process_data_v3
 from .dataprocessing import get_frequent_registers_values
+from .dataprocessing import get_plcs_values_statistics
+from .dataprocessing import plc
