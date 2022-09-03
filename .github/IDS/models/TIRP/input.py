@@ -3,34 +3,38 @@ import csv
 import itertools
 
 import numpy as np
-from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import KBinsDiscretizer
 
 import data
 
 payload_col_number = 6
 
 
-# TODO: parameters value ranges for input preparation- w, k.
 # TODO: random forest classifier- feature extraction from KarmaLego output and training.
 # TODO: test.
 
-# TODO: fix problems with dict.
+# TODO: run input creation on a small example.
+# TODO: fill in the parameters values in the grid.
+# TODO: run KL on a dataset.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):
+    values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit(values)
     labeled_data = k_means.transform(values)
     return labeled_data
 
 
 def equal_width_discretization(values, n_bins):
+    values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit(values)
     labeled_data = k_means.transform(values)
     return labeled_data
 
 
 def equal_frequency_discretization(values, n_bins):
+    values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit(values)
     labeled_data = k_means.transform(values)
     return labeled_data
@@ -39,10 +43,11 @@ def equal_frequency_discretization(values, n_bins):
 # ---------------------------------------------------------------------------------------------------------------------------#
 # the function will leave in the payload only the registers which change their values
 def process_payload(df, stats_dict):
+    payloads = []
     for i in range(len(df)):
         pkt = df.iloc[i]
         src = pkt['src_port']
-
+        new_payload = {}
         if src == data.plc_port:
             payload = pkt['payload']
             plc_ip = pkt['src_ip']
@@ -57,8 +62,9 @@ def process_payload(df, stats_dict):
                     if num_vals > 1:
                         new_payload[reg] = payload[reg]
 
-            # done processing this payload, now switch the original and the new one.
-            df.iloc[i, payload_col_number] = new_payload
+        # done processing this payload, now switch the original and the new one.
+        payloads.append(new_payload)
+    df.loc[:, 'payload'] = payloads
 
 
 def define_entities(df_data):
@@ -90,7 +96,7 @@ def get_pkt_entities(pkt):
     """
 
     :param pkt: a response packet
-    :return: the entites in the packet.
+    :return: the entities in the packet.
     """
     IP = pkt['src_ip']
     payload = pkt['payload']
@@ -115,7 +121,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     process_payload(df, stats_dict)  # works in place.
     entities = define_entities(df)
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
-    symbols = {}
+    symbols = dict()
     symbol_counter = 0
 
     for i in range(len(df) - w):
@@ -123,10 +129,15 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
         window = df.iloc[i: i + w]
         window_entities = []
         for w_i in range(len(window)):
-            w_pkt = window[w_i]
+            w_pkt = window.iloc[w_i]
             src = w_pkt['src_port']
             if src == data.plc_port:
-                np.concatenate((window_entities, get_pkt_entities(w_pkt)))
+                if len(window_entities) > 0:
+                    es = get_pkt_entities(w_pkt)
+                    if len(es) > 0:
+                        np.concatenate((window_entities, get_pkt_entities(w_pkt)))
+                else:
+                    window_entities = get_pkt_entities(w_pkt)
         entities_events = {e: [] for e in window_entities}
         for j in range(w):
             pkt = window.iloc[i]
@@ -147,14 +158,14 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                         reg_num = entity[1]
                         values = [float(payload[str(reg_num)])]
                         times = [round((pkt['time'] - start_time).total_seconds())]
-                        for k in range(j + 1, w):
-                            w_pkt = window.iloc[k]
+                        for k_w in range(j + 1, w):
+                            w_pkt = window.iloc[k_w]
                             # check for the entity in the payload.
                             if w_pkt['src_port'] == data.plc_port:
                                 w_IP = w_pkt['src_ip']
-                                w_reg_val = float(w_pkt['payload'].get(str(reg_num), None))
+                                w_reg_val = w_pkt['payload'].get(str(reg_num), None)
                                 if w_IP == IP and w_reg_val is not None:
-                                    values.append(w_reg_val)
+                                    values.append(float(w_reg_val))
                                     times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
@@ -169,6 +180,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     n += 1
                                 f_t = times[min(n, len(values) - 1)]
                                 symbol = (entities[entity], value)
+                                print(symbols, type(symbols))
                                 if symbols.get(symbol, None) is None:
                                     symbols[symbol] = symbol_counter
                                     symbol_counter += 1
@@ -221,6 +233,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
             window_path = base_path + '\\#window_{}.csv'.format(sw_num)
             entity_index = 0
             with open(window_path, 'w', newline='') as window_file:
+                print("writing...")
                 # now write the events of each entity to the file.
                 writer = csv.writer(window_file)
                 writer.writerow('startToncepts')
@@ -244,21 +257,25 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
 def grid_input_preparation():
     binning_methods = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
     number_of_bins = range(5, 11)
-    windows = range(50, 225, 25)
+    windows = range(200, 325, 25)
     pkt_df = data.load(data.datasets_path, "modbus")
     IP = data.plc
-    plc_df = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP) & (pkt_df['src_port']) == data.plc_port]
-    train, test = train_test_split(plc_df, test_size=0.2, random_state=42)
+    # consider only response packets from the PLC.
+    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP) & (pkt_df['src_port'] == data.plc_port)]
+    indices = range(len(plc_df))
+    train, test = train_test_split(indices, test_size=0.2, random_state=42)
+    train_df = plc_df.iloc[train]
+    test_df = plc_df.iloc[test]
     stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
     bins_window_options = itertools.product(number_of_bins, windows)
     options = itertools.product(binning_methods, bins_window_options)
-    data.dump(data.datasets_path, "train_raw_automaton_TIRP", train)
-    data.dump(data.datasets_path, "test_raw_automaton_TIRP", test)
+    data.dump(data.datasets_path, "train_raw_automaton_TIRP", train_df)
+    data.dump(data.datasets_path, "test_raw_automaton_TIRP", test_df)
     for option in options:
         b = option[0]
         k = option[1][0]
         w = option[1][1]
-        make_input(train, b, k, w, stats_dict, consider_last=True)
+        make_input(train_df, b, k, w, stats_dict, consider_last=True)
         print("made input!")
 
 
