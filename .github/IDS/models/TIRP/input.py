@@ -4,6 +4,7 @@ import itertools
 
 import numpy as np
 from sklearn.preprocessing import KBinsDiscretizer
+from sklearn.model_selection import train_test_split
 
 import data
 
@@ -15,8 +16,6 @@ payload_col_number = 6
 # TODO: test.
 
 # TODO: fix problems with dict.
-# TODO: write code for injection for TIRP and automaton.
-# TODO: split the data for the TIRP train and test, consider only response packets (same thing applies for automaton).
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):
@@ -248,16 +247,19 @@ def grid_input_preparation():
     windows = range(50, 225, 25)
     pkt_df = data.load(data.datasets_path, "modbus")
     IP = data.plc
-    plc_df = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
+    plc_df = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP) & (pkt_df['src_port']) == data.plc_port]
+    train, test = train_test_split(plc_df, test_size=0.2, random_state=42)
     stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
     bins_window_options = itertools.product(number_of_bins, windows)
     options = itertools.product(binning_methods, bins_window_options)
+    data.dump(data.datasets_path, "train_raw_automaton_TIRP", train)
+    data.dump(data.datasets_path, "test_raw_automaton_TIRP", test)
     for option in options:
         b = option[0]
         k = option[1][0]
         w = option[1][1]
-        make_input(pkt_df, b, k, w, stats_dict, consider_last=True)
-        print("made input !")
+        make_input(train, b, k, w, stats_dict, consider_last=True)
+        print("made input!")
 
 
 if __name__ == '__main__':

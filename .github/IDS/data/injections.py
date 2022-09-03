@@ -3,12 +3,16 @@ The code in this file injects time based anomalies into the test data. The anoma
 in the length of the sequence of packets which is being infected, the change the anomaly causes to the
 timings and the frequency of the anomalies in the data.
 """
+from datetime import datetime
+
 import numpy as np
 
 min_inter_arrival = 0
 max_inter_arrival = 0
 
 
+# works for data which has an inter-arrival time feature.
+# not suitable for TIRP and automaton.
 def inject_anomaly(x_test, injection_length, step_over, percentage):
     """
     :param x_test: the benign dataset of packets.
@@ -35,7 +39,7 @@ def inject_anomaly(x_test, injection_length, step_over, percentage):
     while i < length - injection_length + 1:
         # inject
         pkt_df.iloc[i: i + injection_length, 0] += (pkt_df.iloc[i: i + injection_length, 0] * (
-                    max_inter_arrival - min_inter_arrival) + min_inter_arrival) * (percentage / 100)
+                max_inter_arrival - min_inter_arrival) + min_inter_arrival) * (percentage / 100)
         # step over
         i += (step_over + injection_length)
         # save labels
@@ -64,3 +68,34 @@ def inject_anomaly(x_test, injection_length, step_over, percentage):
     x_test_anomalous = np.asarray(X_grouped).astype(np.float32)
     y_test_anomalous = np.asarray(y).astype(np.float32)
     return x_test_anomalous, y_test_anomalous, y_labels
+
+
+def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage, epsilon):
+    """
+    inject anomalies via the time(date format) column.
+    for TIRP: the output is fed to the input maker, then to KL, then to the classifier for testing.
+    for the automaton: the output is fed into the data processing method and then to automaton for testing.
+    :param epsilon: minimal time allowed between to subsequent packets.
+    :param injection_length: the number of subsequent infected packets in a series.
+    :param step_over: the number of packets not to inject an anomaly into after injecting anomalies to injection_length packets
+    :param percentage: determines how much should the timing be change, in the range of (-100, infinity) the closer to zero the
+                        harder it should be to detect the anomaly.
+    :param test_data: this is the test part of the raw data. should only contain response packets since they are the only
+    ones that carry information about a state transition or events.
+    :return: the test data with injected time-anomalies and the labels of the test data packets.
+    """
+    i = 0
+    length = len(test_data)
+    labels = np.zeros((-1, length))
+    while i < length - injection_length:
+        for j in range(i + injection_length - 1, i - 1, -1):
+            old_time = test_data.iloc[j, 0].total_seconds()
+            if j < length - 1:
+                limit = test_data.iloc[j + 1, 0] - epsilon
+                new_time = min(old_time + old_time * percentage, limit)
+            else:
+                new_time = old_time + old_time * percentage
+            test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
+            labels[j] = 1
+        i += step_over
+    return test_data, labels
