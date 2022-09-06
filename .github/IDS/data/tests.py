@@ -180,7 +180,7 @@ class TestDataConversions(unittest.TestCase):
                             col_time_in_state == res['time_in_state']])
         print(check)
 
-    def testv_2(self):
+    def estv_2(self):
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
         datestrs = ["Mar 22, 2022 21:13:36.902262",
@@ -241,7 +241,7 @@ class TestDataConversions(unittest.TestCase):
         # [col9 == res['9'], col2 == res['2'], col_time_2 == res['time_2'], col_time_9 == res['time_9']])
         # print(check)
 
-    def test_embedding(self):
+    def est_embedding(self):
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
         datestrs = ["Mar 22, 2022 21:13:36.902262",
