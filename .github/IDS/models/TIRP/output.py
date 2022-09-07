@@ -84,8 +84,6 @@ def compare_TIRPs(TIRP1: TIRP, TIRP2: TIRP) -> bool:
         return False
     elif TIRP1.relations != TIRP2.relations:
         return False
-    elif TIRP1.instances != TIRP2.instances:
-        return False
     return True
 
 
@@ -187,5 +185,6 @@ def parse_output(all_TIRPs_path, window_TIRPs_folder):
         windows_TIRPs_df = pd.concat((windows_TIRPs_df, window_df), axis=0, ignore_index=True)
 
     # 4
+    windows_TIRPs_df['anomaly'] = 0  # label everything as benign activity.
     return windows_TIRPs_df
 

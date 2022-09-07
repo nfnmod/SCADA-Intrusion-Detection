@@ -11,14 +11,10 @@ import data
 payload_col_number = 6
 
 
-# TODO: fix injection for the case of negative %.
 # TODO: check the output of the events making.
-
-# TODO: check about parameters values for the KL grid- calculate statistics in the data to determine them better.
-# TODO: random forest classifier- feature extraction from KarmaLego output and training.
+# TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
 # TODO: fix warnings.
-
-# Q: TIRP discovery: take the whole df as a window or append all events found in the windows and save in a single file?
+# TODO: TIRP discovery, append all events found in the windows and save in a single file.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):

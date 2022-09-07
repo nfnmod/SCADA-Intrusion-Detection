@@ -86,16 +86,25 @@ def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage
     """
     i = 0
     length = len(test_data)
-    labels = np.zeros((-1, length))
-    while i < length - injection_length:
-        for j in range(i + injection_length - 1, i - 1, -1):
-            old_time = test_data.iloc[j, 0].total_seconds()
-            if j < length - 1:
-                limit = test_data.iloc[j + 1, 0] - epsilon
-                new_time = min(old_time + old_time * percentage, limit)
-            else:
+    labels = np.zeros(length)
+    while i < length - injection_length + 1:
+        if percentage > 0:
+            for j in range(i + injection_length - 1, i - 1, -1):
+                old_time = test_data.iloc[j, 0].total_seconds()
                 new_time = old_time + old_time * percentage
-            test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
-            labels[j] = 1
-        i += step_over
+                if j < length - 1:
+                    limit = test_data.iloc[j + 1, 0].total_seconds() - epsilon
+                    new_time = min(old_time + old_time * percentage, limit)
+                test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
+                labels[j] = 1
+        else:
+            for j in range(i, i + injection_length):
+                old_time = test_data.iloc[j, 0].total_seconds()
+                new_time = old_time + old_time * percentage
+                if j > 0:
+                    limit = test_data.iloc[j - 1, 0].total_seconds() + epsilon
+                    new_time = max(old_time + old_time * percentage, limit)
+                test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
+                labels[j] = 1
+        i += (step_over + injection_length)
     return test_data, labels
