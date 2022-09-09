@@ -7,6 +7,8 @@ from datetime import datetime
 
 import numpy as np
 
+import data
+
 min_inter_arrival = 0
 max_inter_arrival = 0
 
@@ -70,6 +72,56 @@ def inject_anomaly(x_test, injection_length, step_over, percentage):
     return x_test_anomalous, y_test_anomalous, y_labels
 
 
+def get_next_pkt_idx(pkt, test_data, j):
+    """
+    return the index of the next packet to/from the PLC which is used in the pkt (parameter).
+    THIS WILL NOT WORK IF THE INDEX OF THE DATAFRAME ISN'T THE DEFAULT INDEX.
+    :param pkt: the packet
+    :param test_data: the data set
+    :param j: the starting index (including j)
+    :return: -1 if not found, it's index in test_df if found.
+    """
+
+    PLC = pkt['dst_ip']
+    if pkt['src_port'] == data.plc_port:
+        PLC = pkt['src_ip']
+
+    pkts_indices = test_data.index(
+        test_data.loc[(test_data['src_ip'] == PLC) | (test_data['dst_ip'] == PLC)]).tolist()
+    if max(pkts_indices) < j:
+        return -1
+    else:
+        for pkt_idx in sorted(pkts_indices):
+            if pkt_idx >= j:
+                return pkt_idx
+        return -1
+
+
+def get_prev_pkt_idx(pkt, test_data, j):
+    """
+    return the index of the previous packet to/from the PLC which is used in the pkt (parameter).
+    THIS WILL NOT WORK IF THE INDEX OF THE DATAFRAME ISN'T THE DEFAULT INDEX.
+    :param pkt: the packet
+    :param test_data: the data set
+    :param j: the starting index (going backwards)
+    :return: -1 if not found, it's index in test_df if found.
+    """
+
+    PLC = pkt['dst_ip']
+    if pkt['src_port'] == data.plc_port:
+        PLC = pkt['src_ip']
+
+    pkts_indices = test_data.index(
+        test_data.loc[(test_data['src_ip'] == PLC) | (test_data['dst_ip'] == PLC)]).tolist()
+    if min(pkts_indices) > j:
+        return -1
+    else:
+        for pkt_idx in sorted(pkts_indices, reverse=True):
+            if pkt_idx <= j:
+                return pkt_idx
+        return -1
+
+
 def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage, epsilon):
     """
     inject anomalies via the time(date format) column.
@@ -88,22 +140,32 @@ def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage
     length = len(test_data)
     labels = np.zeros(length)
     while i < length - injection_length + 1:
+        # 1. get the "next" packet of the PLC (if exists) and use it as a limit of the change in the arrival time of the packet.
+        # calculate new arrival time.
         if percentage > 0:
             for j in range(i + injection_length - 1, i - 1, -1):
+                pkt = test_data.iloc[j]
                 old_time = test_data.iloc[j, 0].total_seconds()
-                new_time = old_time + old_time * percentage
-                if j < length - 1:
-                    limit = test_data.iloc[j + 1, 0].total_seconds() - epsilon
-                    new_time = min(old_time + old_time * percentage, limit)
+                next_pkt_idx = get_next_pkt_idx(pkt, test_data, j + 1)
+                if next_pkt_idx != - 1:
+                    limit = test_data.iloc[next_pkt_idx, 0].total_seconds() - epsilon
+                    inter_arrival = (limit + epsilon) - old_time
+                    new_time = min(old_time + inter_arrival * (1 + percentage), limit)
+                else:
+                    new_time = old_time
                 test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
                 labels[j] = 1
         else:
             for j in range(i, i + injection_length):
+                pkt = test_data.iloc[j]
                 old_time = test_data.iloc[j, 0].total_seconds()
-                new_time = old_time + old_time * percentage
-                if j > 0:
-                    limit = test_data.iloc[j - 1, 0].total_seconds() + epsilon
-                    new_time = max(old_time + old_time * percentage, limit)
+                prev_pkt_idx = get_prev_pkt_idx(pkt, test_data, j - 1)
+                if j != -1:
+                    limit = test_data.iloc[prev_pkt_idx, 0].total_seconds() + epsilon
+                    inter_arrival = (limit - epsilon) - old_time
+                    new_time = max(old_time + inter_arrival * (1 + percentage), limit)
+                else:
+                    new_time = old_time
                 test_data.iloc[j, 0] = datetime.fromtimestamp(new_time).strftime('%b %d, %Y %H:%M:%S.%f')
                 labels[j] = 1
         i += (step_over + injection_length)

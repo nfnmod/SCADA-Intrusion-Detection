@@ -15,9 +15,6 @@ from tensorflow.keras import layers
 
 import data
 
-# TODO: create train data sets for classifiers if needed- before training.
-
-
 n_features = -1
 series_length = -1
 
@@ -74,8 +71,10 @@ def make_classifier(models_folder, data_folder, binning):
         model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
         model = keras.models.load_model(model_path)
         for bins in range(5, 11):
-            x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning, bins)
-            y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning, bins)
+            x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning,
+                                                                                                            bins)
+            y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning,
+                                                                                                            bins)
             with open(x_train_path, 'rb') as x_train_f:
                 x_train = pickle.load(x_train_f)
             with open(y_train_path, 'rb') as y_train_f:
@@ -139,8 +138,9 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name)
         max_features = combination[1][1]
         model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
         model.fit(diff_x_train, np.zeros((-1, len(x_train))))
-        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'estimators_{}_'.format(estimators) + 'criterion{}_'.format(
-                                                   criterion) + 'features_{}'.format(max_features))
+        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'estimators_{}_'.format(
+            estimators) + 'criterion{}_'.format(
+            criterion) + 'features_{}'.format(max_features))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):

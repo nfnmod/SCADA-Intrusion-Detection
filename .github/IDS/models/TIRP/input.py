@@ -14,7 +14,6 @@ payload_col_number = 6
 # TODO: check the output of the events making.
 # TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
 # TODO: fix warnings.
-# TODO: TIRP discovery, append all events found in the windows and save in a single file.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):
@@ -207,18 +206,15 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
         # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
         converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
         sw_events[i] = converted_events
-    return sw_events, symbols
+    return sw_events, symbols, entities
 
 
-def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, whole=False):
+def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
-    if not whole:
-        base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
-    else:
-        base_path = data.datasets_path + '\\KL' + '\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
+    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
+    base_path = data.datasets_path + '\\KL' + '\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
@@ -244,7 +240,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, whole=False):
                 writer.writerow('numberOfEntities,{}'.format(entity_counter))
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{}'.format(writeable_entity, entity_index))
+                    writer.writerow('{},{}'.format(entities[writeable_entity], entity_index))
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
@@ -258,6 +254,45 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, whole=False):
 # split the raw data set into train and test. train classifier on train set.
 # when injecting anomalies change the times in the raw data and then make input for the classifier.
 # important to keep track of the malicious packets' indices.
+def discover(plc_df, b, k, w, consider_last, stats_dict):
+    binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
+               equal_width_discretization: 'equal_width'}
+    base_path = data.datasets_path + '\\KL' + '\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
+    # get a dictionary mapping from sw_number to the events in it.
+    sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last)
+    entity_index = 0
+    with open(base_path, 'w') as all_TIRPs:
+        writer = csv.writer(all_TIRPs)
+        writer.writerow('startToncepts')
+        writer.writerow('numberOfEntities,{}'.format(len(entities.keys())))
+        for sw_num in sorted(sw_events.keys()):
+            # hold the events of all the entities in that window.
+            window_events = sw_events[sw_num]
+            writeable = {}
+            entity_counter = 0
+            # counter number of entities which had some events. if there are none then there is nothing to
+            # run the algorithm on so just pass on to the next window.
+            for entity_id in sorted(window_events.keys()):
+                entity_events = window_events[entity_id]
+                if len(entity_events) > 0:
+                    entity_counter += 1
+                    writeable[entity_id] = entity_events
+            if entity_counter == 0:
+                continue
+            else:
+                for writeable_entity in writeable.keys():
+                    events_to_write = writeable[writeable_entity]
+                    writer.writerow('{},{}'.format(entities[writeable_entity], entity_index))
+                    entity_index += 1
+                    events_row = ''
+                    for event in events_to_write:
+                        start = event[0]
+                        finish = event[1]
+                        symbol_number = event[2]
+                        events_row += '{},{},{};'.format(start, finish, symbol_number)
+                    writer.writerow(events_row)
+
+
 def grid_input_preparation():
     binning_methods = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
     number_of_bins = range(5, 11)
@@ -279,8 +314,8 @@ def grid_input_preparation():
         b = option[0]
         k = option[1][0]
         w = option[1][1]
+        discover(plc_df, b, k, w, consider_last=True, stats_dict=stats_dict)
         make_input(plc_df, b, k, w, stats_dict, consider_last=True)
-        make_input(plc_df, b, k, len(plc_df) - 1, consider_last=True, whole=True, stats_dict=stats_dict)
         print("made input!")
 
 
