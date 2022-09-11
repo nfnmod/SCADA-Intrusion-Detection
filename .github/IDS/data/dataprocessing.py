@@ -32,8 +32,16 @@ most_used = ['30', '75', '120', '195', '15']
 
 
 # TODO: find out min and max inter arrival times for injection of anomalies.
-
-# TODO: write code for comparing classifiers, allow to compare when using different injections- after training.
+# TODO: write code for comparing classifiers, allow to compare when using different injections.
+# TODO: TIPRS-check the output of the events making.
+# TODO: TIRPS-determine parameters values for the KL grid- calculate statistics in the data to determine them better.
+# TODO: TIRPS-fix warnings.
+# TODO: excel columns for algorithms parameters, metrics, names.
+# TODO: configuration file for algorithms parameters used for tests and training.
+# TODO: write code for algorithms performance comparisons.
+# TODO: write code for tests.
+# TODO: write code for injections of anomalies.
+# TODO: add log files for running times.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column

@@ -11,9 +11,6 @@ import data
 payload_col_number = 6
 
 
-# TODO: check the output of the events making.
-# TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
-# TODO: fix warnings.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):

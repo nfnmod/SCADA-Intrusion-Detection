@@ -7,8 +7,6 @@ import data
 transition_id = 0
 
 
-# TODO: write code for comparing performance- after training.
-
 class Transition:
     def __init__(self, initial_state, final_state, difference, id):
         self.initial_state = initial_state

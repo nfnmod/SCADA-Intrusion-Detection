@@ -10,8 +10,6 @@ from sklearn.ensemble import RandomForestClassifier
 models_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL_RF\\'
 
 
-# TODO: write code for comparing performance- after training.
-
 def train_classifier(train_df, model_name):
     params_dict = dict()
     params_dict['n_estimators'] = [50, 100]
