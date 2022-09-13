@@ -66,11 +66,14 @@ def build_SGD(nu):
 # train classifier with models from the first folder and train sets from the other folder.
 # Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
-def make_classifier(models_folder, data_folder, binning):
+def make_classifier(models_folder, data_folder, binning, params, RF_only=False, OCSVM_only=False):
     for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
         model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
         model = keras.models.load_model(model_path)
-        for bins in range(5, 11):
+        bin_numbers = params['bin_numbers']
+        bin_start = bin_numbers['start']
+        bin_end = bin_numbers['end']
+        for bins in range(bin_start, bin_end + 1):
             x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning,
                                                                                                             bins)
             y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning,
@@ -79,13 +82,22 @@ def make_classifier(models_folder, data_folder, binning):
                 x_train = pickle.load(x_train_f)
             with open(y_train_path, 'rb') as y_train_f:
                 y_train = pickle.load(y_train_f)
-            post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM')
-            post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF')
+            if not RF_only and not OCSVM_only:
+                post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
+                                                   models_folder)
+                post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
+            elif OCSVM_only:
+                post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
+                                                   models_folder)
+            else:
+                post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
 
 
-def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name):
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder):
     """
 
+    :param models_folder: name of models folder of LSTMs, used for convenient saving of classifiers.
+    :param params: config params for training
     :param lstm_model: an LSTM model fitted on normal traffic
     :param x_train: the data the model was trained on
     :param y_train: the data the model was trained on
@@ -93,10 +105,10 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
     :return: a classifier for the differences. (try to tell if the packet is anomalous according to the deviation of the LSTM)
     # from the reality.
     """
-
+    config_params_dict = params['params_dict']
     params_dict = dict()
-    params_dict['kernel'] = ['poly', 'rbf', 'sigmoid']
-    params_dict['nu'] = [0.05, 0.1, 0.15, 0.2]
+    params_dict['kernel'] = config_params_dict['kernel']
+    params_dict['nu'] = config_params_dict['nu']
 
     # predict and get the difference from the truth.
     # this is the training data for the SVM.
@@ -104,7 +116,9 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
     # different way than it does for benign packets.
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
+    data.dump(data.datasets_path + '\\OCSVM_diff_{}'.format(models_folder), "diff_X_train_{}".format(model_name),
+              diff_x_train)
+    data.dump(data.datasets_path + '\\OCSVM_{}'.format(models_folder), "X_train_{}".format(model_name), pred)
 
     for kernel in params_dict['kernel']:
         k = kernel
@@ -113,21 +127,31 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name)
             model = build_One_Class_SVM(k, n)
             model.fit(diff_x_train)
             tensorflow.keras.models.save_model(model,
-                                               data.modeles_path + model_name + 'nu_{}'.format(n) + 'kernel_{}'.format(
+                                               data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
+                                                   n) + 'kernel_{}'.format(
+                                                   k))
+            model_raw = build_One_Class_SVM(k, n)
+            model_raw.fit(pred)
+            tensorflow.keras.models.save_model(model_raw,
+                                               data.modeles_path + '\\' + models_folder + '\\' + model_name + 'nu_{}'.format(
+                                                   n) + 'kernel_{}'.format(
                                                    k))
 
 
-def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name):
+def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name, params, models_folder):
+    config_params_dict = params['params_dict']
     params_dict = dict()
-    params_dict['n_estimators'] = [50, 100]
-    params_dict['criterion'] = ['gini', 'entropy', 'log_loss']
-    params_dict['max_features'] = ['sqrt', 'log2', None]
+    params_dict['n_estimators'] = config_params_dict['n_estimators']
+    params_dict['criterion'] = config_params_dict['criterion']
+    params_dict['max_features'] = config_params_dict['max_features']
 
     # predict and get the difference from the truth.
     # this is the training data for the SVM
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    data.dump(data.datasets_path, "X_train_{}".format(model_name), diff_x_train)
+    data.dump(data.datasets_path + '\\RF_diff_{}'.format(models_folder), "diff_X_train_{}".format(model_name),
+              diff_x_train)
+    data.dump(data.datasets_path + '\\RF_{}'.format(models_folder), "X_train_{}".format(model_name), pred)
 
     parameters_combinations = itertools.product(params_dict['criterion'], params_dict['max_features'])
     parameters_combinations = itertools.product(params_dict['n_estimators'], parameters_combinations)
@@ -137,10 +161,17 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name)
         criterion = combination[1][0]
         max_features = combination[1][1]
         model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
-        model.fit(diff_x_train, np.zeros((-1, len(x_train))))
-        tensorflow.keras.models.save_model(model, data.modeles_path + model_name + 'estimators_{}_'.format(
-            estimators) + 'criterion{}_'.format(
-            criterion) + 'features_{}'.format(max_features))
+        model.fit(diff_x_train, np.zeros(len(x_train)))
+        tensorflow.keras.models.save_model(model,
+                                           data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'estimators_{}_'.format(
+                                               estimators) + 'criterion{}_'.format(
+                                               criterion) + 'features_{}'.format(max_features))
+        model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
+        model_raw.fit(pred, np.zeros(len(pred)))
+        tensorflow.keras.models.save_model(model_raw,
+                                           data.modeles_path + '\\' + models_folder + '\\' + model_name + 'estimators_{}_'.format(
+                                               estimators) + 'criterion{}_'.format(
+                                               criterion) + 'features_{}'.format(max_features))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):

@@ -24,6 +24,7 @@ plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
 datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
 modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
+automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
 plc = '132.72.249.110'
@@ -37,11 +38,13 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: TIRPS-determine parameters values for the KL grid- calculate statistics in the data to determine them better.
 # TODO: TIRPS-fix warnings.
 # TODO: excel columns for algorithms parameters, metrics, names.
-# TODO: configuration file for algorithms parameters used for tests and training.
 # TODO: write code for algorithms performance comparisons.
 # TODO: write code for tests.
 # TODO: write code for injections of anomalies.
 # TODO: add log files for running times.
+# TODO (last, not urgent):  retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
+
+# TODO: configuration file for algorithms parameters used for tests and training.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -822,9 +825,10 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
     plc_pkts = pkt_df.loc[(pkt_df['dst_ip'] == IP) | (pkt_df['src_ip'] == IP)]
 
     # get the most frequently used registers by the PLC
-    frequent_regs = get_frequent_registers(plc_pkts, n)
+    # frequent_regs = get_frequent_registers(plc_pkts, n)
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
-    registers = frequent_regs[IP]
+    # registers = frequent_regs[IP]
+    registers = to_bin
     regs_copy = registers.copy()
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
     # ['time', 'similarity', 'time_in_state', 'msgs_in_state']
@@ -1422,21 +1426,6 @@ def grid_search_binning():
         models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name)
 
 
-def grid_train_classifiers():
-    """the function will train classifiers.
-    one data processing version for each training grid.
-    train across all possible combinations of binning and number of bins"""
-    models_folders = ['EqualFreq_v1_1', 'EqualWidth_v1_1', 'KMeans_v1_1']
-    data_folders = ['EqualFreq_v1_1', 'EqualWidth_v1_1', 'KMeans_v1_1']
-    binning = {'EqualFreq_v1_1': 'equal_frequency', 'EqualWidth_v1_1': 'equal_width', 'KMeans_v1_1': 'k_means'}
-    zipped = itertools.product(models_folders, data_folders)
-    for folder_pair in zipped:
-        models_folder = folder_pair[0]
-        data_folder = folder_pair[1]
-        models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                      binning=binning[data_folder])
-
-
 def compare_models(models_folder, metric, metric_name, plot_name):
     plt.clf()
     bins = [5, 6, 7, 8, 9, 10]
@@ -1637,34 +1626,5 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
         results_df.to_excel(writer, sheet_name=sheet_name)
 
 
-def compare_classifiers(models_folder, columns, sheet_name, data_version, binning, s=None, w=None, j=None):
-    """
-    code for comparing performance of classifiers.
-    1) go over the model folder, for each model:
-        a. predict on the data set from the test data-sets folder
-        b. calculate metric
-    format of test data folder: binning parameters_data version_injection parameters. have an x_test, y_test, y_labels for each.
-    """
-    return None
-
-
 if __name__ == '__main__':
-    """models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
-                   s=None, w=None, j=None
-    registers = to_bin
-    registers_times = ['time_' + reg for reg in registers]
-    cols = np.concatenate((['time', 'state_switch_max', 'state_switch_min', 'time_in_state'], registers))
-    cols = []
-    data_version = 'v3_2 abstract'
-    export_results('EqualFreq_v3_2_abstract', cols,
-                   'EqualFreq v3_2 abstract', data_version, 20,
-                   'EqualFreq')
-    export_results('EqualWidth_v3_2_abstract', cols,
-                   'EqualWidth v3_2 abstract', data_version, 20,
-                   'EqualWidth')
-    export_results('KMeans_v3_2_abstract', cols,
-                   'KMeans v3_2 abstract',
-                   data_version, 20, 'KMeans')"""
-    pkt_df = load(datasets_path, "modbus")
-    d = get_plcs_values_statistics(pkt_df, 5, to_df=False)
-    print(d)
+    print('Hello !')

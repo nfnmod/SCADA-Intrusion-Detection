@@ -83,14 +83,14 @@ def find_same(transition, transitions):
     return None
 
 
-# The registers don't always get their values together. Problematic for the first state. Fill with most frequent value for now.
-def make_automaton(registers, frequent_values, pkts):
+# The registers don't always get their values together.
+def make_automaton(registers, pkts, binning_method, number_bins, to_scale):
     states = []
     transitions = []
     transitions_times = []
 
     # this data version represents transitions. Each entry is a new state, we also save the time in the state
-    processed = data.process_data_v3(pkts, 5, None, None, False)
+    processed = data.process_data_v3(pkts, 5, binning_method, number_bins, to_scale)
     for i in range(len(processed) - 1):
         # this saves a state and the time we were in the state.
         # the next packet is the next state.

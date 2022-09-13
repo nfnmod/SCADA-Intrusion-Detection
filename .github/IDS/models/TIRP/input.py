@@ -211,7 +211,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
-    base_path = data.datasets_path + '\\KL' + '\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
+    base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
