@@ -31,21 +31,17 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
-
-# TODO: find out min and max inter arrival times for injection of anomalies.
-# TODO: write code for comparing classifiers, allow to compare when using different injections.
-# TODO: TIPRS-check the output of the events making.
-# TODO: TIRPS-determine parameters values for the KL grid- calculate statistics in the data to determine them better.
-# TODO: TIRPS-fix warnings.
+# TODO: configuration file for algorithms parameters used for tests and training.
+# TODO: add log files for running times.
 # TODO: excel columns for algorithms parameters, metrics, names.
 # TODO: write code for algorithms performance comparisons.
-# TODO: write code for tests.
 # TODO: write code for injections of anomalies.
-# TODO: add log files for running times.
+# TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
+# TODO: fix warnings.
+# TODO: test input.py , output.py.
+# TODO: find out min and max inter arrival times for injection of anomalies.
+
 # TODO (last, not urgent):  retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
-
-# TODO: configuration file for algorithms parameters used for tests and training.
-
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):

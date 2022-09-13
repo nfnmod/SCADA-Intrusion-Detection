@@ -254,7 +254,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
 def discover(plc_df, b, k, w, consider_last, stats_dict):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
-    base_path = data.datasets_path + '\\KL' + '\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
+    base_path = data.datasets_path + '\\KL' + '\\whole_input\\all_' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last)
     entity_index = 0

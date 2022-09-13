@@ -100,4 +100,12 @@ def make_input_for_KL(TIRP_config_file_path):
 
 
 def train_RF_from_KL(TIRP_config_file_path):
-    return None
+    with open(TIRP_config_file_path, mode='r') as train_config:
+        params = yaml.load(train_config, Loader=yaml.FullLoader)
+        RF_params = params['RF']
+        parameters_combinations = itertools.product(RF_params['criterion'], RF_params['max_features'])
+        parameters_combinations = itertools.product(RF_params['n_estimators'], parameters_combinations)
+        for combination in parameters_combinations:
+            estimators = combination[0]
+            criterion = combination[1][0]
+            max_features = combination[1][1]
