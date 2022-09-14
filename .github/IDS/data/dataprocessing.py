@@ -31,6 +31,7 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
+
 # TODO: configuration file for algorithms parameters used for tests and training.
 # TODO: add log files for running times.
 # TODO: excel columns for algorithms parameters, metrics, names.
@@ -41,7 +42,9 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: test input.py , output.py.
 # TODO: find out min and max inter arrival times for injection of anomalies.
 
-# TODO (last, not urgent):  retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
+# TODO (not urgent):  retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
+# TODO (not urgent):  retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
+# TODO (not urgent): train SVM, RF with RNNs.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
 def scale_col(df, name):
