@@ -1,6 +1,8 @@
 import itertools
 import os
 import pickle
+import time
+from pathlib import Path
 
 import keras
 import numpy as np
@@ -17,6 +19,10 @@ import data
 
 n_features = -1
 series_length = -1
+
+logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
+LSTM_based_OCSVM_log = logs + 'LSTM based OCSVM.txt'
+LSTM_based_RF_log = logs + 'LSTM based RF.txt'
 
 
 def build_LSTM_series_prediction(epochs, batch_size):
@@ -116,26 +122,39 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     # different way than it does for benign packets.
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    data.dump(data.datasets_path + '\\OCSVM_diff_{}'.format(models_folder), "diff_X_train_{}".format(model_name),
+    diff_path = data.datasets_path + '\\OCSVM_diff_{}'.format(models_folder)
+    raw_path = data.datasets_path + '\\OCSVM_{}'.format(models_folder)
+    Path(diff_path).mkdir(parents=True, exist_ok=True)
+    Path(raw_path).mkdir(parents=True, exist_ok=True)
+    data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
-    data.dump(data.datasets_path + '\\OCSVM_{}'.format(models_folder), "X_train_{}".format(model_name), pred)
+    data.dump(raw_path, "X_train_{}".format(model_name), pred)
 
     for kernel in params_dict['kernel']:
         k = kernel
         for nu in params_dict['nu']:
             n = nu
             model = build_One_Class_SVM(k, n)
-            model.fit(diff_x_train)
-            tensorflow.keras.models.save_model(model,
-                                               data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
-                                                   n) + 'kernel_{}.sav'.format(
-                                                   k))
-            model_raw = build_One_Class_SVM(k, n)
-            model_raw.fit(pred)
-            tensorflow.keras.models.save_model(model_raw,
-                                               data.modeles_path + '\\' + models_folder + '\\' + model_name + 'nu_{}'.format(
-                                                   n) + 'kernel_{}.sav'.format(
-                                                   k))
+            with open(LSTM_based_OCSVM_log, mode='a') as log:
+                log.write('Training LSTM (diff from pred) based OCSVM with kernel:{}, nu:{}\n'.format(k, n))
+                start = time.time()
+                model.fit(diff_x_train)
+                end = time.time()
+                log.write('Trained, time elapsed:{}\n'.format(end - start))
+                tensorflow.keras.models.save_model(model,
+                                                   data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
+                                                       n) + 'kernel_{}.sav'.format(
+                                                       k))
+                log.write('Training LSTM (pred) based OCSVM with kernel:{}, nu:{}\n'.format(k, n))
+                model_raw = build_One_Class_SVM(k, n)
+                start = time.time()
+                model_raw.fit(pred)
+                end = time.time()
+                tensorflow.keras.models.save_model(model_raw,
+                                                   data.modeles_path + '\\' + models_folder + '\\' + model_name + 'nu_{}'.format(
+                                                       n) + 'kernel_{}.sav'.format(
+                                                       k))
+                log.write('Trained, time elapsed:{}\n'.format(end - start))
 
 
 def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name, params, models_folder):
@@ -149,9 +168,13 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     # this is the training data for the SVM
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    data.dump(data.datasets_path + '\\RF_diff_{}'.format(models_folder), "diff_X_train_{}".format(model_name),
+    diff_path = data.datasets_path + '\\RF_diff_{}'.format(models_folder)
+    raw_path = data.datasets_path + '\\RF_{}'.format(models_folder)
+    Path(diff_path).mkdir(parents=True, exist_ok=True)
+    Path(raw_path).mkdir(parents=True, exist_ok=True)
+    data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
-    data.dump(data.datasets_path + '\\RF_{}'.format(models_folder), "X_train_{}".format(model_name), pred)
+    data.dump(raw_path, "X_train_{}".format(model_name), pred)
 
     parameters_combinations = itertools.product(params_dict['criterion'], params_dict['max_features'])
     parameters_combinations = itertools.product(params_dict['n_estimators'], parameters_combinations)
@@ -160,18 +183,30 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
         estimators = combination[0]
         criterion = combination[1][0]
         max_features = combination[1][1]
-        model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
-        model.fit(diff_x_train, np.zeros(len(x_train)))
-        tensorflow.keras.models.save_model(model,
-                                           data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'estimators_{}_'.format(
-                                               estimators) + 'criterion{}_'.format(
-                                               criterion) + 'features_{}.sav'.format(max_features))
-        model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
-        model_raw.fit(pred, np.zeros(len(pred)))
-        tensorflow.keras.models.save_model(model_raw,
-                                           data.modeles_path + '\\' + models_folder + '\\' + model_name + 'estimators_{}_'.format(
-                                               estimators) + 'criterion{}_'.format(
-                                               criterion) + 'features_{}.sav'.format(max_features))
+        with open(LSTM_based_RF_log, mode='a') as log:
+            model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
+            log.write('Training LSTM (diff from pred) based RF with estimators:{}, criterion:{}, max_features:{}\n'.format(estimators, criterion, max_features))
+            start = time.time()
+            model.fit(diff_x_train, np.zeros(len(x_train)))
+            end = time.time()
+            log.write('Trained, time elapsed:{}\n'.format(end - start))
+            tensorflow.keras.models.save_model(model,
+                                               data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'estimators_{}_'.format(
+                                                   estimators) + 'criterion{}_'.format(
+                                                   criterion) + 'features_{}.sav'.format(max_features))
+            model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
+            log.write(
+                'Training LSTM (pred) based RF with estimators:{}, criterion:{}, max_features:{}\n'.format(estimators,
+                                                                                                           criterion,
+                                                                                                           max_features))
+            start = time.time()
+            model_raw.fit(pred, np.zeros(len(pred)))
+            end = time.time()
+            log.write('Trained, time elapsed:{}\n'.format(end - start))
+            tensorflow.keras.models.save_model(model_raw,
+                                               data.modeles_path + '\\' + models_folder + '\\' + model_name + 'estimators_{}_'.format(
+                                                   estimators) + 'criterion{}_'.format(
+                                                   criterion) + 'features_{}.sav'.format(max_features))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
@@ -194,8 +229,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
     params_dict['batch_size'] = [32, 48, 64]
 
     estimator = KerasRegressor(build_fn=model_creator)
-    search = GridSearchCV(estimator=estimator, param_grid=params_dict, cv=kf, verbose=3,
-                          scoring='neg_mean_squared_error')
+    search = GridSearchCV(estimator=estimator, param_grid=params_dict, cv=kf, scoring='neg_mean_squared_error')
 
     print("fitting the model")
     best_model = search.fit(X_train, y_train)

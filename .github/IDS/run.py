@@ -1,4 +1,7 @@
+import csv
 import itertools
+import time
+from pathlib import Path
 
 import tensorflow
 import yaml
@@ -10,6 +13,10 @@ import models
 import models.TIRP as TIRP
 
 KL_base = data.datasets_path + "\\KL\\"
+HTM_base = data.datasets_path + "\\HTM\\"
+logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
+KL_based_RF_log = logs + 'KarmaLego based RF.txt'
+DFA_log = logs + 'DFA.txt'
 
 
 def get_models_folders_data_folders(train_config):
@@ -54,8 +61,13 @@ def train_OCSVM(OCSVM_train_config_file_path):
 
 def train_automaton():
     pkts = data.load(data.datasets_path, "modbus")
-    DFA = models.automaton.make_automaton(data.to_bin, pkts)
-    data.dump(data.automaton_path, "DFA", DFA)
+    with open(DFA_log, mode='a') as log:
+        log.write('Creating DFA')
+        start = time.time()
+        DFA = models.automaton.make_automaton(data.to_bin, pkts)
+        end = time.time()
+        log.write('Done, time elapsed:{}'.format(end - start))
+        data.dump(data.automaton_path, "DFA", DFA)
 
 
 def make_input_for_KL(TIRP_config_file_path):
@@ -139,12 +151,86 @@ def train_RF_from_KL(KL_config_file_path):
                     max_features = combination[1][1]
                     model = RandomForestClassifier(n_estimators=estimators, criterion=criterion,
                                                    max_features=max_features)
-                    model.fit(X_train, y_train)
-                    models_base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
-                    TIRP_level = "\\{}_bins_{}_window{}".format(binning, bins, window)
-                    KL_level = path_suffix
-                    models_folder = models_base_path + TIRP_level + KL_level
-                    tensorflow.keras.models.save_model(model,
-                                                       models_folder + '\\' + 'estimators_{}_'.format(
-                                                           estimators) + 'criterion{}_'.format(
-                                                           criterion) + 'features_{}.sav'.format(max_features))
+                    with open(KL_based_RF_log, mode='a') as log:
+                        log.write('Training KL based RF with')
+                        model.fit(X_train, y_train)
+                        models_base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
+                        TIRP_level = "\\{}_bins_{}_window{}".format(binning, bins, window)
+                        KL_level = path_suffix
+                        models_folder = models_base_path + TIRP_level + KL_level
+                        tensorflow.keras.models.save_model(model,
+                                                           models_folder + '\\' + 'estimators_{}_'.format(
+                                                               estimators) + 'criterion{}_'.format(
+                                                               criterion) + 'features_{}.sav'.format(max_features))
+
+
+# process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
+# The csv file is formatted by the requirements of HTM.
+def create_data_for_HTM(HTM_input_creation_config):
+    """
+    open file, for each data version:
+                    go over all bins, methods combinations and apply data processing.
+                    save the train and test sets.
+    """
+
+    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    folder_names = {data.k_means_binning: "KMeans", data.equal_frequency_discretization: "EqualFreq",
+                    data.equal_width_discretization: "EqualWidth"}
+    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
+             data.equal_width_discretization: "equal_width"}
+    pkt_df = data.load(data.datasets_path, "modbus")
+    with open(HTM_input_creation_config, mode='r') as input_config:
+        params = yaml.load(input_config, Loader=yaml.FullLoader)
+        versions_dicts = params['processing_config']
+        for version_dict in versions_dicts:
+            n_bins = version_dict['bins']
+            data_version = version_dict['name']
+            use = version_dict['use']
+            desc = version_dict['desc']
+            if not use:
+                pass
+            else:
+                options = itertools.product(binners, n_bins)
+                for binner_bins in options:
+                    binner = binner_bins[0]
+                    bins = binner_bins[1]
+                    processed_df = pkt_df
+                    # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
+                    # for testing the HTM network.
+                    X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
+                    # 1. write column names.
+                    # 2. write columns data types.
+                    # 3. write df to csv without the columns names.
+                    folder = HTM_base + '\\' + '{}_{}'.format(folder_names[binner], data_version)
+
+                    train_path_str = folder + '\\' + "X_train_" + desc + "_{}_{}.csv".format(names[binner], bins)
+                    test_path_str = folder + '\\' + "X_test_" + desc + "_{}_{}.csv".format(names[binner], bins)
+                    train_path = Path(train_path_str)
+                    test_path = Path(test_path_str)
+
+                    train_path.parent.mkdir(parents=True, exist_ok=True)
+                    test_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    with open(train_path_str, 'w', newline='') as train_file:
+                        train_writer = csv.writer(train_file)
+                        # write the field names.
+                        train_cols = list(X_train.columns)
+                        train_writer.writerow(train_cols)
+                        # write the field types.
+                        train_cols_types = ['float'] * len(train_cols)
+                        train_writer.writerow(train_cols_types)
+                        # use no flags.
+                        train_writer.writerow([])
+                    X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
+
+                    with open(test_path_str, 'w', newline='') as test_file:
+                        test_writer = csv.writer(test_file)
+                        # write the field names.
+                        test_cols = list(X_test.columns)
+                        test_writer.writerow(test_cols)
+                        # write the field types.
+                        test_cols_types = ['float'] * len(test_cols)
+                        test_writer.writerow(test_cols_types)
+                        # use no flags.
+                        test_writer.writerow([])
+                    X_test.to_csv(path_or_buf=test_path, index=False, header=False, mode='a')
