@@ -25,6 +25,7 @@ captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
 datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
 modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
 automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
+automaton_datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
 plc = '132.72.249.110'
@@ -42,8 +43,8 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: test input.py , output.py.
 # TODO: find out min and max inter arrival times for injection of anomalies.
 
-# TODO (not urgent):  retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
-# TODO (not urgent):  retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
+# TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
+# TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
 # TODO (not urgent): train SVM, RF with RNNs.
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column

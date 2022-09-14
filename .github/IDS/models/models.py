@@ -128,13 +128,13 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
             model.fit(diff_x_train)
             tensorflow.keras.models.save_model(model,
                                                data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
-                                                   n) + 'kernel_{}'.format(
+                                                   n) + 'kernel_{}.sav'.format(
                                                    k))
             model_raw = build_One_Class_SVM(k, n)
             model_raw.fit(pred)
             tensorflow.keras.models.save_model(model_raw,
                                                data.modeles_path + '\\' + models_folder + '\\' + model_name + 'nu_{}'.format(
-                                                   n) + 'kernel_{}'.format(
+                                                   n) + 'kernel_{}.sav'.format(
                                                    k))
 
 
@@ -165,13 +165,13 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
         tensorflow.keras.models.save_model(model,
                                            data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'estimators_{}_'.format(
                                                estimators) + 'criterion{}_'.format(
-                                               criterion) + 'features_{}'.format(max_features))
+                                               criterion) + 'features_{}.sav'.format(max_features))
         model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
         model_raw.fit(pred, np.zeros(len(pred)))
         tensorflow.keras.models.save_model(model_raw,
                                            data.modeles_path + '\\' + models_folder + '\\' + model_name + 'estimators_{}_'.format(
                                                estimators) + 'criterion{}_'.format(
-                                               criterion) + 'features_{}'.format(max_features))
+                                               criterion) + 'features_{}.sav'.format(max_features))
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):

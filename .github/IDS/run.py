@@ -1,14 +1,13 @@
 import itertools
 
-import pandas as pd
+import tensorflow
+import yaml
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 import data
 import models
 import models.TIRP as TIRP
-import yaml
-
-from sklearn.model_selection import train_test_split
 
 KL_base = data.datasets_path + "\\KL\\"
 
@@ -53,27 +52,10 @@ def train_OCSVM(OCSVM_train_config_file_path):
                                           binning=binning_dict[binning_version], params=params, RF_only=True)
 
 
-def train_automaton(Automaton_train_config_file_path):
-    names = {"KMeans": data.k_means_binning, "EqualFreq": data.equal_frequency_discretization,
-             "EqualWidth": data.equal_width_discretization}
-    train_df = pd.DataFrame()
-    with open(Automaton_train_config_file_path) as train_config:
-        params = yaml.load(train_config, Loader=yaml.FullLoader)
-        binning_methods = params['binning']
-        number_bins = params['number_bins']
-        to_scale = params['to_scale']
-
-        binners_bins_product = itertools.product(binning_methods, number_bins)
-        options = itertools.product(to_scale, binners_bins_product)
-        for option in options:
-            scale = option[0]
-            binner = scale[1][0]
-            bins = scale[1][1]
-            if binner is None:
-                dfa = models.automaton.make_automaton(data.to_bin, train_df, None, None, scale)
-            else:
-                dfa = models.automaton.make_automaton(data.to_bin, train_df, names[binner], bins, scale)
-            data.dump(data.automaton_path, '{}_{}_scale_{}.sav'.format(binner, bins, scale), dfa)
+def train_automaton():
+    pkts = data.load(data.datasets_path, "modbus")
+    DFA = models.automaton.make_automaton(data.to_bin, pkts)
+    data.dump(data.automaton_path, "DFA", DFA)
 
 
 def make_input_for_KL(TIRP_config_file_path):
@@ -141,13 +123,13 @@ def train_RF_from_KL(KL_config_file_path):
                 epsilon = eps_gap_supp[0]
                 max_gap = eps_gap_supp[1][0]
                 ver_supp = eps_gap_supp[1][1]
-                path_suffix = "\\eps_{0}_minVS_{1}_maxGap_{2}_HS_{3}.txt".format(epsilon, ver_supp, max_gap, True)
-                whole_TIRPS_output_path = whole_TIRPs_folder + path_suffix
+                path_suffix = "\\eps_{0}_minVS_{1}_maxGap_{2}_HS_{3}".format(epsilon, ver_supp, max_gap, True)
+                whole_TIRPS_output_path = whole_TIRPs_folder + path_suffix + ".txt"
                 windows_outputs_folder_path = windows_folders_folder + path_suffix
                 TIRP_df = TIRP.output.parse_output(whole_TIRPS_output_path, windows_outputs_folder_path)
                 windows_features = TIRP_df[:, :-1]
                 windows_labels = TIRP_df[:, -1]
-                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.8)
+                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2)
                 RF_params = params['RF']
                 parameters_combinations = itertools.product(RF_params['criterion'], RF_params['max_features'])
                 parameters_combinations = itertools.product(RF_params['n_estimators'], parameters_combinations)
@@ -160,4 +142,9 @@ def train_RF_from_KL(KL_config_file_path):
                     model.fit(X_train, y_train)
                     models_base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
                     TIRP_level = "\\{}_bins_{}_window{}".format(binning, bins, window)
-                    KL_level = (path_suffix.split(sep='.'))[0]
+                    KL_level = path_suffix
+                    models_folder = models_base_path + TIRP_level + KL_level
+                    tensorflow.keras.models.save_model(model,
+                                                       models_folder + '\\' + 'estimators_{}_'.format(
+                                                           estimators) + 'criterion{}_'.format(
+                                                           criterion) + 'features_{}.sav'.format(max_features))
