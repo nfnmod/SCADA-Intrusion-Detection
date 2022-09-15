@@ -130,13 +130,19 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
               diff_x_train)
     data.dump(raw_path, "X_train_{}".format(model_name), pred)
 
+    binning_version = models_folder.split(sep='_', maxsplit=1)
+    binning = binning_version[0]
+    version = binning_version[1]
+    number_of_bins = model_name.split(sep='_')[-1]
     for kernel in params_dict['kernel']:
         k = kernel
         for nu in params_dict['nu']:
             n = nu
             model = build_One_Class_SVM(k, n)
             with open(LSTM_based_OCSVM_log, mode='a') as log:
-                log.write('Training LSTM (diff from pred) based OCSVM with kernel:{}, nu:{}\n'.format(k, n))
+                log.write('Training LSTM (diff from pred) based OCSVM with:\n')
+                log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+                log.write('kernel:{}, nu:{}\n'.format(k, n))
                 start = time.time()
                 model.fit(diff_x_train)
                 end = time.time()
@@ -145,7 +151,9 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                                                    data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
                                                        n) + 'kernel_{}.sav'.format(
                                                        k))
-                log.write('Training LSTM (pred) based OCSVM with kernel:{}, nu:{}\n'.format(k, n))
+                log.write('Training LSTM (pred) based OCSVM with:')
+                log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+                log.write('kernel:{}, nu:{}\n'.format(k, n))
                 model_raw = build_One_Class_SVM(k, n)
                 start = time.time()
                 model_raw.fit(pred)
@@ -179,13 +187,19 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     parameters_combinations = itertools.product(params_dict['criterion'], params_dict['max_features'])
     parameters_combinations = itertools.product(params_dict['n_estimators'], parameters_combinations)
 
+    binning_version = models_folder.split(sep='_', maxsplit=1)
+    binning = binning_version[0]
+    version = binning_version[1]
+    number_of_bins = model_name.split(sep='_')[-1]
     for combination in parameters_combinations:
         estimators = combination[0]
         criterion = combination[1][0]
         max_features = combination[1][1]
         with open(LSTM_based_RF_log, mode='a') as log:
             model = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
-            log.write('Training LSTM (diff from pred) based RF with estimators:{}, criterion:{}, max_features:{}\n'.format(estimators, criterion, max_features))
+            log.write('Training LSTM (diff from pred) based RF with: \n')
+            log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+            log.write('estimators:{}, criterion:{}, max_features:{}\n'.format(estimators, criterion, max_features))
             start = time.time()
             model.fit(diff_x_train, np.zeros(len(x_train)))
             end = time.time()
@@ -195,10 +209,9 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
                                                    estimators) + 'criterion{}_'.format(
                                                    criterion) + 'features_{}.sav'.format(max_features))
             model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
-            log.write(
-                'Training LSTM (pred) based RF with estimators:{}, criterion:{}, max_features:{}\n'.format(estimators,
-                                                                                                           criterion,
-                                                                                                           max_features))
+            log.write('Training LSTM (pred) based RF with:\n')
+            log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+            log.write('estimators:{}, criterion:{}, max_features:{}\n'.format(estimators, criterion, max_features))
             start = time.time()
             model_raw.fit(pred, np.zeros(len(pred)))
             end = time.time()

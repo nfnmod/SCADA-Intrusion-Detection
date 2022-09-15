@@ -56,7 +56,7 @@ def train_OCSVM(OCSVM_train_config_file_path):
             data_folder = folder_pair[1]
             binning_version = (data_folder.split(sep='_'))[0]
             models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                          binning=binning_dict[binning_version], params=params, RF_only=True)
+                                          binning=binning_dict[binning_version], params=params, OCSVM_only=True)
 
 
 def train_automaton():
@@ -152,8 +152,13 @@ def train_RF_from_KL(KL_config_file_path):
                     model = RandomForestClassifier(n_estimators=estimators, criterion=criterion,
                                                    max_features=max_features)
                     with open(KL_based_RF_log, mode='a') as log:
-                        log.write('Training KL based RF with')
+                        log.write('Training KL based RF with:\n')
+                        log.write('window size: {} binning: {} bins: {}\n'.format(window, binning, bins))
+                        log.write('eps: {}, max_gap: {}, min_ver_supp: {}\n'.format(epsilon, max_gap, ver_supp))
+                        log.write('estimators: {}, criterion: {} ,max_features: {}\n'.format(estimators, criterion, max_features))
+                        start = time.time()
                         model.fit(X_train, y_train)
+                        end = time.time()
                         models_base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
                         TIRP_level = "\\{}_bins_{}_window{}".format(binning, bins, window)
                         KL_level = path_suffix
@@ -162,6 +167,7 @@ def train_RF_from_KL(KL_config_file_path):
                                                            models_folder + '\\' + 'estimators_{}_'.format(
                                                                estimators) + 'criterion{}_'.format(
                                                                criterion) + 'features_{}.sav'.format(max_features))
+                        log.write('Done, time elapsed:{}\n'.format(end - start))
 
 
 # process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
