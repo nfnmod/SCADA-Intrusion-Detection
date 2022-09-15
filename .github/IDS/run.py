@@ -13,7 +13,7 @@ import models
 import models.TIRP as TIRP
 
 KL_base = data.datasets_path + "\\KL\\"
-HTM_base = data.datasets_path + "\\HTM\\"
+HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
 logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 KL_based_RF_log = logs + 'KarmaLego based RF.txt'
 DFA_log = logs + 'DFA.txt'
@@ -207,7 +207,7 @@ def create_data_for_HTM(HTM_input_creation_config):
                     # 1. write column names.
                     # 2. write columns data types.
                     # 3. write df to csv without the columns names.
-                    folder = HTM_base + '\\' + '{}_{}'.format(folder_names[binner], data_version)
+                    folder = HTM_base + '\\datasets\\' + '{}_{}'.format(folder_names[binner], data_version)
 
                     train_path_str = folder + '\\' + "X_train_" + desc + "_{}_{}.csv".format(names[binner], bins)
                     test_path_str = folder + '\\' + "X_test_" + desc + "_{}_{}.csv".format(names[binner], bins)
