@@ -4,6 +4,7 @@ import os
 import pickle
 import statistics
 from datetime import datetime
+from functools import reduce
 
 import keras.models
 import matplotlib.pyplot as plt
@@ -1574,3 +1575,10 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 if __name__ == '__main__':
     print('Hello !')
+    a = [1, 2, 3, 4]
+    b = [5, 6, 7, 8]
+    e = [9, 10, 11, 12]
+    c = [a, b, e]
+    d = reduce(itertools.product, c)
+    for pair in d:
+        print(pair)
