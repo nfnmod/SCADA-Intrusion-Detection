@@ -31,7 +31,6 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: excel columns for algorithms parameters, metrics, names.
 # TODO: write code for algorithms performance comparisons.
 # TODO: write code for injections of anomalies.
 
@@ -39,9 +38,6 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: fix warnings.
 # TODO: test input.py , output.py.
 # TODO: find out min and max inter arrival times for injection of anomalies.
-
-# TODO (partial): configuration file for algorithms parameters used for tests and training(TBD 4 HTM).
-# TODO (partial): add log files for running times(TBD 4 HTM, add data version binning version, number of bins for parameters).
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
 # TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
