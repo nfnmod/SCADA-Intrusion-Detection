@@ -142,9 +142,10 @@ def make_automaton(registers, pkts):
 
 
 # detect anomalies using the automaton: unknown state/transition or violation of time constrains
+# for single PLC, registers holds the PLC-state defining registers.
+# for multipe PLCs, registers holds a mapping from PLC to PLC-state defining registers.
 def detect(automaton, pkts, registers):
-    frequent_values = data.get_frequent_registers_values(pkts, registers)
-    processed = data.process_data_v3(pkts, 5, None, None, False, frequent_values)
+    processed = data.process_data_v3(pkts, 5, None, None, False, None)
     decisions = []
     for i in range(len(processed) - 1):
         curr_pkt = processed[i]

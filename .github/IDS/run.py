@@ -205,7 +205,7 @@ def create_data_for_HTM(HTM_input_creation_config):
                 for binner_bins in options:
                     binner = binner_bins[0]
                     bins = binner_bins[1]
-                    processed_df = pkt_df
+                    processed_df = data.process(pkt_df, data_version, bins, names[binner])
                     # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
                     # for testing the HTM network.
                     X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
@@ -253,7 +253,7 @@ Use configuration file to create them.
 """
 
 
-def create_test_files_LSTM_RF_and_OCSVM(raw_test_data_df, data_versions_config, injection_config):
+def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_config, injection_config):
     """
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
     """
@@ -291,33 +291,88 @@ def create_test_files_LSTM_RF_and_OCSVM(raw_test_data_df, data_versions_config, 
                                             # now create test data set for LSTM. Only need X_test and y_test.
                                             X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
                                                                                                               20, 42, 0)
+
                                             # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
-                                            with open(
-                                                    test_sets_base_folder + '\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
-                                                            folder_name, name, number_of_bins, desc, injection_length,
-                                                            step_over, percentage, epsilon), mode='wb') as data_path:
+                                            p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
+                                                folder_name, name, number_of_bins, desc, injection_length,
+                                                step_over, percentage, epsilon)
+                                            p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_{}_{}_{}_{}_{}'.format(
+                                                folder_name, name, number_of_bins, desc, injection_length,
+                                                step_over, percentage, epsilon)
+                                            p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
+                                                folder_name, name, number_of_bins, desc, injection_length,
+                                                step_over, percentage, epsilon)
+
+                                            # make sure dirs exist and dump.
+                                            Path(p_x_test).mkdir(parents=True, exist_ok=True)
+                                            Path(p_y_test).mkdir(parents=True, exist_ok=True)
+                                            Path(p_labels).mkdir(parents=True, exist_ok=True)
+
+                                            with open(p_x_test, mode='wb') as data_path:
                                                 pickle.dump(X_test, data_path)
-                                            with open(
-                                                    test_sets_base_folder + '\\{}_{}_{}\\y_test_{}_{}_{}_{}_{}'.format(
-                                                            folder_name, name, number_of_bins, desc, injection_length,
-                                                            step_over, percentage, epsilon), mode='wb') as data_path:
+                                            with open(p_y_test, mode='wb') as data_path:
                                                 pickle.dump(y_test, data_path)
-                                            with open(
-                                                    test_sets_base_folder + '\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
-                                                            folder_name, name, number_of_bins, desc, injection_length,
-                                                            step_over, percentage, epsilon), mode='wb') as data_path:
+                                            with open(p_labels, mode='wb') as data_path:
                                                 pickle.dump(labels, data_path)
 
+                                            # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
+                                            # the classifiers based on the HTM network.
+                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}.csv'.format(
+                                                folder_name, name, number_of_bins, desc, injection_length,
+                                                step_over, percentage, epsilon)
+                                            p_labels_HTM = test_sets_base_folder + '\\HTM_\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
+                                                folder_name, name, number_of_bins, desc, injection_length,
+                                                step_over, percentage, epsilon)
 
-def create_test_files_HTM(raw_test_data_df, data_version_config, injection_config):
-    """
-    grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
-    """
+                                            Path(p_x_test_HTM).mkdir(parents=True, exist_ok=True)
+                                            Path(p_labels_HTM).mkdir(parents=True, exist_ok=True)
+
+                                            with open(p_x_test_HTM, mode='w', newline='') as test_file:
+                                                writer = csv.writer(test_file)
+                                                test_cols = list(test_df.columns)
+                                                # write columns names
+                                                writer.writerow(test_cols)
+                                                # write columns types
+                                                columns_types = ['float'] * len(test_cols)
+                                                # no flags
+                                                writer.writerow(columns_types)
+                                                writer.writerow([])
+                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False, mode='a')
+
+                                            with open(p_labels_HTM, mode='w') as labels_path:
+                                                pickle.dump(labels_path, labels_path)
 
 
 def create_test_files_DFA(raw_test_data_df, injection_config):
-    return None
+    """
+    only one data version so just grid over all the injection parameters.
+    """
+    test_data = data.load(data.datasets_path, raw_test_data_df)
+    with open(injection_config, mode='r') as anomalies_config:
+        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
+        injection_lengths = injection_params['injection_length']
+        step_overs = injection_params['step_over']
+        percentages = injection_params['percentage']
+        epsilons = injection_params['epsilon']
+        # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
+        for injection_length in injection_lengths:
+            for step_over in step_overs:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
+                                                                    epsilon)
+                        test_df = data.process(anomalous_data, 'v3', None, None)
+
+                        p_x_test = test_sets_base_folder + '\\DFA\\{}_{}_{}_{}'.format(injection_length, step_over, percentage, epsilon)
+                        Path(p_x_test).mkdir(parents=True, exist_ok=True)
+                        with open(p_x_test, mode='wb') as test_path:
+                            pickle.dump(test_df, test_path)
 
 
-def create_test_files_TIRP_KL(raw_test_data_df, injection_config):
+def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config):
+    """
+    make test data sets for KL.
+    for each input creation option: create TIRP with all possible injection options.
+    """
+
     return None
