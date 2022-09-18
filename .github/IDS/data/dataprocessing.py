@@ -4,7 +4,6 @@ import os
 import pickle
 import statistics
 from datetime import datetime
-from functools import reduce
 
 import keras.models
 import matplotlib.pyplot as plt
@@ -31,13 +30,13 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: write code for algorithms performance comparisons.
 # TODO: write code for injections of anomalies.
+# TODO: write code for algorithms performance comparisons.
 
 # TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
 # TODO: fix warnings.
 # TODO: test input.py , output.py.
-# TODO: find out min and max inter arrival times for injection of anomalies.
+# TODO: handle min and max inter arrival times.
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
 # TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
@@ -1509,6 +1508,67 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
     return dvs
 
 
+def get_inter_arrival_times_stats():
+    df = load(datasets_path, 'modbus')
+    inter_arrival_times = []
+    for i in range(1, len(df)):
+        curr = df.iloc[i]
+        prev = df.iloc[i - 1]
+        time = (curr['time'] - prev['time']).total_seconds()
+        inter_arrival_times.append(time)
+
+    mean, std, minimum, maximum = statistics.mean(inter_arrival_times), statistics.stdev(inter_arrival_times), min(
+        inter_arrival_times), max(inter_arrival_times)
+    return mean, std, minimum, maximum
+
+
+def process(anomalous_data, name, bins, binning):
+    names = {"k_means":k_means_binning, "equal_frequency": equal_frequency_discretization,
+             "equal_width": equal_width_discretization}
+    if name == 'embedding_MP_deltas_regs_times':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times, binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
+    elif name == 'embedding_MP_regs_deltas_state_duration':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times, binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
+    elif name == 'embedding_MP_regs_values_state_duration':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times, binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
+    elif name == 'embedding_regs_deltas_state_duration':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+                            binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
+    elif name == 'embedding_regs_times_deltas':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+                            binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
+    elif name == 'embedding_regs_times_values':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+                            binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
+    elif name == 'embedding_regs_values_state_duration':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+                            binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
+    elif name == 'MP_embedding_regs_times_values':
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+                            binner=names[binning],
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
+    elif name == 'v1_1':
+        return process_data_v1(anomalous_data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v1)
+    elif name == 'v1_2':
+        return process_data_v1(anomalous_data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v2)
+    elif name == 'v2':
+        return process_data_v2(anomalous_data, None, binner=names[binning], n_bins=bins)
+    elif name == 'v2_abstract':
+        return process_data_v2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
+    elif name == 'v3':
+        return process_data_v3(anomalous_data, None, binner=names[binning], n_bins=bins)
+    elif name == 'v3_2':
+        return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins)
+    else:
+        return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
+
 # ---------------------------------------------------------------------------------------------------------------------------
 # bring the data to excel, used to analyze the performance of regressors.
 def export_results(models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
@@ -1570,11 +1630,5 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    print('Hello !')
-    a = [1, 2, 3, 4]
-    b = [5, 6, 7, 8]
-    e = [9, 10, 11, 12]
-    c = [a, b, e]
-    d = reduce(itertools.product, c)
-    for pair in d:
-        print(pair)
+    mean, std, minimum, maximum = get_inter_arrival_times_stats()
+    print('the mean is: {}\n the std is: {}\n the min is: {}\n the max is: {}\n'.format(mean, std, minimum, maximum))

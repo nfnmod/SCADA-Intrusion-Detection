@@ -122,12 +122,12 @@ def get_prev_pkt_idx(pkt, test_data, j):
         return -1
 
 
-def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage, epsilon):
+def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsilon):
     """
     inject anomalies via the time(date format) column.
     for TIRP: the output is fed to the input maker, then to KL, then to the classifier for testing.
     for the automaton: the output is fed into the data processing method and then to automaton for testing.
-    :param epsilon: minimal time allowed between to subsequent packets.
+    :param epsilon: minimal time allowed between two subsequent packets.
     :param injection_length: the number of subsequent infected packets in a series.
     :param step_over: the number of packets not to inject an anomaly into after injecting anomalies to injection_length packets
     :param percentage: determines how much should the timing be change, in the range of (-100, infinity) the closer to zero the
@@ -170,3 +170,4 @@ def inject_TIRP_and_automaton(test_data, injection_length, step_over, percentage
                 labels[j] = 1
         i += (step_over + injection_length)
     return test_data, labels
+

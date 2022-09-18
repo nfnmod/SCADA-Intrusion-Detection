@@ -14,3 +14,4 @@ from .dataprocessing import equal_width_discretization
 from .dataprocessing import to_bin
 from .dataprocessing import automaton_path
 from .dataprocessing import automaton_datasets_path
+from .dataprocessing import process
