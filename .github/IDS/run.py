@@ -118,7 +118,7 @@ def train_RF_from_KL(KL_config_file_path):
     """
     with open(KL_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
-        KL_params = params['KarmaLego_params']
+        KL_params = params['KarmaLegoParams']
         binning = KL_params['BinningMethods']
         bins = KL_params['Bins']
         windows = KL_params['Windows']
@@ -260,11 +260,10 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
     test_data = data.load(data.datasets_path, raw_test_data_df)
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['injection_length']
-        binnings = injection_params['binning']
-        step_overs = injection_params['step_over']
+        injection_lengths = injection_params['InjectionLength']
+        step_overs = injection_params['StepOver']
         percentages = injection_params['percentage']
-        epsilons = injection_params['epsilon']
+        epsilons = injection_params['Epsilon']
         # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
         for injection_length in injection_lengths:
             for step_over in step_overs:
@@ -272,11 +271,12 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                     for epsilon in epsilons:
                         anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
                                                                     epsilon)
-                        for folder_name, method_name in binnings:
-                            #  process the data using the different versions
-                            with open(data_versions_config, mode='r') as processing_config:
-                                config = yaml.load(processing_config, Loader=yaml.FullLoader)
-                                data_versions = config['processing_config']
+                        #  process the data using the different versions
+                        with open(data_versions_config, mode='r') as processing_config:
+                            config = yaml.load(processing_config, Loader=yaml.FullLoader)
+                            binnings = config['binning']
+                            data_versions = config['processing_config']
+                            for folder_name, method_name in binnings:
                                 for data_version in data_versions:
                                     to_use = data_version['use']
                                     if not to_use:
@@ -351,10 +351,10 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
     test_data = data.load(data.datasets_path, raw_test_data_df)
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['injection_length']
-        step_overs = injection_params['step_over']
-        percentages = injection_params['percentage']
-        epsilons = injection_params['epsilon']
+        injection_lengths = injection_params['InjectionLength']
+        step_overs = injection_params['StepOver']
+        percentages = injection_params['Percentage']
+        epsilons = injection_params['Epsilon']
         # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
         for injection_length in injection_lengths:
             for step_over in step_overs:
@@ -387,10 +387,10 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
     # first, grid over injection params.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['injection_length']
-        step_overs = injection_params['step_over']
-        percentages = injection_params['percentage']
-        epsilons = injection_params['epsilon']
+        injection_lengths = injection_params['InjectionLength']
+        step_overs = injection_params['StepOver']
+        percentages = injection_params['Percentage']
+        epsilons = injection_params['Epsilon']
         with open(input_creation_config, mode='r') as TIRP_creation_config:
             TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
             binning = TIRP_params['binning']
@@ -414,8 +414,9 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                 for number_of_bins in bins:
                                     for window_size in window_sizes:
                                         # discover TIRPs in the whole df and in separate windows.
-                                        test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{}'.format(
-                                            method, number_of_bins, window_size)
+                                        test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{_{}_{}_{}_{}'.format(
+                                            method, number_of_bins, window_size, injection_length, step_over,
+                                            percentage, epsilon)
 
                                         # make sure dirs exists.
                                         Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
@@ -436,8 +437,76 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                             window_label = max(window_labels)
                                             # add label.
                                             test_labels_RF.append(window_label)
-                                        path = test_sets_base_folder + '\\KL\\RF\\{}_{}_{}'.format(method, number_of_bins, window_size)
+                                        path = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
+                                            method,
+                                            number_of_bins,
+                                            window_size,
+                                            injection_length,
+                                            step_over,
+                                            percentage,
+                                            epsilon)
 
                                         Path(path).mkdir(parents=True, exist_ok=True)
                                         with open(path, mode='wb') as labels_path:
                                             pickle.dump(test_labels_RF, labels_path)
+
+
+def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
+    # call parse_output with the respective folders and save the dataset (without the anomaly column).
+    base = data.datasets_path + "\\KL\\"
+    with open(KL_config_path, mode='r') as KL_params_path:
+        KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
+        binning_methods = KL_params['BinningMethods']
+        bins = KL_params['Bins']
+        windows = KL_params['Windows']
+        epsilons = KL_params['Epsilons']
+        max_gaps = KL_params['MaxGaps']
+        min_ver_sups = KL_params['MinVerSups']
+        # go over all whole_tirp files (defining the binning, number of bins and window size)
+        for binning_method in binning_methods:
+            for b in bins:
+                for window in windows:
+                    whole_TIRP_file_out_folder = base + 'whole_out\\all_{}_bins_{}_window_{}'.format(binning_method, b,
+                                                                                                     window)
+                    # iterate over all KL params, get the whole TIRPs file path.
+                    for epsilon in epsilons:
+                        for max_gap in max_gaps:
+                            for min_ver_sup in min_ver_sups:
+                                whole_TIRP_file_out = whole_TIRP_file_out_folder + "\\" + 'eps_{}_minVS_{}_maxGap_{}_HS_true.txt'.format(
+                                    epsilon, min_ver_sup, max_gap)
+                                with open(injections_config_path, mode='r') as injection_config:
+                                    injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
+                                    injection_lengths = injection_params['InjectionLength']
+                                    step_overs = injection_params['StepOver']
+                                    percentages = injection_params['Percentage']
+                                    injection_epsilons = injection_params['Epsilon']
+                                    # go over all injection params and find the TIRPs found in the test data which was made anomalous by injecting
+                                    # anomalies using the injection params.
+                                    for injection_length in injection_lengths:
+                                        for step_over in step_overs:
+                                            for percentage in percentages:
+                                                for injection_epsilon in injection_epsilons:
+                                                    # outDir + String.Format("\\{0}_{1}_{2}_{3}\
+                                                    output_base = test_sets_base_folder + '\\KL\\KL out'
+                                                    desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
+                                                        binning_method, b, window, injection_length, step_over,
+                                                        percentage, injection_epsilon, epsilon, min_ver_sup, max_gap)
+                                                    out_dir = output_base + desc
+                                                    # call parse_output
+                                                    windows_TIRPs_df = TIRP.output.parse_output(whole_TIRP_file_out,
+                                                                                                out_dir)
+                                                    # the true labels were saved earlier.
+                                                    windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
+                                                        columns=['anomaly'])
+                                                    path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
+                                                        binning_method,
+                                                        b,
+                                                        window,
+                                                        injection_length,
+                                                        step_over,
+                                                        percentage,
+                                                        injection_epsilon,
+                                                        epsilon, min_ver_sup, max_gap)
+                                                    Path(path).mkdir(parents=True, exist_ok=True)
+                                                    with open(path, mode='wb') as samples_path:
+                                                        pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
