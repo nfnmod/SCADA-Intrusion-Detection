@@ -206,12 +206,14 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     return sw_events, symbols, entities
 
 
-def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
+def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
+    if test_path is not None:
+        base_path = test_path
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
@@ -250,10 +252,12 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True):
 # split the raw data set into train and test. train classifier on train set.
 # when injecting anomalies change the times in the raw data and then make input for the classifier.
 # important to keep track of the malicious packets' indices.
-def discover(plc_df, b, k, w, consider_last, stats_dict):
+def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     base_path = data.datasets_path + '\\KL' + '\\whole_input\\all_' + binning[b] + '_bins_{}_window_{}.csv'.format(k, w)
+    if test_path is not None:
+        base_path = test_path
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last)
     entity_index = 0

@@ -337,7 +337,8 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 # no flags
                                                 writer.writerow(columns_types)
                                                 writer.writerow([])
-                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False, mode='a')
+                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
+                                                           mode='a')
 
                                             with open(p_labels_HTM, mode='w') as labels_path:
                                                 pickle.dump(labels_path, labels_path)
@@ -363,16 +364,80 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                                                                     epsilon)
                         test_df = data.process(anomalous_data, 'v3', None, None)
 
-                        p_x_test = test_sets_base_folder + '\\DFA\\{}_{}_{}_{}'.format(injection_length, step_over, percentage, epsilon)
+                        p_x_test = test_sets_base_folder + '\\DFA\\{}_{}_{}_{}'.format(injection_length, step_over,
+                                                                                       percentage, epsilon)
                         Path(p_x_test).mkdir(parents=True, exist_ok=True)
                         with open(p_x_test, mode='wb') as test_path:
                             pickle.dump(test_df, test_path)
 
 
-def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config):
+def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
     """
     make test data sets for KL.
     for each input creation option: create TIRP with all possible injection options.
     """
+    pkt_df = data.load(data.datasets_path, "modbus")
+    IP = data.plc
+    # consider only response packets from the PLC.
+    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP) & (pkt_df['dst_ip'] == IP)]
+    stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
 
-    return None
+    name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
+                   'KMeans': TIRP.k_means_binning}
+    # first, grid over injection params.
+    with open(injection_config, mode='r') as anomalies_config:
+        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
+        injection_lengths = injection_params['injection_length']
+        step_overs = injection_params['step_over']
+        percentages = injection_params['percentage']
+        epsilons = injection_params['epsilon']
+        with open(input_creation_config, mode='r') as TIRP_creation_config:
+            TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
+            binning = TIRP_params['binning']
+            bins = TIRP_params['number_of_bins']
+            window_params = TIRP_params['window_sizes']
+            window_min = window_params['start']
+            window_max = window_params['end']
+            window_step = window_params['step']
+            window_sizes = range(window_min, window_max, window_step)
+            for injection_length in injection_lengths:
+                for step_over in step_overs:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            # inject in each possible way.
+                            # labels will be used for creation of expected labels for the RF.
+                            test_data = data.load(data.datasets_path, raw_test_data_df)
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                        percentage,
+                                                                        epsilon)
+                            for method in binning:
+                                for number_of_bins in bins:
+                                    for window_size in window_sizes:
+                                        # discover TIRPs in the whole df and in separate windows.
+                                        test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{}'.format(
+                                            method, number_of_bins, window_size)
+
+                                        # make sure dirs exists.
+                                        Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
+
+                                        # discover TIRPs.
+                                        TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
+                                                        window_size, consider_last=True, stats_dict=stats_dict,
+                                                        test_path=test_path_sliding_windows)
+
+                                        # create the labels for the RF classifier.
+                                        # for each window: [start, end]
+                                        test_labels_RF = []
+                                        for i in range(len(anomalous_data) - window_size):
+                                            # get the labels for the windows' packets.
+                                            window_labels = labels[i, i + window_size]
+                                            # the label is 0 for a benign packet and 1 for an anomalous packets.
+                                            # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
+                                            window_label = max(window_labels)
+                                            # add label.
+                                            test_labels_RF.append(window_label)
+                                        path = test_sets_base_folder + '\\KL\\RF\\{}_{}_{}'.format(method, number_of_bins, window_size)
+
+                                        Path(path).mkdir(parents=True, exist_ok=True)
+                                        with open(path, mode='wb') as labels_path:
+                                            pickle.dump(test_labels_RF, labels_path)
