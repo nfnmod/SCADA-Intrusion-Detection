@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, precision_recall_curve
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
@@ -30,13 +30,15 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: write code for injections of anomalies.
 # TODO: write code for algorithms performance comparisons.
+# TODO: handle min and max inter arrival times.
+# TODO: eps in injection config.
+# TODO: add log files for testing, test data creation
 
 # TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
 # TODO: fix warnings.
 # TODO: test input.py , output.py.
-# TODO: handle min and max inter arrival times.
+# TODO: test injection.
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
 # TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
@@ -1523,16 +1525,19 @@ def get_inter_arrival_times_stats():
 
 
 def process(anomalous_data, name, bins, binning):
-    names = {"k_means":k_means_binning, "equal_frequency": equal_frequency_discretization,
+    names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization}
     if name == 'embedding_MP_deltas_regs_times':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times, binner=names[binning],
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+                            binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_deltas_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times, binner=names[binning],
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+                            binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_values_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times, binner=names[binning],
+        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+                            binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_regs_deltas_state_duration':
         return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
@@ -1568,6 +1573,7 @@ def process(anomalous_data, name, bins, binning):
         return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins)
     else:
         return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
+
 
 # ---------------------------------------------------------------------------------------------------------------------------
 # bring the data to excel, used to analyze the performance of regressors.

@@ -23,6 +23,7 @@ series_length = -1
 logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 LSTM_based_OCSVM_log = logs + 'LSTM based OCSVM.txt'
 LSTM_based_RF_log = logs + 'LSTM based RF.txt'
+SCADA_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA'
 
 
 def build_LSTM_series_prediction(epochs, batch_size):
@@ -73,7 +74,9 @@ def build_SGD(nu):
 # Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
 def make_classifier(models_folder, data_folder, binning, params, RF_only=False, OCSVM_only=False):
+    # models folder described the data version and binning method.
     for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
+        # model folder is the specific LSTM model.
         model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
         model = keras.models.load_model(model_path)
         bin_numbers = params['bin_numbers']
@@ -122,8 +125,9 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     # different way than it does for benign packets.
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    diff_path = data.datasets_path + '\\OCSVM_diff_{}'.format(models_folder)
-    raw_path = data.datasets_path + '\\OCSVM_{}'.format(models_folder)
+    # dirs for the datasets.
+    diff_path = SCADA_base + '\\OCSVM datasets\\OCSVM_diff_{}'.format(models_folder)
+    raw_path = SCADA_base + '\\OCSVM datasets\\OCSVM_{}'.format(models_folder)
     Path(diff_path).mkdir(parents=True, exist_ok=True)
     Path(raw_path).mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
@@ -133,7 +137,7 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     binning_version = models_folder.split(sep='_', maxsplit=1)
     binning = binning_version[0]
     version = binning_version[1]
-    number_of_bins = model_name.split(sep='_')[-1]
+    number_of_bins = model_name.split(sep='_')[-2]
     for kernel in params_dict['kernel']:
         k = kernel
         for nu in params_dict['nu']:
@@ -141,25 +145,27 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
             model = build_One_Class_SVM(k, n)
             with open(LSTM_based_OCSVM_log, mode='a') as log:
                 log.write('Training LSTM (diff from pred) based OCSVM with:\n')
-                log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+                log.write(
+                    'data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
                 log.write('kernel:{}, nu:{}\n'.format(k, n))
                 start = time.time()
                 model.fit(diff_x_train)
                 end = time.time()
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
                 tensorflow.keras.models.save_model(model,
-                                                   data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'nu_{}'.format(
+                                                   SCADA_base + '\\SVMs\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + '_nu_{}_'.format(
                                                        n) + 'kernel_{}.sav'.format(
                                                        k))
                 log.write('Training LSTM (pred) based OCSVM with:')
-                log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
+                log.write(
+                    'data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
                 log.write('kernel:{}, nu:{}\n'.format(k, n))
                 model_raw = build_One_Class_SVM(k, n)
                 start = time.time()
                 model_raw.fit(pred)
                 end = time.time()
                 tensorflow.keras.models.save_model(model_raw,
-                                                   data.modeles_path + '\\' + models_folder + '\\' + model_name + 'nu_{}'.format(
+                                                   SCADA_base + '\\SVMs\\' + models_folder + '\\' + model_name + '_nu_{}_'.format(
                                                        n) + 'kernel_{}.sav'.format(
                                                        k))
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
@@ -176,8 +182,8 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     # this is the training data for the SVM
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
-    diff_path = data.datasets_path + '\\RF_diff_{}'.format(models_folder)
-    raw_path = data.datasets_path + '\\RF_{}'.format(models_folder)
+    diff_path = SCADA_base + '\\RF datasets\\RF_diff_{}'.format(models_folder)
+    raw_path = SCADA_base + '\\RF datasets\\RF_{}'.format(models_folder)
     Path(diff_path).mkdir(parents=True, exist_ok=True)
     Path(raw_path).mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
@@ -190,7 +196,7 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     binning_version = models_folder.split(sep='_', maxsplit=1)
     binning = binning_version[0]
     version = binning_version[1]
-    number_of_bins = model_name.split(sep='_')[-1]
+    number_of_bins = model_name.split(sep='_')[-2]
     for combination in parameters_combinations:
         estimators = combination[0]
         criterion = combination[1][0]
@@ -205,8 +211,8 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
             tensorflow.keras.models.save_model(model,
-                                               data.modeles_path + '\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + 'estimators_{}_'.format(
-                                                   estimators) + 'criterion{}_'.format(
+                                               SCADA_base + '\\RFs\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + '_estimators_{}_'.format(
+                                                   estimators) + 'criterion_{}_'.format(
                                                    criterion) + 'features_{}.sav'.format(max_features))
             model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
             log.write('Training LSTM (pred) based RF with:\n')
@@ -217,8 +223,8 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
             tensorflow.keras.models.save_model(model_raw,
-                                               data.modeles_path + '\\' + models_folder + '\\' + model_name + 'estimators_{}_'.format(
-                                                   estimators) + 'criterion{}_'.format(
+                                               SCADA_base + '\\RFs\\' + models_folder + '\\' + model_name + '_estimators_{}_'.format(
+                                                   estimators) + 'criterion_{}_'.format(
                                                    criterion) + 'features_{}.sav'.format(max_features))
 
 

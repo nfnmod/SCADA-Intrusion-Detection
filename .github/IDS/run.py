@@ -1,9 +1,12 @@
 import csv
 import itertools
+import os
 import pickle
 import time
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import tensorflow
 import yaml
 
@@ -14,6 +17,7 @@ import models.TIRP as TIRP
 from data.injections import inject_to_raw_data
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
 
 KL_base = data.datasets_path + "\\KL\\"
 HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
@@ -21,6 +25,14 @@ logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 test_sets_base_folder = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets'
 KL_based_RF_log = logs + 'KarmaLego based RF.txt'
 DFA_log = logs + 'DFA.txt'
+excel_cols = {'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators', 'criterion', 'max features',
+              'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
+              'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
+              'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
+              'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
+              'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features'}
+xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
 
 def get_models_folders_data_folders(train_config):
@@ -277,6 +289,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                             binnings = config['binning']
                             data_versions = config['processing_config']
                             for folder_name, method_name in binnings:
+                                # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
                                 for data_version in data_versions:
                                     to_use = data_version['use']
                                     if not to_use:
@@ -510,3 +523,148 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                     Path(path).mkdir(parents=True, exist_ok=True)
                                                     with open(path, mode='wb') as samples_path:
                                                         pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
+
+
+def test_LSTM_based_RF(RF_train_config, injection_config, tests_config_path):
+    """
+    injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
+    path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
+                       estimators) + 'criterion{}_'.format(
+                       criterion) + 'features_{}.sav'.format(max_features)
+    p_?_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\?_test_{}_{}_{}_{}_{}'.format(
+            folder_name, name, number_of_bins, desc, injection_length,
+            step_over, percentage, epsilon)
+
+    # 1. call get_models_folders_data_folders(RF_train_config)
+    # 2. for each models folder (specifies data version and binning):
+        # a. for each LSTM model(=model_folder) in the models' folder:
+               model_name = model_folder + '_RF
+               go to RFs\\diff_ + models_folder:
+                go over all files and select the file which have model_name in their name.
+                injection sets folder=models_folder + '_' + model_folder.split(_)[-1]
+                d = get_desc(data version used)
+                # b. for each injection params combination:
+                    get p_x_test, p_y_test, p_labels according to injection params, d, injection sets folder.
+                    run lstm on p_x_test, check if it's a diff model. if no then pass prediction to RF, else
+                    pass the diff from y_test to each RF. (remove the first 20 labels from labels (check if it needs to be done))
+                    compute metrics and write parameters and scores to file.
+    """
+    # 0.
+    results_df = pd.DataFrame(columns=excel_cols)
+    # 1.
+    with open(RF_train_config, mode='r') as train_config:
+        models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
+    with open(injection_config, mode='r') as injection_config:
+        injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
+    with open(tests_config_path, mode='r') as test_config:
+        test_params = yaml.load(test_config, Loader=yaml.FullLoader)['processing_config']
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
+
+    # 2.
+    for prefix in ['', 'diff_']:
+        for models_folder in models_folders:
+            # a.
+            data_version = models_folder.split(sep='_', maxsplit=1)[1]
+            binning_method = data_version.split(sep='_', maxsplit=1)[0]
+            data_version_dict = test_params[data_version]
+            if data_version_dict['use']:
+                for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
+                    model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
+                    with open(model_folder, mode='rb'):
+                        LSTM = tensorflow.keras.models.load_model(model_path)
+                    model_name = model_folder + '_RF'
+                    RFs_dir = models.SCADA_base + '\\RFs\\' + prefix + models_folder
+                    for RF_model in os.listdir(RFs_dir):
+                        if model_name in RF_model:
+                            number_of_bins = model_folder.split(sep='_')[-1]
+                            injection_sets_folder = models_folder + '_' + number_of_bins
+                            desc = data_version_dict['desc']
+                            # b.
+                            for injection_length in injection_lengths:
+                                for step_over in step_overs:
+                                    for percentage in percentages:
+                                        for epsilon in epsilons:
+                                            p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\X_test_{}_{}_{}_{}_{}'.format(
+                                                injection_sets_folder, desc, injection_length,
+                                                step_over, percentage, epsilon)
+
+                                            p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\y_test_{}_{}_{}_{}_{}'.format(
+                                                injection_sets_folder, desc, injection_length,
+                                                step_over, percentage, epsilon)
+
+                                            p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\labels_{}_{}_{}_{}_{}'.format(
+                                                injection_sets_folder, desc, injection_length,
+                                                step_over, percentage, epsilon)
+
+                                            with open(p_x_test, mode='rb') as X_test_path:
+                                                X_test = pickle.load(X_test_path)
+                                            with open(p_y_test, mode='rb') as Y_test_path:
+                                                y_test = pickle.load(Y_test_path)
+                                            with open(p_labels, mode='rb') as labels_path:
+                                                # labels are the labels (1/0) for all the packets.
+                                                # however, the LSTM predicts the 21st packet and onwards.
+                                                labels = pickle.load(labels_path)
+
+                                            pred = LSTM.predict(X_test)
+                                            test_labels = labels[20:]
+                                            if prefix is 'diff_':
+                                                test = np.abs(pred - y_test)
+                                                split_RF_model = RF_model.split(model_name)[1]
+                                            else:
+                                                test = pred
+                                                split_RF_model = RF_model.split(model_name)[0]
+
+                                            # now get the exact RF model.
+                                            with open(RFs_dir + '\\' + RF_model, mode='rb') as RF:
+                                                RF_classifier = pickle.load(RF)
+
+                                            # make classifications.
+                                            classifications = RF_classifier.predict(test)
+
+                                            # parameters for excel.
+                                            data_version_for_excel = data_version_dict['name']
+                                            binning_method_for_excel = binning_method
+                                            number_of_bins_for_excel = number_of_bins
+                                            RF_params_for_excel = split_RF_model.split(sep='_')
+                                            estimators = RF_params_for_excel[1]
+                                            criterion = RF_params_for_excel[3]
+                                            max_feature = RF_params_for_excel[5].split(sep='.')[0]
+
+                                            # calculate metrics.
+                                            precision, recalls, thresholds = precision_recall_curve(y_true=test_labels,
+                                                                                                    probas_pred=classifications)
+                                            precision = precision[0]
+                                            recall = recalls[0]
+                                            auc_score = roc_auc_score(y_true=test_labels, y_score=classifications)
+                                            f1 = f1_score(y_true=test_labels, y_pred=classifications)
+                                            result = {'data version': data_version_for_excel,
+                                                      'binning': binning_method_for_excel,
+                                                      '# bins': number_of_bins_for_excel,
+                                                      '# estimators': estimators, 'criterion': criterion,
+                                                      'max features': max_feature,
+                                                      'precision': precision, 'recall': recall, 'auc': auc_score,
+                                                      'f1': f1}
+                                            for col_name in excel_cols.difference(RF_cols):
+                                                result[col_name] = '-'
+                                            results_df = pd.concat([results_df,
+                                                                    pd.DataFrame.from_dict(data={'0': result},
+                                                                                           orient='index', columns=excel_cols)], axis=0,
+                                                                   ignore_index=True)
+    with pd.ExcelWriter(xl_path) as writer:
+        results_df.to_excel(excel_writer=writer, sheet_name='RF performance')
+
+
+def test_LSTM_based_OCSVM():
+    return None
+
+
+def test_DFA():
+    return None
+
+
+def test_KL_based_RF():
+    return None
