@@ -30,15 +30,14 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
+# TODO: add log files for testing, test data creation.
+# TODO: handle min and max inter arrival times, eps in injection config.
 # TODO: write code for algorithms performance comparisons.
-# TODO: handle min and max inter arrival times.
-# TODO: eps in injection config.
-# TODO: add log files for testing, test data creation
 
 # TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
-# TODO: fix warnings.
 # TODO: test input.py , output.py.
 # TODO: test injection.
+# TODO: fix warnings.
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
 # TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
