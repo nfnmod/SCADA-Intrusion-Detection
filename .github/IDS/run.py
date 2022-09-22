@@ -28,6 +28,8 @@ KL_based_RF_log = logs + 'KarmaLego based RF.txt'
 DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 
+DFA_regs = ['30', '120', '15']
+
 excel_cols = {'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators', 'criterion', 'max features',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
@@ -112,11 +114,7 @@ def make_input_for_KL(TIRP_config_file_path):
         binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
                            'EqualWidth': TIRP.equal_width_discretization}
         number_of_bins = discovery_params['number_of_bins']
-        windows_dict = discovery_params['windows_sizes']
-        start = windows_dict['start']
-        end = windows_dict['end']
-        jump = windows_dict['jump']
-        windows = range(start, end, jump)
+        windows = discovery_params['windows_sizes']
         bins_window_options = itertools.product(number_of_bins, windows)
         options = itertools.product(binning, bins_window_options)
         for option in options:
@@ -390,6 +388,27 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                                                                     epsilon)
                         test_df = data.process(anomalous_data, 'v3', None, None)
 
+                        # we need to know which transitions include anomalies to create the test labels.
+                        # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
+                        # state as anomalous.
+                        # labels of transitions.
+                        transitions_labels = []
+                        # time in state.
+                        time_in_state = 0
+                        # number of state
+                        state_idx = 0
+                        # labels of the packets in the state.
+                        packet_labels_in_state = []
+                        for pkt_idx in range(len(anomalous_data)):
+                            time_in_state += test_df.iloc[pkt_idx, 0]
+                            if time_in_state == test_df.iloc[state_idx, 0]:
+                                time_in_state = 0
+                                state_idx += 1
+                                transitions_labels.append(max(packet_labels_in_state))
+                                packet_labels_in_state = []
+                            else:
+                                packet_labels_in_state.append(labels[pkt_idx])
+
                         p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}_{}_{}'.format(injection_length,
                                                                                               step_over,
                                                                                               percentage, epsilon)
@@ -403,7 +422,7 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                         with open(p_x_test, mode='wb') as test_path:
                             pickle.dump(test_df, test_path)
                         with open(p_labels, mode='wb') as p_labels:
-                            pickle.dump(labels, p_labels)
+                            pickle.dump(transitions_labels, p_labels)
 
 
 def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
@@ -729,15 +748,15 @@ def test_DFA(injection_config):
                         test_labels = pickle.load(labels_path)
 
                     # the DFA classifies transitions.
-                    decisions = models.automaton.detect(DFA, test_df, {})
+                    decisions = models.automaton.detect(DFA, test_df, DFA_regs)
 
                     precision, recalls, thresholds = precision_recall_curve(
                         y_true=test_labels,
-                        probas_pred={})
+                        probas_pred=decisions)
                     precision = precision[0]
                     recall = recalls[0]
-                    auc_score = roc_auc_score(y_true=test_labels, y_score={})
-                    f1 = f1_score(y_true=test_labels, y_pred={})
+                    auc_score = roc_auc_score(y_true=test_labels, y_score=decisions)
+                    f1 = f1_score(y_true=test_labels, y_pred=decisions)
 
                     result = {'injection length': injection_length,
                               'step over': step_over,

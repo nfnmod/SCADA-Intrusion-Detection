@@ -31,8 +31,6 @@ most_used = ['30', '75', '120', '195', '15']
 
 
 # TODO: write code for algorithms performance comparisons.
-# TODO: compute metrics for DFA, registers choosing for DFA.
-# TODO: match window sizes in input preparation and output parsing.
 
 # TODO: handle eps in injection config.
 # TODO: add log files for testing, test data creation.
