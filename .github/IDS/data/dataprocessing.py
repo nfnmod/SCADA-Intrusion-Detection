@@ -32,9 +32,7 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: write code for algorithms performance comparisons.
 
-# TODO: handle eps in injection config.
 # TODO: add log files for testing, test data creation.
-# TODO: determine parameters values for the KL grid.
 
 # TODO: test input.py , output.py.
 # TODO: test injection.
