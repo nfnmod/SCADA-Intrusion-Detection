@@ -31,7 +31,8 @@ most_used = ['30', '75', '120', '195', '15']
 
 
 # TODO: write code for algorithms performance comparisons.
-
+# TODO: save only best model for each test set.
+# TODO: handle eps in injection config, eps edge cases in injections.py.
 # TODO: add log files for testing, test data creation.
 
 # TODO: test input.py , output.py.
