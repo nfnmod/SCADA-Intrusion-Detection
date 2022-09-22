@@ -42,10 +42,7 @@ most_used = ['30', '75', '120', '195', '15']
 # TODO: test injection.
 # TODO: fix warnings.
 
-# TODO (not urgent): retrain all LSTMs and record their scores and training time, manual grid search and KFold-CV.
-# TODO (not urgent): retrain all RNNs and record their scores and training time, manual grid search and KFold-CV.
-# TODO (not urgent): train RNNs and SVM, RF with RNNs.
-
+# TODO (not urgent): retrain all LSTMs and record their scores and training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column

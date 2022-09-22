@@ -38,7 +38,12 @@ RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'ma
            'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
               'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+
 DFA_cols = {'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+
+KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
+                    'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc',
+                    'f1'}
 
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
@@ -752,6 +757,7 @@ def test_DFA(injection_config):
 
 
 def test_KL_based_RF(KL_config_path, injection_config_path):
+    results_df = pd.DataFrame(columns=excel_cols)
     with open(KL_config_path, mode='r') as KL_params_path:
         params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
         KL_params = params['KarmaLegoParams']
@@ -793,7 +799,12 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                             criterion) + 'features_{}.sav'.format(max_feature)
                                         RF_classifier_path = models_folder + '\\' + RF_level
                                         with open(RF_classifier_path, mode='rb') as path:
-                                            RF_classifiers = pickle.load(path)
+                                            RF_classifier = pickle.load(path)
+                                        input_base = data.datasets_path + '\\KL\\'
+                                        whole_TIRP_file_out_folder = input_base + "whole_out\\all_" + binning_method + "_bins_{0}_window_{1}".format(
+                                            number_of_bins, window)
+                                        all_TIRPs_path = whole_TIRP_file_out_folder + "\\" + "eps_{0}_minVS_{1}_maxGap_{2}_HS_true.txt".format(
+                                            KL_epsilon, min_ver_sup, max_gap)
                                         for injection_length in injection_lengths:
                                             for step_over in step_overs:
                                                 for percentage in percentages:
@@ -801,12 +812,61 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                         desc = "\\{0}_{1}_{2}_{3}_{4}_{5}_{6}".format(binning_method,
                                                                                                       number_of_bins,
                                                                                                       window,
-                                                                                                      injection_length, step_over,
+                                                                                                      injection_length,
+                                                                                                      step_over,
                                                                                                       percentage,
                                                                                                       injection_epsilon)
                                                         outDir = KL_output_base + desc
                                                         # the path to the dir containing the output of the specific KL for the specific injection.
                                                         # the inputs were the events of the sliding windows in the injected data.
-                                                        # iterate over files and determine which TIRPs exist. labels are already saved.
-                                                        windows_outputs_dir = outDir + "\\{0}_{1}_{2}_true".format(KL_epsilon, min_ver_sup, max_gap)
+                                                        # call parse output and replace anomaly = 0 with labels.
+                                                        windows_outputs_dir = outDir + "\\{0}_{1}_{2}_true".format(
+                                                            KL_epsilon,
+                                                            min_ver_sup,
+                                                            max_gap)
+
+                                                        test_df = models.TIRP.output.parse_output(all_TIRPs_path,
+                                                                                                  windows_outputs_dir)
+
+                                                        path_to_labels = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
+                                                            binning_method,
+                                                            number_of_bins,
+                                                            window,
+                                                            injection_length,
+                                                            step_over,
+                                                            percentage,
+                                                            injection_epsilon)
+                                                        with open(path_to_labels, mode='rb') as labels_path:
+                                                            test_labels = pickle.load(labels_path)
+
+                                                        classifications = RF_classifier.predict(test_df)
+
+                                                        # calculate metrics.
+                                                        precision, recalls, thresholds = precision_recall_curve(
+                                                            y_true=test_labels,
+                                                            probas_pred=classifications)
+                                                        precision = precision[0]
+                                                        recall = recalls[0]
+                                                        auc_score = roc_auc_score(y_true=test_labels,
+                                                                                  y_score=classifications)
+
+                                                        f1 = f1_score(y_true=test_labels, y_pred=classifications)
+                                                        result = {'binning': binning_method,
+                                                                  '# bins': number_of_bins,
+                                                                  'window size': window,
+                                                                  'KL epsilon': KL_epsilon,
+                                                                  'minimal VS': min_ver_sup,
+                                                                  'max gap': max_gap,
+                                                                  'injection length': injection_length,
+                                                                  'step over': step_over,
+                                                                  'injection epsilon': injection_epsilon,
+                                                                  'percentage': percentage,
+                                                                  'precision': precision,
+                                                                  'recall': recall,
+                                                                  'auc': auc_score,
+                                                                  'f1': f1}
+                                                        temp_df = pd.DataFrame.from_dict(columns=excel_cols, data={'0': result}, orient='index')
+                                                        results_df = pd.concat([results_df, temp_df], axis=0, ignore_index=True)
+    with pd.ExcelWriter(xl_path) as writer:
+        results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
 
