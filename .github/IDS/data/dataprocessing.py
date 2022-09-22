@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
-from sklearn.metrics import mean_squared_error, precision_recall_curve
+from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
@@ -30,11 +30,14 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: add log files for testing, test data creation.
-# TODO: handle min and max inter arrival times, eps in injection config.
 # TODO: write code for algorithms performance comparisons.
+# TODO: compute metrics for DFA, registers choosing for DFA.
+# TODO: match window sizes in input preparation and output parsing.
 
-# TODO: determine parameters values for the KL grid- calculate statistics in the data to determine them better.
+# TODO: handle eps in injection config.
+# TODO: add log files for testing, test data creation.
+# TODO: determine parameters values for the KL grid.
+
 # TODO: test input.py , output.py.
 # TODO: test injection.
 # TODO: fix warnings.
@@ -1511,16 +1514,22 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
 
 def get_inter_arrival_times_stats():
     df = load(datasets_path, 'modbus')
-    inter_arrival_times = []
+    inter_arrival_times = set()
     for i in range(1, len(df)):
         curr = df.iloc[i]
         prev = df.iloc[i - 1]
         time = (curr['time'] - prev['time']).total_seconds()
-        inter_arrival_times.append(time)
+        inter_arrival_times.add(time)
 
     mean, std, minimum, maximum = statistics.mean(inter_arrival_times), statistics.stdev(inter_arrival_times), min(
         inter_arrival_times), max(inter_arrival_times)
-    return mean, std, minimum, maximum
+    inter_arrival_times.discard(maximum)
+    inter_arrival_times.discard(minimum)
+    max_2, min_2 = max(inter_arrival_times), min(inter_arrival_times)
+    inter_arrival_times.discard(max_2)
+    inter_arrival_times.discard(min_2)
+    max_3, min_3 = max(inter_arrival_times), min(inter_arrival_times)
+    return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
 def process(anomalous_data, name, bins, binning):
@@ -1635,5 +1644,7 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    mean, std, minimum, maximum = get_inter_arrival_times_stats()
+    mean, std, minimum, maximum, max_2, min_2, max_3, min_3 = get_inter_arrival_times_stats()
     print('the mean is: {}\n the std is: {}\n the min is: {}\n the max is: {}\n'.format(mean, std, minimum, maximum))
+    print('2nd biggest is {}\n 2nd smallest is {}'.format(max_2, min_2))
+    print('3nd biggest is {}\n 3nd smallest is {}'.format(max_3, min_3))
