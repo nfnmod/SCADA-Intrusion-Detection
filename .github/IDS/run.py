@@ -566,7 +566,7 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                         pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
 
 
-def test_LSTM_based_RF(RF_train_config, injection_config, tests_config_path):
+def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
     path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
@@ -593,7 +593,7 @@ def test_LSTM_based_RF(RF_train_config, injection_config, tests_config_path):
     # 0.
     results_df = pd.DataFrame(columns=excel_cols)
     # 1.
-    with open(RF_train_config, mode='r') as train_config:
+    with open(models_train_config, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
     with open(injection_config, mode='r') as injection_config:
         injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
