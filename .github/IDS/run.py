@@ -650,8 +650,9 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                     test = pred
 
                                                 # now get the exact RF model.
-                                                with open(classifiers_dir + '\\' + classifier, mode='rb') as RF:
-                                                    trained_classifier = pickle.load(RF)
+                                                with open(classifiers_dir + '\\' + classifier,
+                                                          mode='rb') as classifier_p:
+                                                    trained_classifier = pickle.load(classifier_p)
 
                                                 # make classifications.
                                                 classifications = trained_classifier.predict(test)
@@ -707,12 +708,33 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                                                                columns=excel_cols)],
                                                                        axis=0,
                                                                        ignore_index=True)
-        with pd.ExcelWriter(xl_path) as writer:
-            if model_type == 'RF':
-                sheet = 'RF performance'
-            else:
-                sheet = 'OCSVM performance'
-            results_df.to_excel(excel_writer=writer, sheet_name=sheet)
+
+            # df for best scores without hyper-parameters being taken into consideration.
+            best_df = pd.DataFrame(
+                columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'injection length',
+                         'step over', 'percentage', 'epsilon'])
+            # group by the non-hyper-parameters and get the best results.
+            grouped_results = results_df.groupby(by=['data version', 'binning', '# bins', 'injection length',
+                                                     'step over', 'percentage', 'epsilon'])
+
+            for group_name, group in grouped_results:
+                best_precision = max(group['precision'])
+                best_recall = max(group['recall'])
+                best_auc = max(group['auc'])
+                best_f1 = max(group['f1'])
+
+                best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
+                               'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
+                               'injection length': group_name[3],
+                               'step over': group_name[4], 'percentage': group_name[5], 'epsilon': group_name[6]}
+                temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
+                best_df = pd.concat([best_df, temp_df])
+
+            with pd.ExcelWriter(xl_path) as writer:
+                sheet = prefix + ' ' + model_type + ' performance'
+                results_df.to_excel(excel_writer=writer, sheet_name=sheet)
+                sheet = prefix + ' ' + model_type + ' best scores'
+                best_df.to_excel(excel_writer=writer, sheet_name=sheet)
 
 
 def test_DFA(injection_config):
@@ -875,8 +897,10 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                                   'recall': recall,
                                                                   'auc': auc_score,
                                                                   'f1': f1}
-                                                        temp_df = pd.DataFrame.from_dict(columns=excel_cols, data={'0': result}, orient='index')
-                                                        results_df = pd.concat([results_df, temp_df], axis=0, ignore_index=True)
+                                                        temp_df = pd.DataFrame.from_dict(columns=excel_cols,
+                                                                                         data={'0': result},
+                                                                                         orient='index')
+                                                        results_df = pd.concat([results_df, temp_df], axis=0,
+                                                                               ignore_index=True)
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
-

@@ -30,8 +30,7 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: write code for algorithms performance comparisons.
-# TODO: save only best model for each test set.
+# TODO: save only best model for each test set, save name explicitly.
 # TODO: add log files for testing, test data creation.
 # TODO: handle eps in injection config, eps edge cases in injections.py.
 
@@ -1638,7 +1637,12 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    mean, std, minimum, maximum, max_2, min_2, max_3, min_3 = get_inter_arrival_times_stats()
+    """mean, std, minimum, maximum, max_2, min_2, max_3, min_3 = get_inter_arrival_times_stats()
     print('the mean is: {}\n the std is: {}\n the min is: {}\n the max is: {}\n'.format(mean, std, minimum, maximum))
     print('2nd biggest is {}\n 2nd smallest is {}'.format(max_2, min_2))
-    print('3nd biggest is {}\n 3nd smallest is {}'.format(max_3, min_3))
+    print('3nd biggest is {}\n 3nd smallest is {}'.format(max_3, min_3))"""
+    df = pd.DataFrame(columns=['A', 'B', 'C'], data={'A': [1, 2, 3, 4], 'B': ['h', 'h', 'c', 'c'], 'C': [0, 0, 0, 11]})
+    print(df)
+    grouped = df.groupby(by=['A', 'B'])
+    for name, g in grouped:
+        print(name, type(name))
