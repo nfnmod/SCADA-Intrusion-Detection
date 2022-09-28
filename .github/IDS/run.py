@@ -207,67 +207,56 @@ def create_data_for_HTM(HTM_input_creation_config):
                     save the train and test sets.
     """
 
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
-    folder_names = {data.k_means_binning: "KMeans", data.equal_frequency_discretization: "EqualFreq",
-                    data.equal_width_discretization: "EqualWidth"}
-    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
-             data.equal_width_discretization: "equal_width"}
     pkt_df = data.load(data.datasets_path, "modbus")
     with open(HTM_input_creation_config, mode='r') as input_config:
         params = yaml.load(input_config, Loader=yaml.FullLoader)
         versions_dicts = params['processing_config']
         for version_dict in versions_dicts:
-            n_bins = version_dict['bins']
             data_version = version_dict['name']
             use = version_dict['use']
-            desc = version_dict['desc']
             if not use:
                 pass
             else:
-                options = itertools.product(binners, n_bins)
-                for binner_bins in options:
-                    binner = binner_bins[0]
-                    bins = binner_bins[1]
-                    processed_df = data.process(pkt_df, data_version, bins, names[binner])
-                    # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
-                    # for testing the HTM network.
-                    X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
-                    # 1. write column names.
-                    # 2. write columns data types.
-                    # 3. write df to csv without the columns names.
-                    folder = HTM_base + '\\datasets\\' + '{}_{}'.format(folder_names[binner], data_version)
+                processed_df = data.process(pkt_df, data_version, None, None)
+                # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
+                # for testing the HTM network.
+                X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
+                # 1. write column names.
+                # 2. write columns data types.
+                # 3. write df to csv without the columns names.
+                folder = HTM_base + '\\datasets\\' + '{}'.format(data_version)
 
-                    train_path_str = folder + '\\' + "X_train_" + desc + "_{}_{}.csv".format(names[binner], bins)
-                    test_path_str = folder + '\\' + "X_test_" + desc + "_{}_{}.csv".format(names[binner], bins)
-                    train_path = Path(train_path_str)
-                    test_path = Path(test_path_str)
+                train_path_str = folder + '\\' + "X_train_" + data_version + ".csv"
+                test_path_str = folder + '\\' + "X_test_" + data_version + ".csv"
+                train_path = Path(train_path_str)
+                test_path = Path(test_path_str)
 
-                    train_path.parent.mkdir(parents=True, exist_ok=True)
-                    test_path.parent.mkdir(parents=True, exist_ok=True)
+                train_path.parent.mkdir(parents=True, exist_ok=True)
+                test_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    with open(train_path_str, 'w', newline='') as train_file:
-                        train_writer = csv.writer(train_file)
-                        # write the field names.
-                        train_cols = list(X_train.columns)
-                        train_writer.writerow(train_cols)
-                        # write the field types.
-                        train_cols_types = ['float'] * len(train_cols)
-                        train_writer.writerow(train_cols_types)
-                        # use no flags.
-                        train_writer.writerow([])
-                    X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
+                with open(train_path_str, 'w', newline='') as train_file:
+                    train_writer = csv.writer(train_file)
+                    # write the field names.
+                    train_cols = list(X_train.columns)
+                    train_writer.writerow(train_cols)
+                    # write the field types.
+                    train_cols_types = ['float'] * len(train_cols)
+                    train_writer.writerow(train_cols_types)
+                    # use no flags.
+                    train_writer.writerow([])
+                X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
 
-                    with open(test_path_str, 'w', newline='') as test_file:
-                        test_writer = csv.writer(test_file)
-                        # write the field names.
-                        test_cols = list(X_test.columns)
-                        test_writer.writerow(test_cols)
-                        # write the field types.
-                        test_cols_types = ['float'] * len(test_cols)
-                        test_writer.writerow(test_cols_types)
-                        # use no flags.
-                        test_writer.writerow([])
-                    X_test.to_csv(path_or_buf=test_path, index=False, header=False, mode='a')
+                with open(test_path_str, 'w', newline='') as test_file:
+                    test_writer = csv.writer(test_file)
+                    # write the field names.
+                    test_cols = list(X_test.columns)
+                    test_writer.writerow(test_cols)
+                    # write the field types.
+                    test_cols_types = ['float'] * len(test_cols)
+                    test_writer.writerow(test_cols_types)
+                    # use no flags.
+                    test_writer.writerow([])
+                X_test.to_csv(path_or_buf=test_path, index=False, header=False, mode='a')
 
 
 """
@@ -309,13 +298,43 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                         name = data_version['name']
                                         bins = data_version['bins']
                                         desc = data_version['desc']
-                                        # processed test data frame.
+
+                                        # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
+                                        # the classifiers based on the HTM network.
+                                        # no binning for HTM, only scaling.
+                                        test_df = data.process(anomalous_data, name, None, None)
+                                        p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_{}_{}_{}_{}.csv'.format(
+                                            name, injection_length,
+                                            step_over, percentage, epsilon)
+                                        p_labels_HTM = test_sets_base_folder + '\\HTM_\\{}\\labels_{}_{}_{}_{}'.format(
+                                            name, injection_length,
+                                            step_over, percentage, epsilon)
+
+                                        Path(p_x_test_HTM).mkdir(parents=True, exist_ok=True)
+                                        Path(p_labels_HTM).mkdir(parents=True, exist_ok=True)
+
+                                        with open(p_x_test_HTM, mode='w', newline='') as test_file:
+                                            writer = csv.writer(test_file)
+                                            test_cols = list(test_df.columns)
+                                            # write columns names
+                                            writer.writerow(test_cols)
+                                            # write columns types
+                                            columns_types = ['float'] * len(test_cols)
+                                            # no flags
+                                            writer.writerow(columns_types)
+                                            writer.writerow([])
+                                        test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
+                                                       mode='a')
+
+                                        with open(p_labels_HTM, mode='w') as labels_path:
+                                            pickle.dump(labels_path, labels_path)
+
+                                        # now same thing for LSTM, OCSVM.
                                         for number_of_bins in bins:
                                             test_df = data.process(anomalous_data, name, number_of_bins, method_name)
                                             # now create test data set for LSTM. Only need X_test and y_test.
                                             X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
                                                                                                               20, 42, 0)
-
                                             # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
                                             p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
                                                 folder_name, name, number_of_bins, desc, injection_length,
@@ -338,34 +357,6 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 pickle.dump(y_test, data_path)
                                             with open(p_labels, mode='wb') as data_path:
                                                 pickle.dump(labels, data_path)
-
-                                            # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
-                                            # the classifiers based on the HTM network.
-                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}.csv'.format(
-                                                folder_name, name, number_of_bins, desc, injection_length,
-                                                step_over, percentage, epsilon)
-                                            p_labels_HTM = test_sets_base_folder + '\\HTM_\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
-                                                folder_name, name, number_of_bins, desc, injection_length,
-                                                step_over, percentage, epsilon)
-
-                                            Path(p_x_test_HTM).mkdir(parents=True, exist_ok=True)
-                                            Path(p_labels_HTM).mkdir(parents=True, exist_ok=True)
-
-                                            with open(p_x_test_HTM, mode='w', newline='') as test_file:
-                                                writer = csv.writer(test_file)
-                                                test_cols = list(test_df.columns)
-                                                # write columns names
-                                                writer.writerow(test_cols)
-                                                # write columns types
-                                                columns_types = ['float'] * len(test_cols)
-                                                # no flags
-                                                writer.writerow(columns_types)
-                                                writer.writerow([])
-                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
-                                                           mode='a')
-
-                                            with open(p_labels_HTM, mode='w') as labels_path:
-                                                pickle.dump(labels_path, labels_path)
 
 
 def create_test_files_DFA(raw_test_data_df, injection_config):
