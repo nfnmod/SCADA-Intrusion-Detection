@@ -557,6 +557,30 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                         pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
 
 
+def make_best(results_df):
+    # df for best scores without hyper-parameters being taken into consideration.
+    best_df = pd.DataFrame(
+        columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'injection length',
+                 'step over', 'percentage', 'injection epsilon'])
+    # group by the non-hyper-parameters and get the best results.
+    grouped_results = results_df.groupby(by=['data version', 'binning', '# bins', 'injection length',
+                                             'step over', 'percentage', 'injection epsilon'])
+
+    for group_name, group in grouped_results:
+        best_precision = max(group['precision'])
+        best_recall = max(group['recall'])
+        best_auc = max(group['auc'])
+        best_f1 = max(group['f1'])
+
+        best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
+                       'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
+                       'injection length': group_name[3],
+                       'step over': group_name[4], 'percentage': group_name[5], 'injection epsilon': group_name[6]}
+        temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
+        best_df = pd.concat([best_df, temp_df])
+    return best_df
+
+
 def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
@@ -581,8 +605,6 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                     pass the diff from y_test to each RF. (remove the first 20 labels from labels (check if it needs to be done))
                     compute metrics and write parameters and scores to file.
     """
-    # 0.
-    results_df = pd.DataFrame(columns=excel_cols)
     # 1.
     with open(models_train_config, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
@@ -599,6 +621,7 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
     # 2.
     for model_type in ['OCSVM', 'RF']:
         for prefix in ['', 'diff_']:
+            results_df = pd.DataFrame(columns=excel_cols)
             for models_folder in models_folders:
                 # a.
                 data_version = models_folder.split(sep='_', maxsplit=1)[1]
@@ -709,28 +732,11 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                                        axis=0,
                                                                        ignore_index=True)
 
-            # df for best scores without hyper-parameters being taken into consideration.
-            best_df = pd.DataFrame(
-                columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'injection length',
-                         'step over', 'percentage', 'epsilon'])
-            # group by the non-hyper-parameters and get the best results.
-            grouped_results = results_df.groupby(by=['data version', 'binning', '# bins', 'injection length',
-                                                     'step over', 'percentage', 'epsilon'])
-
-            for group_name, group in grouped_results:
-                best_precision = max(group['precision'])
-                best_recall = max(group['recall'])
-                best_auc = max(group['auc'])
-                best_f1 = max(group['f1'])
-
-                best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
-                               'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
-                               'injection length': group_name[3],
-                               'step over': group_name[4], 'percentage': group_name[5], 'epsilon': group_name[6]}
-                temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
-                best_df = pd.concat([best_df, temp_df])
+            best_df = make_best(results_df)
 
             with pd.ExcelWriter(xl_path) as writer:
+                best_df['name'] = prefix + ' ' + model_type
+                results_df['name'] = prefix + ' ' + model_type
                 sheet = prefix + ' ' + model_type + ' performance'
                 results_df.to_excel(excel_writer=writer, sheet_name=sheet)
                 sheet = prefix + ' ' + model_type + ' best scores'
@@ -784,7 +790,9 @@ def test_DFA(injection_config):
                     results_df = pd.concat(
                         [results_df, pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols, orient='index')],
                         axis=0, ignore_index=True)
+    # this already writes the best results achieved by DFA because there is only 1 version of it.
     with pd.ExcelWriter(xl_path) as writer:
+        results_df['name'] = 'DFA'
         results_df.to_excel(excel_writer=writer, sheet_name='DFA performance')
 
 
@@ -902,5 +910,10 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                                                          orient='index')
                                                         results_df = pd.concat([results_df, temp_df], axis=0,
                                                                                ignore_index=True)
+    best_df = make_best(results_df)
+
     with pd.ExcelWriter(xl_path) as writer:
+        best_df['name'] = 'KL-RF'
+        results_df['name'] = 'KL-RF'
+        best_df.to_excel(excel_writer=writer, sheet_name='KL based RF best scores')
         results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')

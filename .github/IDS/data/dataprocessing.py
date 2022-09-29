@@ -30,7 +30,6 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: save only best model for each test set, save name explicitly.
 # TODO: add log files for testing, test data creation.
 # TODO: handle eps in injection config, eps edge cases in injections.py.
 
