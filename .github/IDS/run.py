@@ -49,6 +49,10 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal V
 
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
+test_LSTM_RF_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM-RF-OCSVM.txt'
+test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
+test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
+
 
 def get_models_folders_data_folders(train_config):
     params = yaml.load(train_config, Loader=yaml.FullLoader)
@@ -168,7 +172,7 @@ def train_RF_from_KL(KL_config_file_path):
                 TIRP_df = TIRP.output.parse_output(whole_TIRPS_output_path, windows_outputs_folder_path)
                 windows_features = TIRP_df[:, :-1]
                 windows_labels = TIRP_df[:, -1]
-                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2)
+                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2, random_state=42)
                 RF_params = params['RF']
                 parameters_combinations = itertools.product(RF_params['criterion'], RF_params['max_features'])
                 parameters_combinations = itertools.product(RF_params['n_estimators'], parameters_combinations)
@@ -731,15 +735,24 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                                                                columns=excel_cols)],
                                                                        axis=0,
                                                                        ignore_index=True)
-
+                                                with open(test_LSTM_RF_OCSVM_log, mode='a') as test_log:
+                                                    test_log.write('recorded results of model from type: {}\n'.format(prefix + model_type))
+                                                    test_log.write('injection parameters are: len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, epsilon))
+                                                    test_log.write('model parameters:\n')
+                                                    test_log.write('data version: {}, # bins: {}, binning method: {}\n'.format(data_version_for_excel, number_of_bins_for_excel, binning_method_for_excel))
+                                                    if model_type == 'RF':
+                                                        test_log.write('# estimators: {}, criterion: {}, max features: {}\n'.format(result['# estimators'], result['criterion'], result['max features']))
+                                                    else:
+                                                        test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'], result['nu']))
+                                                    test_log.write('scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'], result['recall'], result['auc scores'], result['f1']))
             best_df = make_best(results_df)
 
             with pd.ExcelWriter(xl_path) as writer:
-                best_df['name'] = prefix + ' ' + model_type
-                results_df['name'] = prefix + ' ' + model_type
-                sheet = prefix + ' ' + model_type + ' performance'
+                best_df['name'] = prefix + model_type
+                results_df['name'] = prefix + model_type
+                sheet = prefix + model_type + ' performance'
                 results_df.to_excel(excel_writer=writer, sheet_name=sheet)
-                sheet = prefix + ' ' + model_type + ' best scores'
+                sheet = prefix + model_type + ' best scores'
                 best_df.to_excel(excel_writer=writer, sheet_name=sheet)
 
 
@@ -790,6 +803,12 @@ def test_DFA(injection_config):
                     results_df = pd.concat(
                         [results_df, pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols, orient='index')],
                         axis=0, ignore_index=True)
+                    with open(test_DFA_log, mode='a') as test_log:
+                        test_log.write('recorded DFA results for injection with parameters:\n')
+                        test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, epsilon))
+                        test_log.write(
+                            'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'], result['recall'], result['auc scores'], result['f1']))
+
     # this already writes the best results achieved by DFA because there is only 1 version of it.
     with pd.ExcelWriter(xl_path) as writer:
         results_df['name'] = 'DFA'
@@ -910,6 +929,17 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                                                          orient='index')
                                                         results_df = pd.concat([results_df, temp_df], axis=0,
                                                                                ignore_index=True)
+                                                        with open(test_KL_RF_log, mode='a') as test_log:
+                                                            test_log.write('recorded results for KL-RF for injection with parameters:\n')
+                                                            test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, injection_epsilon))
+                                                            test_log.write('model parameters:\n')
+                                                            test_log.write('binning: {}, # bins: {}, window size: {}, KL epsilon: {}, minimal VS: {}, max gap: {}\n'.format(binning_method, number_of_bins, window,
+                                                                                                                                                                            KL_epsilon, min_ver_sup, max_gap))
+                                                            test_log.write(
+                                                                'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(
+                                                                    result['precision'], result['recall'],
+                                                                    result['auc scores'], result['f1']))
+
     best_df = make_best(results_df)
 
     with pd.ExcelWriter(xl_path) as writer:
