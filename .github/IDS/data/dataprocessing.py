@@ -29,8 +29,6 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
-
-# TODO: test output.py.
 # TODO: test injection.
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time.

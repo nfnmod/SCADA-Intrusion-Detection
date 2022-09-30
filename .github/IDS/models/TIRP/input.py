@@ -37,7 +37,7 @@ def equal_frequency_discretization(values, n_bins):
 # ---------------------------------------------------------------------------------------------------------------------------#
 # the function will leave in the payload only the registers which change their values
 def process_payload(df, stats_dict):
-    payloads = []
+    new_payloads = []
     for i in range(len(df)):
         pkt = df.iloc[i]
         src = pkt['src_port']
@@ -55,10 +55,12 @@ def process_payload(df, stats_dict):
                     # pick only the registers which have changing values.
                     if num_vals > 1:
                         new_payload[reg] = payload[reg]
+        new_payloads.append(new_payload)
 
-        # done processing this payload, now switch the original and the new one.
-        payloads.append(new_payload)
-    df.loc['payload'] = payloads
+    # done processing this payload, now switch the original and the new one.
+    c_df = df.copy()
+    c_df.loc[:, 'payload'] = new_payloads
+    return c_df
 
 
 def define_entities(df_data):
@@ -115,7 +117,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     :return:
     """
     start_time = (df.iloc[0])['time']
-    process_payload(df, stats_dict)  # works in place.
+    df = process_payload(df, stats_dict)
     entities = define_entities(df)
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = dict()
