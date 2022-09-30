@@ -31,11 +31,9 @@ class TestInputPreparation(unittest.TestCase):
         src_ips = np.repeat('1', 10)
 
         dst_ports = np.repeat(80, 10)
-        src_ports = np.concatenate((np.repeat(502, 8), np.repeat(54312, 2)))
+        src_ports = np.concatenate((np.repeat(502, 8), np.repeat(502, 2)))
 
         func_codes = np.repeat(3, 10)
-
-        registers_freqs = {'1': 7, '2': 7, '3': 7, '4': 7, '9': 8}
 
         payloads = [{'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
                     {'1': 42, '2': 654, '3': 11, '4': 42, '9': 0},
@@ -58,7 +56,29 @@ class TestInputPreparation(unittest.TestCase):
         df['payload'] = payloads
 
         stats_dict = data.get_plcs_values_statistics(pkt_df=df, n=10, to_df=False)
-        sw_events, symbols = input.define_events_in_sliding_windows(df, -1, -1, 4, stats_dict, True, False)
-        for d in range(0):
-            print(d)
-        print(sw_events, symbols)
+        sw_events, symbols, entities = input.define_events_in_sliding_windows(df, -1, -1, 4, stats_dict, True, False)
+        expected_entities = {('1', 1,): 0, ('1', 2): 1, ('1', 3): 2, ('1', 4): 3, ('1', 9): 4}
+        expected_entities_no_ids = set(expected_entities.keys())
+        entities_set = set(entities)
+        expected_symbols = {0: set(), 1: set(), 2: set(), 3: set(), 4: set()}
+        for i in range(len(df)):
+            curr_pkt = df.iloc[i]
+            payload = curr_pkt['payload']
+            for reg_num in payload.keys():
+                if reg_num in ['1', '2', '3', '4', '9']:
+                    expected_symbols[expected_entities[('1', int(reg_num))]].add(float(payload[reg_num]))
+        compressed_expected_symbols = set()
+        for entity_id in expected_symbols.keys():
+            vals = expected_symbols[entity_id]
+            reg_syms = [(entity_id, val,) for val in vals]
+            compressed_expected_symbols = compressed_expected_symbols.union(set(reg_syms))
+        symbols_no_ids = set(symbols.keys())
+        assert symbols_no_ids.difference(
+            compressed_expected_symbols) == set() and compressed_expected_symbols.difference(symbols_no_ids) == set()
+        print('same symbols')
+        assert entities_set.difference(expected_entities_no_ids) == set() and expected_entities_no_ids.difference(
+                entities_set) == set()
+        print('same entities')
+        print(entities)
+        print(symbols)
+        print(sw_events)

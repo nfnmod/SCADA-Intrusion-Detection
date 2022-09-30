@@ -30,7 +30,7 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: test input.py , output.py.
+# TODO: test output.py.
 # TODO: test injection.
 # TODO: fix warnings.
 
