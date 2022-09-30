@@ -29,9 +29,11 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
-# TODO: test injection.
 
-# TODO (not urgent): retrain all LSTMs and record their scores and training time.
+# TODO: test injection.
+# TODO: test output.
+# TODO: make sure symbols number are matching, define test sets for the comparison.
+# TODO: retrain all LSTMs and record their scores and training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column

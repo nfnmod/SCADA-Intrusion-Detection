@@ -28,7 +28,9 @@ def parse_raw_symbols(raw_symbols):
     """
     The format is s1-s2-s3-....-sn-. split around the - and return.
     """""
-    return raw_symbols.split(sep='-')
+    split = raw_symbols.split(sep='-')
+    split = split[0: len(split) - 1]
+    return split
 
 
 def parse_raw_relations(raw_relations):
@@ -36,11 +38,14 @@ def parse_raw_relations(raw_relations):
     The format is r1.r2.r3....r(s * (s - 1) / 2).
     split around the dots and return.
     """
-    return raw_relations.split(sep='.')
+    split = raw_relations.split(sep='.')
+    split = split[0: len(split) - 1]
+    return split
 
 
 def parse_raw_instances(raw_instances):
     partial = raw_instances.split(sep=' ')
+    print(partial)
     events_dict = dict()
     last_entity = None
     for i in range(len(partial)):
@@ -50,6 +55,7 @@ def parse_raw_instances(raw_instances):
             start = int(start_finish[0][1])
             finish = int(start_finish[1][0])
             event_times = (start, finish,)
+            print(i, event_times)
             events_dict[last_entity].append(event_times)
         else:
             last_entity = partial[i]
@@ -77,8 +83,6 @@ def compare_TIRPs(TIRP1: TIRP, TIRP2: TIRP) -> bool:
     if TIRP1.size != TIRP2.size:
         return False
     elif TIRP1.supporting_entities != TIRP2.supporting_entities:
-        return False
-    elif TIRP1.instances_to_entities_relation != TIRP2.instances_to_entities_relation:
         return False
     elif TIRP1.symbols != TIRP2.symbols:
         return False
@@ -187,4 +191,3 @@ def parse_output(all_TIRPs_path, window_TIRPs_folder):
     # 4
     windows_TIRPs_df['anomaly'] = 0  # label everything as benign activity.
     return windows_TIRPs_df
-
