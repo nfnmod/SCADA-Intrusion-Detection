@@ -75,10 +75,5 @@ class TestInputPreparation(unittest.TestCase):
         symbols_no_ids = set(symbols.keys())
         assert symbols_no_ids.difference(
             compressed_expected_symbols) == set() and compressed_expected_symbols.difference(symbols_no_ids) == set()
-        print('same symbols')
         assert entities_set.difference(expected_entities_no_ids) == set() and expected_entities_no_ids.difference(
                 entities_set) == set()
-        print('same entities')
-        print(entities)
-        print(symbols)
-        print(sw_events)

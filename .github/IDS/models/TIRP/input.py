@@ -17,21 +17,21 @@ def k_means_binning(values, n_bins):
     values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit(values)
     labeled_data = k_means.transform(values)
-    return np.reshape(labeled_data, newshape=(1, -1))
+    return np.reshape(labeled_data, newshape=(1, -1))[0]
 
 
 def equal_width_discretization(values, n_bins):
     values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit(values)
     labeled_data = k_means.transform(values)
-    return np.reshape(labeled_data, newshape=(1, -1))
+    return np.reshape(labeled_data, newshape=(1, -1))[0]
 
 
 def equal_frequency_discretization(values, n_bins):
     values = np.reshape(values, newshape=(-1, 1))
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit(values)
     labeled_data = k_means.transform(values)
-    return np.reshape(labeled_data, newshape=(1, -1))
+    return np.reshape(labeled_data, newshape=(1, -1))[0]
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -58,7 +58,7 @@ def process_payload(df, stats_dict):
 
         # done processing this payload, now switch the original and the new one.
         payloads.append(new_payload)
-    df.loc[:, 'payload'] = payloads
+    df.loc['payload'] = payloads
 
 
 def define_entities(df_data):
@@ -204,6 +204,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     # create new event for the duration of the entire window and add.
                                     new_finish = round((finish - start_time).total_seconds() * 1000)
                                     sym_event = (entities[entity], values[0],)
+                                    print(values, values[0])
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
@@ -228,7 +229,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                         # same value, extend last event to the end of the window.
                                         new_finish = finish_time
                                         new_start = event[0]
-                                        new_event = (new_start, new_finish, event[2])
+                                        new_event = (new_start, new_finish, event[2],)
                                         entities_events[entity][-1] = new_event
                                     else:
                                         # they are different, add new event for the last value.
@@ -238,7 +239,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                         if symbols.get(sym_event, None) is None:
                                             symbols[sym_event] = symbol_counter
                                             symbol_counter += 1
-                                        new_event = (event_start, event_finish, symbols[sym_event])
+                                        new_event = (event_start, event_finish, symbols[sym_event],)
                                         entities_events[entity].append(new_event)
                                 elif len(values) == 1:
                                     # a single value was received, add an event for the duration of the entire window.
@@ -246,7 +247,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
-                                    entities_events[entity].append((times[0], finish_time, symbols[sym_event]))
+                                    entities_events[entity].append((times[0], finish_time, symbols[sym_event],))
         # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
         converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
         sw_events[i] = converted_events
@@ -362,6 +363,7 @@ def grid_input_preparation():
         k = option[1][0]
         w = option[1][1]
         discover(plc_df, b, k, w, consider_last=True, stats_dict=stats_dict)
+        print("discovered!")
         make_input(plc_df, b, k, w, stats_dict, consider_last=True)
         print("made input!")
 

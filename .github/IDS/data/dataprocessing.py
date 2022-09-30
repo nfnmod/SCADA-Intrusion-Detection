@@ -32,7 +32,6 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: test output.py.
 # TODO: test injection.
-# TODO: fix warnings.
 
 # TODO (not urgent): retrain all LSTMs and record their scores and training time.
 
