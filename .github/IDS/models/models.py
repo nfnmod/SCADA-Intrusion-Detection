@@ -128,8 +128,9 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     # dirs for the datasets.
     diff_path = SCADA_base + '\\OCSVM datasets\\OCSVM_diff_{}'.format(models_folder)
     raw_path = SCADA_base + '\\OCSVM datasets\\OCSVM_{}'.format(models_folder)
-    Path(diff_path).mkdir(parents=True, exist_ok=True)
-    Path(raw_path).mkdir(parents=True, exist_ok=True)
+    dirc = SCADA_base + '\\OCSVM datasets'
+    if not os.path.exists(dirc):
+        Path(dirc).mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
     data.dump(raw_path, "X_train_{}".format(model_name), pred)
@@ -152,10 +153,14 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                 model.fit(diff_x_train)
                 end = time.time()
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
+                dirc = SCADA_base + '\\SVMs\\' + 'diff_' + models_folder
+                p = dirc + '\\' + 'diff_' + model_name + '_nu_{}_'.format(
+                    n) + 'kernel_{}.sav'.format(
+                    k)
+                if not os.path.exists(dirc):
+                    Path(dirc).mkdir(exist_ok=True, parents=True)
                 tensorflow.keras.models.save_model(model,
-                                                   SCADA_base + '\\SVMs\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + '_nu_{}_'.format(
-                                                       n) + 'kernel_{}.sav'.format(
-                                                       k))
+                                                   p)
                 log.write('Training LSTM (pred) based OCSVM with:')
                 log.write(
                     'data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
@@ -164,10 +169,14 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                 start = time.time()
                 model_raw.fit(pred)
                 end = time.time()
+                dirc = SCADA_base + '\\SVMs\\' + models_folder
+                p = dirc + '\\' + model_name + '_nu_{}_'.format(
+                    n) + 'kernel_{}.sav'.format(
+                    k)
+                if not os.path.exists(dirc):
+                    Path(dirc).mkdir(exist_ok=True, parents=True)
                 tensorflow.keras.models.save_model(model_raw,
-                                                   SCADA_base + '\\SVMs\\' + models_folder + '\\' + model_name + '_nu_{}_'.format(
-                                                       n) + 'kernel_{}.sav'.format(
-                                                       k))
+                                                   p)
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
 
 
@@ -184,8 +193,8 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     diff_x_train = np.abs(pred - y_train)
     diff_path = SCADA_base + '\\RF datasets\\RF_diff_{}'.format(models_folder)
     raw_path = SCADA_base + '\\RF datasets\\RF_{}'.format(models_folder)
-    Path(diff_path).mkdir(parents=True, exist_ok=True)
-    Path(raw_path).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(SCADA_base + '\\RF datasets'):
+        Path(SCADA_base + '\\RF datasets').mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
     data.dump(raw_path, "X_train_{}".format(model_name), pred)
@@ -210,10 +219,14 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             model.fit(diff_x_train, np.zeros(len(x_train)))
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
+            dirc = SCADA_base + '\\RFs\\' + 'diff_' + models_folder
+            p = dirc + '\\' + 'diff_' + model_name + '_estimators_{}_'.format(
+                estimators) + 'criterion_{}_'.format(
+                criterion) + 'features_{}.sav'.format(max_features)
+            if not os.path.exists(dirc):
+                Path(dirc).mkdir(exist_ok=True, parents=True)
             tensorflow.keras.models.save_model(model,
-                                               SCADA_base + '\\RFs\\' + 'diff_' + models_folder + '\\' + 'diff_' + model_name + '_estimators_{}_'.format(
-                                                   estimators) + 'criterion_{}_'.format(
-                                                   criterion) + 'features_{}.sav'.format(max_features))
+                                               p)
             model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
             log.write('Training LSTM (pred) based RF with:\n')
             log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
@@ -222,10 +235,14 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             model_raw.fit(pred, np.zeros(len(pred)))
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
+            dirc = SCADA_base + '\\RFs\\' + models_folder
+            p = dirc + '\\' + model_name + '_estimators_{}_'.format(
+                estimators) + 'criterion_{}_'.format(
+                criterion) + 'features_{}.sav'.format(max_features)
+            if not os.path.exists(dirc):
+                Path(dirc).mkdir(exist_ok=True, parents=True)
             tensorflow.keras.models.save_model(model_raw,
-                                               SCADA_base + '\\RFs\\' + models_folder + '\\' + model_name + '_estimators_{}_'.format(
-                                                   estimators) + 'criterion_{}_'.format(
-                                                   criterion) + 'features_{}.sav'.format(max_features))
+                                               p)
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
