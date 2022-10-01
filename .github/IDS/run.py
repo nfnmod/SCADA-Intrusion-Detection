@@ -65,7 +65,7 @@ def get_models_folders_data_folders(train_config):
         binning_part = option[0]
         data_version = option[1]
         data_folders.append(binning_part + '_' + data_version)
-        models_folders.append(binning_part + '-' + data_version)
+        models_folders.append(binning_part + '_' + data_version)
 
     return models_folders, data_folders, binning_dict, params
 

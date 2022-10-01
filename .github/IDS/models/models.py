@@ -82,24 +82,22 @@ def make_classifier(models_folder, data_folder, binning, params, RF_only=False, 
         bin_numbers = params['bin_numbers']
         bin_start = bin_numbers['start']
         bin_end = bin_numbers['end']
-        for bins in range(bin_start, bin_end + 1):
-            x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder + '_{}_{}'.format(binning,
-                                                                                                            bins)
-            y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder + '_{}_{}'.format(binning,
-                                                                                                            bins)
-            with open(x_train_path, 'rb') as x_train_f:
-                x_train = pickle.load(x_train_f)
-            with open(y_train_path, 'rb') as y_train_f:
-                y_train = pickle.load(y_train_f)
-            if not RF_only and not OCSVM_only:
-                post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
-                                                   models_folder)
-                post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
-            elif OCSVM_only:
-                post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
-                                                   models_folder)
-            else:
-                post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
+
+        x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder
+        y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder
+        with open(x_train_path, 'rb') as x_train_f:
+            x_train = pickle.load(x_train_f)
+        with open(y_train_path, 'rb') as y_train_f:
+            y_train = pickle.load(y_train_f)
+        if not RF_only and not OCSVM_only:
+            post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
+                                               models_folder)
+            post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
+        elif OCSVM_only:
+            post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
+                                               models_folder)
+        else:
+            post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
 
 
 def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder):
@@ -128,9 +126,10 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     # dirs for the datasets.
     diff_path = SCADA_base + '\\OCSVM datasets\\OCSVM_diff_{}'.format(models_folder)
     raw_path = SCADA_base + '\\OCSVM datasets\\OCSVM_{}'.format(models_folder)
-    dirc = SCADA_base + '\\OCSVM datasets'
-    if not os.path.exists(dirc):
-        Path(dirc).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(diff_path):
+        Path(diff_path).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(raw_path):
+        Path(raw_path).mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
     data.dump(raw_path, "X_train_{}".format(model_name), pred)
@@ -154,13 +153,12 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                 end = time.time()
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
                 dirc = SCADA_base + '\\SVMs\\' + 'diff_' + models_folder
-                p = dirc + '\\' + 'diff_' + model_name + '_nu_{}_'.format(
+                p = 'diff_' + model_name + '_nu_{}_'.format(
                     n) + 'kernel_{}.sav'.format(
                     k)
                 if not os.path.exists(dirc):
                     Path(dirc).mkdir(exist_ok=True, parents=True)
-                tensorflow.keras.models.save_model(model,
-                                                   p)
+                data.dump(dirc, p, model)
                 log.write('Training LSTM (pred) based OCSVM with:')
                 log.write(
                     'data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
@@ -170,13 +168,12 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                 model_raw.fit(pred)
                 end = time.time()
                 dirc = SCADA_base + '\\SVMs\\' + models_folder
-                p = dirc + '\\' + model_name + '_nu_{}_'.format(
+                p = model_name + '_nu_{}_'.format(
                     n) + 'kernel_{}.sav'.format(
                     k)
                 if not os.path.exists(dirc):
                     Path(dirc).mkdir(exist_ok=True, parents=True)
-                tensorflow.keras.models.save_model(model_raw,
-                                                   p)
+                data.dump(dirc, p, model_raw)
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
 
 
@@ -193,8 +190,10 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
     diff_x_train = np.abs(pred - y_train)
     diff_path = SCADA_base + '\\RF datasets\\RF_diff_{}'.format(models_folder)
     raw_path = SCADA_base + '\\RF datasets\\RF_{}'.format(models_folder)
-    if not os.path.exists(SCADA_base + '\\RF datasets'):
-        Path(SCADA_base + '\\RF datasets').mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(diff_path):
+        Path(diff_path).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(raw_path):
+        Path(raw_path).mkdir(parents=True, exist_ok=True)
     data.dump(diff_path, "diff_X_train_{}".format(model_name),
               diff_x_train)
     data.dump(raw_path, "X_train_{}".format(model_name), pred)
@@ -220,13 +219,12 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
             dirc = SCADA_base + '\\RFs\\' + 'diff_' + models_folder
-            p = dirc + '\\' + 'diff_' + model_name + '_estimators_{}_'.format(
+            p = 'diff_' + model_name + '_estimators_{}_'.format(
                 estimators) + 'criterion_{}_'.format(
                 criterion) + 'features_{}.sav'.format(max_features)
             if not os.path.exists(dirc):
                 Path(dirc).mkdir(exist_ok=True, parents=True)
-            tensorflow.keras.models.save_model(model,
-                                               p)
+            data.dump(dirc, p, model)
             model_raw = RandomForestClassifier(n_estimators=estimators, criterion=criterion, max_features=max_features)
             log.write('Training LSTM (pred) based RF with:\n')
             log.write('data version: {}, binning: {}, number of bins: {}\n'.format(version, binning, number_of_bins))
@@ -236,13 +234,12 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             end = time.time()
             log.write('Trained, time elapsed:{}\n'.format(end - start))
             dirc = SCADA_base + '\\RFs\\' + models_folder
-            p = dirc + '\\' + model_name + '_estimators_{}_'.format(
+            p = model_name + '_estimators_{}_'.format(
                 estimators) + 'criterion_{}_'.format(
                 criterion) + 'features_{}.sav'.format(max_features)
             if not os.path.exists(dirc):
                 Path(dirc).mkdir(exist_ok=True, parents=True)
-            tensorflow.keras.models.save_model(model_raw,
-                                               p)
+            data.dump(dirc, p, model_raw)
 
 
 def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
