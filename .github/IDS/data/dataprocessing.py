@@ -30,7 +30,6 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: test injection.
 # TODO: test output.
 # TODO: make sure symbol numbers are matching-force an ordering of dictionary keys.
 # TODO: retrain all LSTMs and record their training time.
