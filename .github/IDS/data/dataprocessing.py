@@ -32,7 +32,8 @@ most_used = ['30', '75', '120', '195', '15']
 
 # TODO: test injection.
 # TODO: test output.
-# TODO: make sure symbols number are matching, define test sets for the comparison.
+# TODO: make sure symbols number are matching.
+# TODO: test sets for comparison.
 # TODO: retrain all LSTMs and record their scores and training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
