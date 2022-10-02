@@ -61,7 +61,7 @@ def get_models_folders_data_folders(train_config):
     data_versions = params['data_versions']
     data_folders = []
     models_folders = []
-    for option in zip(binning_part_in_folder, data_versions):
+    for option in itertools.product(binning_part_in_folder, data_versions):
         binning_part = option[0]
         data_version = option[1]
         data_folders.append(binning_part + '_' + data_version)
@@ -85,7 +85,7 @@ def train_RF(RF_train_config_file_path):
 def train_OCSVM(OCSVM_train_config_file_path):
     with open(OCSVM_train_config_file_path, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
-        zipped = itertools.product(models_folders, data_folders)
+        zipped = zip(models_folders, data_folders)
         for folder_pair in zipped:
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]
@@ -671,7 +671,7 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
 
                                                 pred = LSTM.predict(X_test)
                                                 test_labels = labels[20:]
-                                                if prefix is 'diff_':
+                                                if prefix == 'diff_':
                                                     test = np.abs(pred - y_test)
                                                 else:
                                                     test = pred
@@ -707,7 +707,7 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                           'step over': step_over,
                                                           'injection epsilon': epsilon,
                                                           'percentage': percentage}
-                                                if prefix is 'diff':
+                                                if prefix == 'diff_':
                                                     split_model = classifier.split(model_name)[1]
                                                 else:
                                                     split_model = classifier.split(model_name)[0]
@@ -947,3 +947,11 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
         results_df['name'] = 'KL-RF'
         best_df.to_excel(excel_writer=writer, sheet_name='KL based RF best scores')
         results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
+
+
+if __name__ == '__main__':
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\SVM config.yaml', mode='r') as path:
+        models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(path)
+        print(models_folders)
+        print(data_folders)
+        print(binning_dict)
