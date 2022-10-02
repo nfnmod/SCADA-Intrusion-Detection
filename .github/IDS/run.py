@@ -61,7 +61,7 @@ def get_models_folders_data_folders(train_config):
     data_versions = params['data_versions']
     data_folders = []
     models_folders = []
-    for option in itertools.product(binning_part_in_folder, data_versions):
+    for option in zip(binning_part_in_folder, data_versions):
         binning_part = option[0]
         data_version = option[1]
         data_folders.append(binning_part + '_' + data_version)
@@ -73,7 +73,7 @@ def get_models_folders_data_folders(train_config):
 def train_RF(RF_train_config_file_path):
     with open(RF_train_config_file_path, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
-        zipped = itertools.product(models_folders, data_folders)
+        zipped = zip(models_folders, data_folders)
         for folder_pair in zipped:
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]

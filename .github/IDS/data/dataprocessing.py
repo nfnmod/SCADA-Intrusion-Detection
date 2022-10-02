@@ -31,7 +31,7 @@ most_used = ['30', '75', '120', '195', '15']
 
 
 # TODO: test output.
-# TODO: make sure symbol numbers are matching-force an ordering of dictionary keys.
+# TODO: make sure symbol numbers are matching-force an ordering of dictionary keys, make sure the symbols in the test set are defined as wel.
 # TODO: retrain all LSTMs and record their training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
