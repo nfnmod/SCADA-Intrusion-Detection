@@ -19,7 +19,7 @@ class TIRP:
         self.instances_to_entities_relation = instances_to_entities_relation
         self.symbols = parse_raw_symbols(raw_symbols)
         self.relations = parse_raw_relations(raw_relations)
-        self.instances = parse_raw_instances(raw_instances)
+        self.instances = parse_raw_instances(raw_instances, size)
         self.mean_duration = calculate_mean_duration(self.instances)
         self.support = None
 
@@ -43,22 +43,43 @@ def parse_raw_relations(raw_relations):
     return split
 
 
-def parse_raw_instances(raw_instances):
+def parse_raw_instances(raw_instances, size):
     partial = raw_instances.split(sep=' ')
-    print(partial)
     events_dict = dict()
     last_entity = None
     for i in range(len(partial)):
         curr_part = partial[i]
         if curr_part[0] == '[':
+            # this part of the string represents the times of the instances of the TIRP for a specific entity.
             start_finish = partial[i].split(sep='-')
-            start = int(start_finish[0][1])
-            finish = int(start_finish[1][0])
-            event_times = (start, finish,)
-            print(i, event_times)
-            events_dict[last_entity].append(event_times)
+            # loop over instances.
+            start = -1
+            finish = -1
+            for part_num in range(2 * size - 1):
+                # each instance is split into a list of size 2 * |TIRP| + 1.
+                # each part that starts with [ stands for the starting time of an event.
+                # each part that starts with a number and has no ] in it stands for the finish time of one event and
+                # the beginning of the next one.
+                # each part that ends with a ] stands for the finish time of an event.
+                timestamp = start_finish[part_num]
+                if timestamp[0] == '[':
+                    start = int(timestamp[1:])
+                elif timestamp[-1] == ']':
+                    finish = int(timestamp[:-1])
+                    event_times = (start, finish,)
+                    events_dict[last_entity].append(event_times)
+                else:
+                    finish_index = timestamp.index(']')
+                    start_index = timestamp.index('[')
+                    finish = int(timestamp[:finish_index])
+                    event_times = (start, finish,)
+                    events_dict[last_entity].append(event_times)
+                    start = int(timestamp[start_index + 1:])
         else:
+            # this part of the string represents an entity ID.
             last_entity = partial[i]
+            if last_entity not in events_dict.keys():
+                events_dict[last_entity] = []
     return events_dict
 
 
@@ -69,7 +90,7 @@ def parse_line(raw_line):
     raw_relations = parts[2]
     supporting_entities = int(parts[3])
     instances_to_entities_relation = float(parts[4])
-    raw_instances_split = parts[-1]
+    raw_instances_split = parts[5:]
     raw_instances = raw_instances_split[0]
     for part in range(1, len(raw_instances_split)):
         raw_instances += (" " + raw_instances_split[part])

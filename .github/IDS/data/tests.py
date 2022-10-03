@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -296,17 +296,27 @@ class TestDataConversions(unittest.TestCase):
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
         datestrs = ["Mar 22, 2022 21:13:36.902262",
-                    "Mar 22, 2022 21:13:36.903262",
-                    "Mar 22, 2022 21:13:36.904262",
-                    "Mar 22, 2022 21:13:36.905262",
-                    "Mar 22, 2022 21:13:36.906262",
-                    "Mar 22, 2022 21:13:36.907262",
-                    "Mar 22, 2022 21:13:36.908262",
-                    "Mar 22, 2022 21:13:36.909262",
-                    "Mar 22, 2022 21:13:36.910262",
-                    "Mar 22, 2022 21:13:36.911262"]
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262"]
 
         times = [datetime.strptime(date_str, '%b %d, %Y %H:%M:%S.%f') for date_str in datestrs]
+        m = [100] * 10
+        for i in range(len(times)):
+            times[i] += timedelta(seconds=m[i] * i)
+
+        original = []
+        for i in range(len(times) - 1):
+            p = times[i]
+            n = times[i + 1]
+            ia = (n - p).total_seconds()
+            original.append(ia)
 
         dst_ips = np.repeat('0', 10)
         src_ips = np.repeat('1', 10)
@@ -336,17 +346,33 @@ class TestDataConversions(unittest.TestCase):
         df['func_code'] = func_codes
         df['payload'] = payloads
 
-        injected, labels = data.injections.inject_to_raw_data(df, 3, 2, -50, 0.00001)
-        print(injected)
-        print(labels)
-        inter_arrivals = []
-        for i in range(len(df) - 1):
-            c = df.iloc[i]
-            n = df.iloc[i + 1]
-            ia = (n['time'] - c['time']).total_seconds()
-            inter_arrivals.append(ia)
-        print(inter_arrivals)
+        def check(expected_labels, expected_ia):
+            for i in range(len(expected_labels)):
+                assert expected_labels[i] == labels[i]
+            for i in range(len(expected_ia)):
+                assert expected_ia[i] == inter_arrivals[i]
 
+        def make_ia(df):
+            inter_arrivals = []
+            for i in range(len(df) - 1):
+                c = df.iloc[i]
+                n = df.iloc[i + 1]
+                ia = (n['time'] - c['time']).total_seconds()
+                inter_arrivals.append(ia)
+            return inter_arrivals
+
+        cpy = df.copy()
+        injected, labels = data.injections.inject_to_raw_data(df, 3, 2, 50, 0.00001)
+        inter_arrivals = []
+        inter_arrivals = make_ia(df)
+        expected_ia = [100, 100, 50, 100, 150, 100, 100, 50, 100]
+        expected_labels = [1, 1, 1, 0, 0, 1, 1, 1, 0, 0]
+        check(expected_labels, expected_ia)
+        injected, labels = data.injections.inject_to_raw_data(cpy, 3, 2, -50, 0.00001)
+        inter_arrivals = make_ia(cpy)
+        expected_ia = [50, 100, 150, 100, 50, 100, 100, 150, 100]
+        expected_labels = [0, 1, 1, 0, 0, 1, 1, 1, 0, 0]
+        check(expected_labels, expected_ia)
 
 if __name__ == 'main':
     TestDataConversions()

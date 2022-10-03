@@ -83,35 +83,38 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
     i = 0
     length = len(test_data)
     labels = np.zeros(length)
+    cpy = test_data.copy()
     while i < length - injection_length + 1:
         # 1. get the "next" packet of the PLC (if exists) and use it as a limit of the change in the arrival time of the packet.
         # calculate new arrival time.
         if percentage > 0:
             for j in range(i + injection_length - 1, i - 1, -1):
-                pkt = test_data.iloc[j]
-                old_time = test_data.iloc[j, 0]
-                next_pkt_idx = get_next_pkt_idx(pkt, test_data, j + 1)
+                pkt = cpy.iloc[j]
+                old_time = cpy.iloc[j, 0]
+                next_pkt_idx = get_next_pkt_idx(pkt, cpy, j + 1)
                 if next_pkt_idx != - 1:
-                    inter_arrival = (test_data.iloc[next_pkt_idx, 0] - old_time).total_seconds()
+                    next_time = cpy.iloc[next_pkt_idx, 0]
+                    inter_arrival = (next_time - old_time).total_seconds()
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
-                    max_limit = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=epsilon)
-                    new_time = old_time + timedelta(seconds=inter_arrival * (1 + (percentage / 100)))
+                    max_limit = cpy.iloc[next_pkt_idx, 0] - timedelta(seconds=epsilon)
+                    new_time = old_time + timedelta(seconds=inter_arrival * (percentage / 100))
                     if new_time > max_limit:
                         new_time = max_limit
                     labels[j] = 1
                     test_data.iloc[j, 0] = new_time
         else:
             for j in range(i, i + injection_length):
-                pkt = test_data.iloc[j]
-                old_time = test_data.iloc[j, 0]
-                prev_pkt_idx = get_prev_pkt_idx(pkt, test_data, j - 1)
+                pkt = cpy.iloc[j]
+                old_time = cpy.iloc[j, 0]
+                prev_pkt_idx = get_prev_pkt_idx(pkt, cpy, j - 1)
                 if prev_pkt_idx != -1:
-                    inter_arrival = (old_time - test_data.iloc[prev_pkt_idx, 0]).total_seconds()
+                    prev_time = cpy.iloc[prev_pkt_idx, 0]
+                    inter_arrival = (old_time - prev_time).total_seconds()
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
-                    min_limit = test_data.iloc[prev_pkt_idx, 0] + timedelta(seconds=epsilon)
-                    new_time = old_time + timedelta(seconds=inter_arrival * (1 + (percentage / 100)))
+                    min_limit = prev_time + timedelta(seconds=epsilon)
+                    new_time = old_time + timedelta(seconds=inter_arrival * (percentage / 100))
                     if new_time < min_limit:
                         new_time = min_limit
                     labels[j] = 1
