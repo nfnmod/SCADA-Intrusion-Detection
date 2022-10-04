@@ -1223,12 +1223,12 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 p_p = prev_pkts.iloc[p_i]
                 p_c = prev_pkts.iloc[p_i + 1]
                 secs = float((p_c['time'] - p_p['time']).total_seconds())
-                np.append(times_data, secs)
-            np.append(times_data,
-                      float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
+                times_data = np.append(times_data, secs)
+            times_data = np.append(times_data,
+                                   float(
+                                       (curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
             mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.argmin)
-            print(mp_df)
             for j in range(neighborhood - w + 1):
                 new['mp_time_' + str(j)] = mp_df.iloc[j]
         temp_df = pd.DataFrame.from_dict(columns=cols, data={'0': [new[c] for c in cols]}, orient='index')
@@ -1480,8 +1480,6 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
                 chosen_dist_dict[c] = chosen_dist[i]
             temp_df = pd.DataFrame.from_dict(data={'0': [chosen_dist_dict[c] for c in series_dv.columns]},
                                              columns=series_dv.columns, orient='index')
-            print('temp df')
-            print(temp_df)
             series_dv = pd.concat([series_dv, temp_df], axis=0, ignore_index=True)
             # slide
             j += 1
@@ -1495,8 +1493,6 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
     while i < len(float_df) - series_len + 1:
         curr_series = float_df.iloc[i: i + series_len]
         dv = calc_dv(curr_series, window)
-        print('dv')
-        print(dv)
         dvs = pd.concat([dvs, dv], axis=0, ignore_index=True)
         # jump
         i += jump
@@ -1526,7 +1522,7 @@ def get_inter_arrival_times_stats():
 
 def process(anomalous_data, name, bins, binning):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
-             "equal_width": equal_width_discretization}
+             "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
         return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
@@ -1634,11 +1630,3 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
     with pd.ExcelWriter(comparisons_file, mode='w') as writer:
         results_df.to_excel(writer, sheet_name=sheet_name)
 
-
-if __name__ == '__main__':
-    data = load('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets', 'test_df')
-    test, labels = injections.inject_to_raw_data(data, 2, 2, 20, 0.000000001)
-    res = embedding_v1(test, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
-                       binner=equal_frequency_discretization,
-                       n_bins=5, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
-    print(res)
