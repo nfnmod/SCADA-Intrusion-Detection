@@ -273,7 +273,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
     """
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
     """
-    test_data = data.load(data.datasets_path, raw_test_data_df)
+    test_data = data.load(test_sets_base_folder, raw_test_data_df)
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
         injection_lengths = injection_params['InjectionLength']
@@ -310,12 +310,11 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                         p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_{}_{}_{}_{}.csv'.format(
                                             name, injection_length,
                                             step_over, percentage, epsilon)
-                                        p_labels_HTM = test_sets_base_folder + '\\HTM_\\{}\\labels_{}_{}_{}_{}'.format(
+                                        p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_{}_{}_{}_{}'.format(
                                             name, injection_length,
                                             step_over, percentage, epsilon)
 
-                                        Path(p_x_test_HTM).mkdir(parents=True, exist_ok=True)
-                                        Path(p_labels_HTM).mkdir(parents=True, exist_ok=True)
+                                        Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True, exist_ok=True)
 
                                         with open(p_x_test_HTM, mode='w', newline='') as test_file:
                                             writer = csv.writer(test_file)
@@ -331,14 +330,14 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                        mode='a')
 
                                         with open(p_labels_HTM, mode='w') as labels_path:
-                                            pickle.dump(labels_path, labels_path)
+                                            pickle.dump(labels, labels_path)
 
                                         # now same thing for LSTM, OCSVM.
                                         for number_of_bins in bins:
                                             test_df = data.process(anomalous_data, name, number_of_bins, method_name)
                                             # now create test data set for LSTM. Only need X_test and y_test.
                                             X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
-                                                                                                              20, 42, 0)
+                                                                                                              20, 42, train=0.0)
                                             # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
                                             p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
                                                 folder_name, name, number_of_bins, desc, injection_length,
@@ -351,9 +350,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 step_over, percentage, epsilon)
 
                                             # make sure dirs exist and dump.
-                                            Path(p_x_test).mkdir(parents=True, exist_ok=True)
-                                            Path(p_y_test).mkdir(parents=True, exist_ok=True)
-                                            Path(p_labels).mkdir(parents=True, exist_ok=True)
+                                            Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(folder_name, name, number_of_bins)).mkdir(parents=True, exist_ok=True)
 
                                             with open(p_x_test, mode='wb') as data_path:
                                                 pickle.dump(X_test, data_path)
@@ -960,8 +957,9 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\SVM config.yaml', mode='r') as path:
-        models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(path)
-        print(models_folders)
-        print(data_folders)
-        print(binning_dict)
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\test sets processing config.yaml', mode='r') as path:
+        file = yaml.load(path, Loader=yaml.FullLoader)
+    proc = file['processing_config']
+    for k in proc:
+        print(k)
+

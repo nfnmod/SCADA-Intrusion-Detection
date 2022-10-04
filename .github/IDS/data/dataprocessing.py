@@ -16,6 +16,7 @@ from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
 
 import models
+from data import injections
 
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
@@ -30,7 +31,6 @@ to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
 
-# TODO: create test sets.
 # TODO: retrain all LSTMs and record their training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -1228,6 +1228,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                       float((curr_pkt['time'] - (prev_pkts.iloc[neighborhood - 1])['time']).total_seconds()))
             times_df = pd.DataFrame(columns=['time'], data=times_data)
             mp_df = matrix_profiles_pre_processing(times_df, neighborhood, w, j, np.argmin)
+            print(mp_df)
             for j in range(neighborhood - w + 1):
                 new['mp_time_' + str(j)] = mp_df.iloc[j]
         temp_df = pd.DataFrame.from_dict(columns=cols, data={'0': [new[c] for c in cols]}, orient='index')
@@ -1479,6 +1480,8 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
                 chosen_dist_dict[c] = chosen_dist[i]
             temp_df = pd.DataFrame.from_dict(data={'0': [chosen_dist_dict[c] for c in series_dv.columns]},
                                              columns=series_dv.columns, orient='index')
+            print('temp df')
+            print(temp_df)
             series_dv = pd.concat([series_dv, temp_df], axis=0, ignore_index=True)
             # slide
             j += 1
@@ -1492,6 +1495,8 @@ def matrix_profiles_pre_processing(pkt_data, series_len, window, jump, index_fin
     while i < len(float_df) - series_len + 1:
         curr_series = float_df.iloc[i: i + series_len]
         dv = calc_dv(curr_series, window)
+        print('dv')
+        print(dv)
         dvs = pd.concat([dvs, dv], axis=0, ignore_index=True)
         # jump
         i += jump
@@ -1631,7 +1636,9 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    mean, std, minimum, maximum, max_2, min_2, max_3, min_3 = get_inter_arrival_times_stats()
-    print('the mean is: {}\n the std is: {}\n the min is: {}\n the max is: {}\n'.format(mean, std, minimum, maximum))
-    print('2nd biggest is {}\n 2nd smallest is {}'.format(max_2, min_2))
-    print('3nd biggest is {}\n 3nd smallest is {}'.format(max_3, min_3))
+    data = load('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets', 'test_df')
+    test, labels = injections.inject_to_raw_data(data, 2, 2, 20, 0.000000001)
+    res = embedding_v1(test, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+                       binner=equal_frequency_discretization,
+                       n_bins=5, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
+    print(res)

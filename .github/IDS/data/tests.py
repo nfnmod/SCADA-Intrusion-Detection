@@ -362,6 +362,7 @@ class TestDataConversions(unittest.TestCase):
             return inter_arrivals
 
         cpy = df.copy()
+        print(cpy)
         injected, labels = data.injections.inject_to_raw_data(df, 3, 2, 50, 0.00001)
         inter_arrivals = []
         inter_arrivals = make_ia(df)
@@ -373,6 +374,7 @@ class TestDataConversions(unittest.TestCase):
         expected_ia = [50, 100, 150, 100, 50, 100, 100, 150, 100]
         expected_labels = [0, 1, 1, 0, 0, 1, 1, 1, 0, 0]
         check(expected_labels, expected_ia)
+
 
 if __name__ == 'main':
     TestDataConversions()
