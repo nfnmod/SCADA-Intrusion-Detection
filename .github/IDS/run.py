@@ -433,6 +433,8 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
 
     name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
                    'KMeans': TIRP.k_means_binning}
+    func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
+               TIRP.equal_width_discretization: 'equal_width'}
     # first, grid over injection params.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
@@ -471,9 +473,17 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
 
                                         # discover TIRPs.
+                                        # pass symbols and entities that were previously found.
+                                        suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]], number_of_bins, window_size)
+                                        symbols_path = TIRP.input.KL_symbols + suffix
+                                        entities_path = TIRP.input.KL_entities + suffix
+                                        with open(symbols_path, mode='rb') as syms_path:
+                                            ready_symbols = pickle.load(syms_path)
+                                        with open(entities_path, mode='rb') as ent_path:
+                                            ready_entities = pickle.load(ent_path)
                                         TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
                                                         window_size, consider_last=True, stats_dict=stats_dict,
-                                                        test_path=test_path_sliding_windows)
+                                                        test_path=test_path_sliding_windows, ready_symbols=ready_symbols, ready_entities=ready_entities)
 
                                         # create the labels for the RF classifier.
                                         # for each window: [start, end]

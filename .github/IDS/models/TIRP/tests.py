@@ -80,6 +80,12 @@ class TestInputPreparation(unittest.TestCase):
             compressed_expected_symbols) == set() and compressed_expected_symbols.difference(symbols_no_ids) == set()
         assert entities_set.difference(expected_entities_no_ids) == set() and expected_entities_no_ids.difference(
             entities_set) == set()
+        print('events')
+        print(sw_events)
+        print('symbols')
+        print(symbols)
+        print('entities')
+        print(entities)
 
     def test_parse_raw_symbols(self):
         raw_syms = '143-245-'

@@ -1,14 +1,19 @@
 # this class is responsible for preparing the input for the KarmaLego algorithm.
 import csv
 import itertools
+import os.path
+import pickle
+from pathlib import Path
 
 import numpy as np
-# from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import KBinsDiscretizer
 
 import data
 
 payload_col_number = 6
+
+KL_symbols = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL symbols'
+KL_entities = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL entities'
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -78,7 +83,8 @@ def define_entities(df_data):
         if packet['src_port'] == data.plc_port:
             IP = packet['src_ip']
             payload = packet['payload']
-            payload_registers = [int(reg) for reg in payload.keys()]
+            # FORCE ORDER HERE.
+            payload_registers = [int(reg) for reg in sorted(payload.keys())]
             for register in payload_registers:
                 entity = (IP, register,)  # the entity id of the register of the plc.
                 existing_entity = entities.get(entity, None)  # check if it got an id already.
@@ -98,15 +104,19 @@ def get_pkt_entities(pkt):
     payload = pkt['payload']
     # entities in the packet.
     packet_entities = set()
-    for reg in payload.keys():
+    # FORCE ORDER HERE.
+    for reg in sorted(payload.keys()):
         packet_entities.add((IP, int(reg),))
     return packet_entities
 
 
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True, bin=True):
+def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True, bin=True, ready_symbols=None, ready_entites=None):
     """
 
+    :param ready_entites: same as for ready symbols
+    :param ready_symbols: when testing, we get the symbols already discovered in the data set to ensure all the symbols
+                          which can be found in the test data set are already defined.
     :param bin: bin or not (used for testing)
     :param stats_dict:
     :param df:
@@ -116,11 +126,15 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
+    if ready_symbols is None:
+        ready_symbols = dict()
+        df = process_payload(df, stats_dict)
+        entities = define_entities(df)
+    else:
+        entities = ready_entites
     start_time = (df.iloc[0])['time']
-    df = process_payload(df, stats_dict)
-    entities = define_entities(df)
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
-    symbols = dict()
+    symbols = ready_symbols
     symbol_counter = 0
 
     for i in range(len(df) - w + 1):
@@ -141,7 +155,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                 payload = pkt['payload']
                 # entities in the packet.
                 packet_entities = get_pkt_entities(pkt)
-                for entity in packet_entities:
+                for entity in sorted(packet_entities):
                     # find the values the entity received in the window and bin them.
                     # find the times at which the entity has received the values.
                     # create events and add them to the list of the entity's events.
@@ -206,7 +220,6 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     # create new event for the duration of the entire window and add.
                                     new_finish = round((finish - start_time).total_seconds() * 1000)
                                     sym_event = (entities[entity], values[0],)
-                                    print(values, values[0])
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
@@ -256,14 +269,18 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     return sw_events, symbols, entities
 
 
-def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None):
+def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, ready_symbols=None, ready_entities=None):
+    if ready_symbols is None:
+        ready_symbols = dict()
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last)
+    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last,
+                                                                    ready_symbols=ready_symbols, ready_entites=ready_entities)
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     if test_path is not None:
         base_path = test_path
+    # keys are the window number.
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
@@ -297,19 +314,33 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None):
                         symbol_number = event[2]
                         events_row += '{},{},{};'.format(start, finish, symbol_number)
                     writer.writerow(events_row)
+    if test_path is None:
+        # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
+        # when testing.
+        if not os.path.exists(KL_symbols):
+            Path(KL_symbols).mkdir(exist_ok=True, parents=True)
+        if not os.path.exists(KL_entities):
+            Path(KL_entities).mkdir(exist_ok=True, parents=True)
+        suffix = '\\{}_{}_{}'.format(binning[b], k, w)
+        path_sym = KL_symbols + suffix
+        with open(path_sym, mode='wb') as symbols_path:
+            pickle.dump(symbols, symbols_path)
+        path_ent = KL_entities + suffix
+        with open(path_ent, mode='wb') as entities_path:
+            pickle.dump(entities, entities_path)
 
 
 # split the raw data set into train and test. train classifier on train set.
 # when injecting anomalies change the times in the raw data and then make input for the classifier.
 # important to keep track of the malicious packets' indices.
-def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None):
+def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_symbols=None, ready_entities=None):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     base_path = data.datasets_path + '\\KL' + '\\whole_input\\all_' + binning[b] + '_bins_{}_window_{}.csv'.format(k, w)
     if test_path is not None:
         base_path = test_path
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last)
+    sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last, ready_symbols=ready_symbols, ready_entites=ready_entities)
     entity_index = 0
     with open(base_path, 'w') as all_TIRPs:
         writer = csv.writer(all_TIRPs)
@@ -368,7 +399,3 @@ def grid_input_preparation():
         print("discovered!")
         make_input(plc_df, b, k, w, stats_dict, consider_last=True)
         print("made input!")
-
-
-if __name__ == '__main__':
-    grid_input_preparation()
