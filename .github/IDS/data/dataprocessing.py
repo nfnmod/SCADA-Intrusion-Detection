@@ -16,7 +16,6 @@ from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
 
 import models
-from data import injections
 
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
@@ -30,8 +29,6 @@ plc = '132.72.249.110'
 to_bin = ['30', '120', '15']
 most_used = ['30', '75', '120', '195', '15']
 
-
-# TODO: retrain all LSTMs and record their training time.
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column

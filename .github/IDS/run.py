@@ -19,6 +19,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
 
+# TODO: retrain all LSTMs and record their training time.
+# TODO: make the tests set creation faster. (less combinations/not all data versions/process once and inject to processed df)
+
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
 HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
@@ -329,7 +332,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                         test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
                                                        mode='a')
 
-                                        with open(p_labels_HTM, mode='w') as labels_path:
+                                        with open(p_labels_HTM, mode='wb') as labels_path:
                                             pickle.dump(labels, labels_path)
 
                                         # now same thing for LSTM, OCSVM.
