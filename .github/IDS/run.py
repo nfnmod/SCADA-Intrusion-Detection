@@ -289,81 +289,82 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                 anomaly_percentage = injection_length / (injection_length + step_over)
                 if anomaly_percentage > lim:
                     pass
-                for percentage in percentages:
-                    for epsilon in epsilons:
-                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
-                                                                    epsilon)
-                        #  process the data using the different versions
-                        with open(data_versions_config, mode='r') as processing_config:
-                            config = yaml.load(processing_config, Loader=yaml.FullLoader)
-                            binnings = config['binning']
-                            data_versions = config['processing_config']
-                            for folder_name, method_name in binnings.items():
-                                # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
-                                for data_version in data_versions:
-                                    to_use = data_version['use']
-                                    if not to_use:
-                                        pass
-                                    else:
-                                        name = data_version['name']
-                                        bins = data_version['bins']
-                                        desc = data_version['desc']
+                else:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
+                                                                        epsilon)
+                            #  process the data using the different versions
+                            with open(data_versions_config, mode='r') as processing_config:
+                                config = yaml.load(processing_config, Loader=yaml.FullLoader)
+                                binnings = config['binning']
+                                data_versions = config['processing_config']
+                                for folder_name, method_name in binnings.items():
+                                    # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
+                                    for data_version in data_versions:
+                                        to_use = data_version['use']
+                                        if not to_use:
+                                            pass
+                                        else:
+                                            name = data_version['name']
+                                            bins = data_version['bins']
+                                            desc = data_version['desc']
 
-                                        # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
-                                        # the classifiers based on the HTM network.
-                                        # no binning for HTM, only scaling.
-                                        test_df = data.process(anomalous_data, name, None, None)
-                                        p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_{}_{}_{}_{}.csv'.format(
-                                            name, injection_length,
-                                            step_over, percentage, epsilon)
-                                        p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_{}_{}_{}_{}'.format(
-                                            name, injection_length,
-                                            step_over, percentage, epsilon)
-
-                                        Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True, exist_ok=True)
-
-                                        with open(p_x_test_HTM, mode='w', newline='') as test_file:
-                                            writer = csv.writer(test_file)
-                                            test_cols = list(test_df.columns)
-                                            # write columns names
-                                            writer.writerow(test_cols)
-                                            # write columns types
-                                            columns_types = ['float'] * len(test_cols)
-                                            # no flags
-                                            writer.writerow(columns_types)
-                                            writer.writerow([])
-                                        test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
-                                                       mode='a')
-
-                                        with open(p_labels_HTM, mode='wb') as labels_path:
-                                            pickle.dump(labels, labels_path)
-
-                                        # now same thing for LSTM, OCSVM.
-                                        for number_of_bins in bins:
-                                            test_df = data.process(anomalous_data, name, number_of_bins, method_name)
-                                            # now create test data set for LSTM. Only need X_test and y_test.
-                                            X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
-                                                                                                              20, 42, train=0.0)
-                                            # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
-                                            p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
-                                                folder_name, name, number_of_bins, desc, injection_length,
+                                            # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
+                                            # the classifiers based on the HTM network.
+                                            # no binning for HTM, only scaling.
+                                            test_df = data.process(anomalous_data, name, None, None)
+                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_{}_{}_{}_{}.csv'.format(
+                                                name, injection_length,
                                                 step_over, percentage, epsilon)
-                                            p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_{}_{}_{}_{}_{}'.format(
-                                                folder_name, name, number_of_bins, desc, injection_length,
-                                                step_over, percentage, epsilon)
-                                            p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
-                                                folder_name, name, number_of_bins, desc, injection_length,
+                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_{}_{}_{}_{}'.format(
+                                                name, injection_length,
                                                 step_over, percentage, epsilon)
 
-                                            # make sure dirs exist and dump.
-                                            Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(folder_name, name, number_of_bins)).mkdir(parents=True, exist_ok=True)
+                                            Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True, exist_ok=True)
 
-                                            with open(p_x_test, mode='wb') as data_path:
-                                                pickle.dump(X_test, data_path)
-                                            with open(p_y_test, mode='wb') as data_path:
-                                                pickle.dump(y_test, data_path)
-                                            with open(p_labels, mode='wb') as data_path:
-                                                pickle.dump(labels, data_path)
+                                            with open(p_x_test_HTM, mode='w', newline='') as test_file:
+                                                writer = csv.writer(test_file)
+                                                test_cols = list(test_df.columns)
+                                                # write columns names
+                                                writer.writerow(test_cols)
+                                                # write columns types
+                                                columns_types = ['float'] * len(test_cols)
+                                                # no flags
+                                                writer.writerow(columns_types)
+                                                writer.writerow([])
+                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
+                                                           mode='a')
+
+                                            with open(p_labels_HTM, mode='wb') as labels_path:
+                                                pickle.dump(labels, labels_path)
+
+                                            # now same thing for LSTM, OCSVM.
+                                            for number_of_bins in bins:
+                                                test_df = data.process(anomalous_data, name, number_of_bins, method_name)
+                                                # now create test data set for LSTM. Only need X_test and y_test.
+                                                X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
+                                                                                                                  20, 42, train=0.0)
+                                                # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
+                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
+                                                    folder_name, name, number_of_bins, desc, injection_length,
+                                                    step_over, percentage, epsilon)
+                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_{}_{}_{}_{}_{}'.format(
+                                                    folder_name, name, number_of_bins, desc, injection_length,
+                                                    step_over, percentage, epsilon)
+                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
+                                                    folder_name, name, number_of_bins, desc, injection_length,
+                                                    step_over, percentage, epsilon)
+
+                                                # make sure dirs exist and dump.
+                                                Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(folder_name, name, number_of_bins)).mkdir(parents=True, exist_ok=True)
+
+                                                with open(p_x_test, mode='wb') as data_path:
+                                                    pickle.dump(X_test, data_path)
+                                                with open(p_y_test, mode='wb') as data_path:
+                                                    pickle.dump(y_test, data_path)
+                                                with open(p_labels, mode='wb') as data_path:
+                                                    pickle.dump(labels, data_path)
 
 
 def create_test_files_DFA(raw_test_data_df, injection_config):
@@ -384,47 +385,48 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                 anomaly_percentage = injection_length / (injection_length + step_over)
                 if anomaly_percentage > lim:
                     pass
-                for percentage in percentages:
-                    for epsilon in epsilons:
-                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
-                                                                    epsilon)
-                        test_df = data.process(anomalous_data, 'v3', None, None)
+                else:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
+                                                                        epsilon)
+                            test_df = data.process(anomalous_data, 'v3', None, None)
 
-                        # we need to know which transitions include anomalies to create the test labels.
-                        # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
-                        # state as anomalous.
-                        # labels of transitions.
-                        transitions_labels = []
-                        # time in state.
-                        time_in_state = 0
-                        # number of state
-                        state_idx = 0
-                        # labels of the packets in the state.
-                        packet_labels_in_state = []
-                        for pkt_idx in range(len(anomalous_data)):
-                            time_in_state += test_df.iloc[pkt_idx, 0]
-                            if time_in_state == test_df.iloc[state_idx, 0]:
-                                time_in_state = 0
-                                state_idx += 1
-                                transitions_labels.append(max(packet_labels_in_state))
-                                packet_labels_in_state = []
-                            else:
-                                packet_labels_in_state.append(labels[pkt_idx])
+                            # we need to know which transitions include anomalies to create the test labels.
+                            # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
+                            # state as anomalous.
+                            # labels of transitions.
+                            transitions_labels = []
+                            # time in state.
+                            time_in_state = 0
+                            # number of state
+                            state_idx = 0
+                            # labels of the packets in the state.
+                            packet_labels_in_state = []
+                            for pkt_idx in range(len(anomalous_data)):
+                                time_in_state += test_df.iloc[pkt_idx, 0]
+                                if time_in_state == test_df.iloc[state_idx, 0]:
+                                    time_in_state = 0
+                                    state_idx += 1
+                                    transitions_labels.append(max(packet_labels_in_state))
+                                    packet_labels_in_state = []
+                                else:
+                                    packet_labels_in_state.append(labels[pkt_idx])
 
-                        p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}_{}_{}'.format(injection_length,
-                                                                                              step_over,
-                                                                                              percentage, epsilon)
-                        p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}'.format(injection_length,
-                                                                                              step_over,
-                                                                                              percentage, epsilon)
+                            p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}_{}_{}'.format(injection_length,
+                                                                                                  step_over,
+                                                                                                  percentage, epsilon)
+                            p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}'.format(injection_length,
+                                                                                                  step_over,
+                                                                                                  percentage, epsilon)
 
-                        Path(p_x_test).mkdir(parents=True, exist_ok=True)
-                        Path(p_labels).mkdir(parents=True, exist_ok=True)
+                            Path(p_x_test).mkdir(parents=True, exist_ok=True)
+                            Path(p_labels).mkdir(parents=True, exist_ok=True)
 
-                        with open(p_x_test, mode='wb') as test_path:
-                            pickle.dump(test_df, test_path)
-                        with open(p_labels, mode='wb') as p_labels:
-                            pickle.dump(transitions_labels, p_labels)
+                            with open(p_x_test, mode='wb') as test_path:
+                                pickle.dump(test_df, test_path)
+                            with open(p_labels, mode='wb') as p_labels:
+                                pickle.dump(transitions_labels, p_labels)
 
 
 def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
@@ -464,61 +466,62 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                     anomaly_percentage = injection_length / (injection_length + step_over)
                     if anomaly_percentage > lim:
                         pass
-                    for percentage in percentages:
-                        for epsilon in epsilons:
-                            # inject in each possible way.
-                            # labels will be used for creation of expected labels for the RF.
-                            test_data = data.load(data.datasets_path, raw_test_data_df)
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                        percentage,
-                                                                        epsilon)
-                            for method in binning:
-                                for number_of_bins in bins:
-                                    for window_size in window_sizes:
-                                        # discover TIRPs in separate windows.
-                                        test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{_{}_{}_{}_{}'.format(
-                                            method, number_of_bins, window_size, injection_length, step_over,
-                                            percentage, epsilon)
+                    else:
+                        for percentage in percentages:
+                            for epsilon in epsilons:
+                                # inject in each possible way.
+                                # labels will be used for creation of expected labels for the RF.
+                                test_data = data.load(data.datasets_path, raw_test_data_df)
+                                anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                            percentage,
+                                                                            epsilon)
+                                for method in binning:
+                                    for number_of_bins in bins:
+                                        for window_size in window_sizes:
+                                            # discover TIRPs in separate windows.
+                                            test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{_{}_{}_{}_{}'.format(
+                                                method, number_of_bins, window_size, injection_length, step_over,
+                                                percentage, epsilon)
 
-                                        # make sure dirs exists.
-                                        Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
+                                            # make sure dirs exists.
+                                            Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
 
-                                        # discover TIRPs.
-                                        # pass symbols and entities that were previously found.
-                                        suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]], number_of_bins, window_size)
-                                        symbols_path = TIRP.input.KL_symbols + suffix
-                                        entities_path = TIRP.input.KL_entities + suffix
-                                        with open(symbols_path, mode='rb') as syms_path:
-                                            ready_symbols = pickle.load(syms_path)
-                                        with open(entities_path, mode='rb') as ent_path:
-                                            ready_entities = pickle.load(ent_path)
-                                        TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
-                                                        window_size, consider_last=True, stats_dict=stats_dict,
-                                                        test_path=test_path_sliding_windows, ready_symbols=ready_symbols, ready_entities=ready_entities)
+                                            # discover TIRPs.
+                                            # pass symbols and entities that were previously found.
+                                            suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]], number_of_bins, window_size)
+                                            symbols_path = TIRP.input.KL_symbols + suffix
+                                            entities_path = TIRP.input.KL_entities + suffix
+                                            with open(symbols_path, mode='rb') as syms_path:
+                                                ready_symbols = pickle.load(syms_path)
+                                            with open(entities_path, mode='rb') as ent_path:
+                                                ready_entities = pickle.load(ent_path)
+                                            TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
+                                                            window_size, consider_last=True, stats_dict=stats_dict,
+                                                            test_path=test_path_sliding_windows, ready_symbols=ready_symbols, ready_entities=ready_entities)
 
-                                        # create the labels for the RF classifier.
-                                        # for each window: [start, end]
-                                        test_labels_RF = []
-                                        for i in range(len(anomalous_data) - window_size):
-                                            # get the labels for the windows' packets.
-                                            window_labels = labels[i, i + window_size]
-                                            # the label is 0 for a benign packet and 1 for an anomalous packets.
-                                            # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
-                                            window_label = max(window_labels)
-                                            # add label.
-                                            test_labels_RF.append(window_label)
-                                        path = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
-                                            method,
-                                            number_of_bins,
-                                            window_size,
-                                            injection_length,
-                                            step_over,
-                                            percentage,
-                                            epsilon)
+                                            # create the labels for the RF classifier.
+                                            # for each window: [start, end]
+                                            test_labels_RF = []
+                                            for i in range(len(anomalous_data) - window_size):
+                                                # get the labels for the windows' packets.
+                                                window_labels = labels[i, i + window_size]
+                                                # the label is 0 for a benign packet and 1 for an anomalous packets.
+                                                # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
+                                                window_label = max(window_labels)
+                                                # add label.
+                                                test_labels_RF.append(window_label)
+                                            path = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
+                                                method,
+                                                number_of_bins,
+                                                window_size,
+                                                injection_length,
+                                                step_over,
+                                                percentage,
+                                                epsilon)
 
-                                        Path(path).mkdir(parents=True, exist_ok=True)
-                                        with open(path, mode='wb') as labels_path:
-                                            pickle.dump(test_labels_RF, labels_path)
+                                            Path(path).mkdir(parents=True, exist_ok=True)
+                                            with open(path, mode='wb') as labels_path:
+                                                pickle.dump(test_labels_RF, labels_path)
 
 
 def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
@@ -557,32 +560,33 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                             anomaly_percentage = injection_length / (injection_length + step_over)
                                             if anomaly_percentage > 0.2:
                                                 pass
-                                            for percentage in percentages:
-                                                for injection_epsilon in injection_epsilons:
-                                                    # outDir + String.Format("\\{0}_{1}_{2}_{3}\
-                                                    output_base = test_sets_base_folder + '\\KL\\KL out'
-                                                    desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
-                                                        binning_method, b, window, injection_length, step_over,
-                                                        percentage, injection_epsilon, epsilon, min_ver_sup, max_gap)
-                                                    out_dir = output_base + desc
-                                                    # call parse_output
-                                                    windows_TIRPs_df = TIRP.output.parse_output(whole_TIRP_file_out,
-                                                                                                out_dir)
-                                                    # the true labels were saved earlier.
-                                                    windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
-                                                        columns=['anomaly'])
-                                                    path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
-                                                        binning_method,
-                                                        b,
-                                                        window,
-                                                        injection_length,
-                                                        step_over,
-                                                        percentage,
-                                                        injection_epsilon,
-                                                        epsilon, min_ver_sup, max_gap)
-                                                    Path(path).mkdir(parents=True, exist_ok=True)
-                                                    with open(path, mode='wb') as samples_path:
-                                                        pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
+                                            else:
+                                                for percentage in percentages:
+                                                    for injection_epsilon in injection_epsilons:
+                                                        # outDir + String.Format("\\{0}_{1}_{2}_{3}\
+                                                        output_base = test_sets_base_folder + '\\KL\\KL out'
+                                                        desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
+                                                            binning_method, b, window, injection_length, step_over,
+                                                            percentage, injection_epsilon, epsilon, min_ver_sup, max_gap)
+                                                        out_dir = output_base + desc
+                                                        # call parse_output
+                                                        windows_TIRPs_df = TIRP.output.parse_output(whole_TIRP_file_out,
+                                                                                                    out_dir)
+                                                        # the true labels were saved earlier.
+                                                        windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
+                                                            columns=['anomaly'])
+                                                        path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
+                                                            binning_method,
+                                                            b,
+                                                            window,
+                                                            injection_length,
+                                                            step_over,
+                                                            percentage,
+                                                            injection_epsilon,
+                                                            epsilon, min_ver_sup, max_gap)
+                                                        Path(path).mkdir(parents=True, exist_ok=True)
+                                                        with open(path, mode='wb') as samples_path:
+                                                            pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
 
 
 def make_best(results_df):
@@ -974,9 +978,13 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\test sets processing config.yaml', mode='r') as path:
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\injection config.yaml', mode='r') as path:
         file = yaml.load(path, Loader=yaml.FullLoader)
-    proc = file['processing_config']
-    for k in proc:
-        print(k)
+    ls = file['InjectionLength']
+    sos = file['StepOver']
+    for l in ls:
+        for so in sos:
+            if l / (l + so) > 0.2:
+                pass
+            print(l, so)
 
