@@ -20,7 +20,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
 
 # TODO: retrain all LSTMs and record their training time.
-# TODO: make the tests set creation faster. (less combinations/not all data versions/process once and inject to processed df)
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
@@ -277,6 +276,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
     """
     test_data = data.load(test_sets_base_folder, raw_test_data_df)
+    lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
         injection_lengths = injection_params['InjectionLength']
@@ -286,6 +286,9 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
         # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
         for injection_length in injection_lengths:
             for step_over in step_overs:
+                anomaly_percentage = injection_length / (injection_length + step_over)
+                if anomaly_percentage > lim:
+                    pass
                 for percentage in percentages:
                     for epsilon in epsilons:
                         anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
@@ -295,7 +298,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                             config = yaml.load(processing_config, Loader=yaml.FullLoader)
                             binnings = config['binning']
                             data_versions = config['processing_config']
-                            for folder_name, method_name in binnings:
+                            for folder_name, method_name in binnings.items():
                                 # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
                                 for data_version in data_versions:
                                     to_use = data_version['use']
@@ -374,9 +377,13 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
         step_overs = injection_params['StepOver']
         percentages = injection_params['Percentage']
         epsilons = injection_params['Epsilon']
+        lim = 0.2
         # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
         for injection_length in injection_lengths:
             for step_over in step_overs:
+                anomaly_percentage = injection_length / (injection_length + step_over)
+                if anomaly_percentage > lim:
+                    pass
                 for percentage in percentages:
                     for epsilon in epsilons:
                         anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
@@ -451,8 +458,12 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
             window_max = window_params['end']
             window_step = window_params['step']
             window_sizes = range(window_min, window_max, window_step)
+            lim = 0.2
             for injection_length in injection_lengths:
                 for step_over in step_overs:
+                    anomaly_percentage = injection_length / (injection_length + step_over)
+                    if anomaly_percentage > lim:
+                        pass
                     for percentage in percentages:
                         for epsilon in epsilons:
                             # inject in each possible way.
@@ -543,6 +554,9 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                     # anomalies using the injection params.
                                     for injection_length in injection_lengths:
                                         for step_over in step_overs:
+                                            anomaly_percentage = injection_length / (injection_length + step_over)
+                                            if anomaly_percentage > 0.2:
+                                                pass
                                             for percentage in percentages:
                                                 for injection_epsilon in injection_epsilons:
                                                     # outDir + String.Format("\\{0}_{1}_{2}_{3}\
