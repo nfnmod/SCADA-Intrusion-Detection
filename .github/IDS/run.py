@@ -978,13 +978,8 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\injection config.yaml', mode='r') as path:
-        file = yaml.load(path, Loader=yaml.FullLoader)
-    ls = file['InjectionLength']
-    sos = file['StepOver']
-    for l in ls:
-        for so in sos:
-            if l / (l + so) > 0.2:
-                pass
-            print(l, so)
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\RF config.yaml', mode='r') as config:
+        params = yaml.load(config, Loader=yaml.FullLoader)
+        dict_p = params['params_dict']
+        print(dict_p['max_features'])
 

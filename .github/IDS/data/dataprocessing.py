@@ -441,15 +441,16 @@ def make_payload(modbus_dict, src_port):
     payload = {}
     if code == 3:
         # it's a response packet
-        if src_port == plc_port:
-
+        if src_port == plc_port and 'modbus.exception_code' not in modbus_dict.keys():
+            expected_vals = int(modbus_dict['modbus.byte_cnt']) / 2
             registers_keys = list(modbus_dict.keys())[4::]
+            if 'modbus.request_frame' not in modbus_dict.keys():
+                registers_keys = list(modbus_dict.keys())[2::]
             for register_key in registers_keys:
                 splitted_key = register_key.split(" ")
                 register = splitted_key[1]
                 val = splitted_key[-1]
                 payload[register] = val
-
     return payload
 
 
@@ -467,20 +468,20 @@ def dissect(pkt_dict):
 def filter_data(json_files_dir):
     cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
     df = pd.DataFrame(columns=cols)
-    codes = ['3', '6', '16']
+    codes = ['3']
     for filename in os.listdir(json_files_dir):
         print("working on ", filename)
+
         file = open(json_files_dir + "//" + filename, "r")
         pkt_data = json.load(file)
         filtered_packets = filter(lambda pkt_dict: pkt_dict['_source']['layers']['modbus']['modbus.func_code'] in codes,
                                   pkt_data)
         dissected_packets = map(lambda pkt_dict: dissect(pkt_dict), filtered_packets)
         file_df = pd.DataFrame(dissected_packets)
-        df = df.append(file_df)
+        df = pd.concat([df, file_df], ignore_index=True, axis=0)
 
     df = df.sort_values('time')
-
-    with open(datasets_path + "\\modbus", "wb") as df_file:
+    with open(datasets_path + "\\modbus6", "wb") as df_file:
         pickle.dump(df, df_file)
 
 
