@@ -95,12 +95,12 @@ def make_automaton(registers, pkts):
     processed_train, processed_test = train_test_split(processed, test_size=0.2)
     data.dump(data.automaton_datasets_path, "train", processed_train)
     data.dump(data.automaton_datasets_path, "test", processed_test)
-    for i in range(len(processed_train) - 1):
+    for i in range(len(processed) - 1):
         # this saves a state and the time we were in the state.
         # the next packet is the next state.
         # so a pair of packets describes a transition and the time in state of the first packet is the duration.
-        curr_pkt = processed[i]
-        switched_state_pkt = processed[i + 1]
+        curr_pkt = processed.iloc[i]
+        switched_state_pkt = processed.iloc[i + 1]
         state_duration = curr_pkt['time_in_state']
         # the starting state
         state = dict()
@@ -122,9 +122,9 @@ def make_automaton(registers, pkts):
         if new_transition(transition, transitions):
             global transition_id
             transition.id = transition_id
-            transition_id += 1
             transitions.append(transition)
-            transitions_times[transition_id] = [state_duration]
+            transitions_times.append([state_duration])
+            transition_id += 1
         else:
             # look for the transition with the same states
             same_transition = find_same(transition, transitions)
@@ -134,8 +134,12 @@ def make_automaton(registers, pkts):
     for transition in transitions:
         id = transition.id
         times = transitions_times[id]
-        mean_time_in_state = statistics.mean(times)
-        std_time_in_state = statistics.stdev(times)
+        if len(times) == 1:
+            mean_time_in_state = times[0]
+            std_time_in_state = 0
+        else:
+            mean_time_in_state = statistics.mean(times)
+            std_time_in_state = statistics.stdev(times)
         transition.upper_limit = mean_time_in_state + 3 * std_time_in_state
         transition.lower_limit = mean_time_in_state - 3 * std_time_in_state
     return Automaton(states, transitions)
