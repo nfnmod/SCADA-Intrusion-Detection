@@ -329,13 +329,13 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
             Path(KL_events).mkdir(exist_ok=True, parents=True)
         suffix = '\\{}_{}_{}'.format(binning[b], k, w)
         path_sym = KL_symbols + suffix
-        with open(path_sym, mode='w') as symbols_path:
+        with open(path_sym, mode='wb') as symbols_path:
             pickle.dump(symbols, symbols_path)
         path_ent = KL_entities + suffix
-        with open(path_ent, mode='w') as entities_path:
+        with open(path_ent, mode='wb') as entities_path:
             pickle.dump(entities, entities_path)
         path_events = KL_events + suffix
-        with open(path_events, mode='w') as events_p:
+        with open(path_events, mode='wb') as events_p:
             pickle.dump(sw_events, events_p)
 
 
@@ -368,7 +368,7 @@ def discover(b, k, w, test_path=None):
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = load_events_in_sliding_windows(binning[b], k, w)
     entity_index = 0
-    with open(base_path, 'w') as all_TIRPs:
+    with open(base_path, 'w', newline='') as all_TIRPs:
         writer = csv.writer(all_TIRPs)
         writer.writerow(['startToncepts'])
         writer.writerow(['numberOfEntities,{}'.format(len(entities.keys()))])
@@ -399,29 +399,3 @@ def discover(b, k, w, test_path=None):
                         events_row += '{},{},{};'.format(start, finish, symbol_number)
                     writer.writerow([events_row])
 
-
-def grid_input_preparation():
-    binning_methods = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
-    number_of_bins = range(5, 11)
-    windows = range(200, 325, 25)
-    pkt_df = data.load(data.datasets_path, "modbus")
-    IP = data.plc
-    # consider only response packets from the PLC.
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP) & (pkt_df['src_port'] == data.plc_port)]
-    """indices = range(len(plc_df))
-    train, test = train_test_split(indices, test_size=0.2, random_state=42)
-    train_df = plc_df.iloc[train]
-    test_df = plc_df.iloc[test]"""
-    stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
-    bins_window_options = itertools.product(number_of_bins, windows)
-    options = itertools.product(binning_methods, bins_window_options)
-    # data.dump(data.datasets_path, "train_raw_automaton_TIRP", train_df)
-    # data.dump(data.datasets_path, "test_raw_automaton_TIRP", test_df)
-    for option in options:
-        b = option[0]
-        k = option[1][0]
-        w = option[1][1]
-        discover(b, k, w)
-        print("discovered!")
-        make_input(plc_df, b, k, w, stats_dict, consider_last=True)
-        print("made input!")
