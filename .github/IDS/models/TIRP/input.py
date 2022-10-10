@@ -16,6 +16,9 @@ KL_entities = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL entiti
 KL_events = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL events'
 
 
+# TODO: optimize the events making. save time and value of value change only.
+# TODO: debug the symbols making.
+
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper functions to bin data
 def k_means_binning(values, n_bins):
@@ -111,7 +114,8 @@ def get_pkt_entities(pkt):
 
 
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True, bin=True, ready_symbols=None, ready_entites=None):
+def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True, bin=True, ready_symbols=None,
+                                     ready_entites=None):
     """
 
     :param ready_entites: same as for ready symbols
@@ -296,7 +300,8 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     return sw_events, symbols, entities
 
 
-def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, ready_symbols=None, ready_entities=None):
+def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, ready_symbols=None,
+               ready_entities=None):
     if ready_symbols is None:
         ready_symbols = dict()
         ready_entities = dict()
@@ -304,7 +309,8 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
     sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last,
-                                                                    ready_symbols=ready_symbols, ready_entites=ready_entities)
+                                                                    ready_symbols=ready_symbols,
+                                                                    ready_entites=ready_entities)
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     if test_path is not None:
         base_path = test_path
@@ -424,4 +430,3 @@ def discover(b, k, w, test_path=None):
                         symbol_number = event[2]
                         events_row += '{},{},{};'.format(start, finish, symbol_number)
                     writer.writerow([events_row])
-
