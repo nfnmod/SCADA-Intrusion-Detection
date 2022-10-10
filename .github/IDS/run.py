@@ -127,8 +127,7 @@ def make_input_for_KL(TIRP_config_file_path):
             b = binning_methods[option[0]]
             k = option[1][0]
             w = option[1][1]
-            TIRP.make_input(plc_df.iloc[0:500, :], b, k, w, stats_dict=stats_dict, consider_last=True)
-            TIRP.discover(b, k, w)
+            TIRP.make_input(plc_df, b, k, w, stats_dict=stats_dict, consider_last=True)
 
 
 def train_RF_from_KL(KL_config_file_path):

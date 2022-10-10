@@ -1,6 +1,5 @@
 # this class is responsible for preparing the input for the KarmaLego algorithm.
 import csv
-import itertools
 import os.path
 import pickle
 from pathlib import Path
