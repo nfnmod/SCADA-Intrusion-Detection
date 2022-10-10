@@ -59,7 +59,8 @@ class TestInputPreparation(unittest.TestCase):
         df['payload'] = payloads
 
         stats_dict = data.get_plcs_values_statistics(pkt_df=df, n=10, to_df=False)
-        sw_events, symbols, entities = input.define_events_in_sliding_windows(df, -1, -1, 4, stats_dict, True, False)
+        sw_events, symbols, entities = input.define_events_in_sliding_windows(df, -1, -1, 4, stats_dict, True, False,
+                                                                              dict(), dict())
         expected_entities = {('1', 1,): 0, ('1', 2): 1, ('1', 3): 2, ('1', 4): 3, ('1', 9): 4}
         expected_entities_no_ids = set(expected_entities.keys())
         entities_set = set(entities)
@@ -76,6 +77,8 @@ class TestInputPreparation(unittest.TestCase):
             reg_syms = [(entity_id, val,) for val in vals]
             compressed_expected_symbols = compressed_expected_symbols.union(set(reg_syms))
         symbols_no_ids = set(symbols.keys())
+        print(sorted(symbols_no_ids))
+        print(sorted(compressed_expected_symbols))
         assert symbols_no_ids.difference(
             compressed_expected_symbols) == set() and compressed_expected_symbols.difference(symbols_no_ids) == set()
         assert entities_set.difference(expected_entities_no_ids) == set() and expected_entities_no_ids.difference(

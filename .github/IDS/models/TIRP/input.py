@@ -135,16 +135,26 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = ready_symbols
     symbol_counter = 0
+    prev_entities = []
+    prev_times = []
+    prev_values = []
 
     for i in range(len(df) - w + 1):
         checked_entities = []
         window = df.iloc[i: i + w]
         window_entities = set()
-        for w_i in range(len(window)):
-            w_pkt = window.iloc[w_i]
-            src = w_pkt['src_port']
-            if src == data.plc_port:
-                window_entities = window_entities.union(get_pkt_entities(w_pkt))
+        if i == 0:
+            for w_i in range(len(window)):
+                w_pkt = window.iloc[w_i]
+                src = w_pkt['src_port']
+                if src == data.plc_port:
+                    prev_entities += list(get_pkt_entities(w_pkt))
+            window_entities = set(prev_entities)
+        else:
+            to_remove = list(get_pkt_entities(df.iloc[i - 1]))
+            prev_entities = prev_entities[len(to_remove):]
+            prev_entities += list(get_pkt_entities(window.iloc[-1]))
+            window_entities = set(prev_entities)
         entities_events = {e: [] for e in window_entities}
         for j in range(w):
             pkt = window.iloc[j]
@@ -163,21 +173,38 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                     # then it wouldn't be unchecked.
                     if entity not in checked_entities:
                         reg_num = entity[1]
-                        values = [float(payload[str(reg_num)])]
-                        times = [round((pkt['time'] - start_time).total_seconds() * 1000)]
-                        for k_w in range(j + 1, w):
-                            w_pkt = window.iloc[k_w]
+                        values = []
+                        times = []
+                        if i == 0:
+                            values = [float(payload[str(reg_num)])]
+                            times = [round((pkt['time'] - start_time).total_seconds() * 1000)]
+                            for k_w in range(j + 1, w):
+                                w_pkt = window.iloc[k_w]
+                                # check for the entity in the payload.
+                                if w_pkt['src_port'] == data.plc_port:
+                                    w_IP = w_pkt['src_ip']
+                                    w_reg_val = w_pkt['payload'].get(str(reg_num), None)
+                                    if w_IP == IP and w_reg_val is not None:
+                                        values.append(float(w_reg_val))
+                                        times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
+                            prev_times = [t for t in times]
+                            prev_values = [v for v in values]
+                        else:
+                            prev_times = prev_times[1:]
+                            prev_values = prev_values[1:]
+                            w_pkt = window.iloc[-1]
                             # check for the entity in the payload.
                             if w_pkt['src_port'] == data.plc_port:
                                 w_IP = w_pkt['src_ip']
                                 w_reg_val = w_pkt['payload'].get(str(reg_num), None)
                                 if w_IP == IP and w_reg_val is not None:
                                     values.append(float(w_reg_val))
+                                    prev_values.append(float(w_reg_val))
                                     times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
+                                    prev_times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
-                            print(values)
                             values = b(values, k)  # bin.
                         n = 0
                         if len(values) > 0:

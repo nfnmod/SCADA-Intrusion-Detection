@@ -977,5 +977,7 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    make_input_for_KL('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\TIRP config.yaml')
+    pkt_df = data.load(data.datasets_path, 'modbus')
+    plc_df = pkt_df.loc[(pkt_df['src_ip'] == data.plc)]
+    print(len(plc_df))
 
