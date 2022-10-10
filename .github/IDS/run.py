@@ -127,8 +127,8 @@ def make_input_for_KL(TIRP_config_file_path):
             b = binning_methods[option[0]]
             k = option[1][0]
             w = option[1][1]
-            TIRP.discover(plc_df, b, k, w, consider_last=True, stats_dict=stats_dict)
             TIRP.make_input(plc_df, b, k, w, stats_dict=stats_dict, consider_last=True)
+            TIRP.discover(b, k, w)
 
 
 def train_RF_from_KL(KL_config_file_path):
@@ -978,26 +978,5 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    """with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\modbus6', mode='rb') as data_p:
-        pkt_df = pickle.load(data_p)
-        pkt_df = pkt_df.loc[(pkt_df['dst_ip'] == data.plc) | (pkt_df['src_ip'] == data.plc)]
-        r15 = set()
-        r30 = set()
-        r120 = set()
-        for i in range(len(pkt_df)):
-            pkt = pkt_df.iloc[i]
-            src_port = pkt['src_port']
-            if src_port == data.plc_port:
-                payload = pkt['payload']
-                print(payload.keys())
-                if '15' in payload.keys():
-                    r15.add(payload['15'])
-                if '30' in payload.keys():
-                    r15.add(payload['30'])
-                if '120' in payload.keys():
-                    r15.add(payload['120'])
-        print(r15)
-        print(r30)
-        print(r120)"""
-    train_automaton()
+    make_input_for_KL('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\config\\TIRP config.yaml')
 

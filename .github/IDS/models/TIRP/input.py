@@ -14,6 +14,7 @@ payload_col_number = 6
 
 KL_symbols = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL symbols'
 KL_entities = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL entities'
+KL_events = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL events'
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -126,8 +127,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
-    if ready_symbols is None:
-        ready_symbols = dict()
+    if ready_symbols == dict():
         df = process_payload(df, stats_dict)
         entities = define_entities(df)
     else:
@@ -178,6 +178,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
+                            print(values)
                             values = b(values, k)  # bin.
                         n = 0
                         if len(values) > 0:
@@ -272,6 +273,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
 def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, ready_symbols=None, ready_entities=None):
     if ready_symbols is None:
         ready_symbols = dict()
+        ready_entities = dict()
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
@@ -303,11 +305,11 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
             with open(window_path, 'w', newline='') as window_file:
                 # now write the events of each entity to the file.
                 writer = csv.writer(window_file)
-                writer.writerow('startToncepts')
-                writer.writerow('numberOfEntities,{}'.format(entity_counter))
+                writer.writerow(['startToncepts'])
+                writer.writerow(['numberOfEntities,{}'.format(entity_counter)])
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{};'.format(entities[writeable_entity], entity_index))
+                    writer.writerow('{},{};'.format(writeable_entity, entity_index))
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
@@ -315,14 +317,16 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                         finish = event[1]
                         symbol_number = event[2]
                         events_row += '{},{},{};'.format(start, finish, symbol_number)
-                    writer.writerow(events_row)
+                    writer.writerow([events_row])
     if test_path is None:
         # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
-        # when testing.
+        # when testing and discovering.
         if not os.path.exists(KL_symbols):
             Path(KL_symbols).mkdir(exist_ok=True, parents=True)
         if not os.path.exists(KL_entities):
             Path(KL_entities).mkdir(exist_ok=True, parents=True)
+        if not os.path.exists(KL_events):
+            Path(KL_events).mkdir(exist_ok=True, parents=True)
         suffix = '\\{}_{}_{}'.format(binning[b], k, w)
         path_sym = KL_symbols + suffix
         with open(path_sym, mode='wb') as symbols_path:
@@ -330,12 +334,29 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
         path_ent = KL_entities + suffix
         with open(path_ent, mode='wb') as entities_path:
             pickle.dump(entities, entities_path)
+        path_events = KL_events + suffix
+        with open(path_events, mode='wb') as events_p:
+            pickle.dump(sw_events, events_p)
 
 
 # split the raw data set into train and test. train classifier on train set.
 # when injecting anomalies change the times in the raw data and then make input for the classifier.
 # important to keep track of the malicious packets' indices.
-def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_symbols=None, ready_entities=None):
+def load_events_in_sliding_windows(b, k, w):
+    suffix = '\\{}_{}_{}'.format(b, k, w)
+    path_sym = KL_symbols + suffix
+    with open(path_sym, mode='wb') as symbols_path:
+        symbols = pickle.load(symbols_path)
+    path_ent = KL_entities + suffix
+    with open(path_ent, mode='wb') as entities_path:
+        entities = pickle.load(entities_path)
+    path_events = KL_events + suffix
+    with open(path_events, mode='wb') as events_p:
+        events = pickle.load(events_p)
+    return events, symbols, entities
+
+
+def discover(b, k, w, test_path=None):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     p_base = data.datasets_path + '//KL' + '//whole_input'
@@ -345,12 +366,12 @@ def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_s
     if test_path is not None:
         base_path = test_path
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = define_events_in_sliding_windows(plc_df, b, k, w, stats_dict, consider_last, ready_symbols=ready_symbols, ready_entites=ready_entities)
+    sw_events, symbols, entities = load_events_in_sliding_windows(binning[b], k, w)
     entity_index = 0
     with open(base_path, 'w') as all_TIRPs:
         writer = csv.writer(all_TIRPs)
-        writer.writerow('startToncepts')
-        writer.writerow('numberOfEntities,{}'.format(len(entities.keys())))
+        writer.writerow(['startToncepts'])
+        writer.writerow(['numberOfEntities,{}'.format(len(entities.keys()))])
         for sw_num in sorted(sw_events.keys()):
             # hold the events of all the entities in that window.
             window_events = sw_events[sw_num]
@@ -368,7 +389,7 @@ def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_s
             else:
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{};'.format(entities[writeable_entity], entity_index))
+                    writer.writerow('{},{};'.format(writeable_entity, entity_index))
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
@@ -376,7 +397,7 @@ def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_s
                         finish = event[1]
                         symbol_number = event[2]
                         events_row += '{},{},{};'.format(start, finish, symbol_number)
-                    writer.writerow(events_row)
+                    writer.writerow([events_row])
 
 
 def grid_input_preparation():
@@ -400,7 +421,7 @@ def grid_input_preparation():
         b = option[0]
         k = option[1][0]
         w = option[1][1]
-        discover(plc_df, b, k, w, consider_last=True, stats_dict=stats_dict)
+        discover(b, k, w)
         print("discovered!")
         make_input(plc_df, b, k, w, stats_dict, consider_last=True)
         print("made input!")
