@@ -309,7 +309,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                 writer.writerow(['numberOfEntities,{}'.format(entity_counter)])
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{};'.format(writeable_entity, entity_index))
+                    writer.writerow(['{},{};'.format(writeable_entity, entity_index)])
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
@@ -329,13 +329,13 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
             Path(KL_events).mkdir(exist_ok=True, parents=True)
         suffix = '\\{}_{}_{}'.format(binning[b], k, w)
         path_sym = KL_symbols + suffix
-        with open(path_sym, mode='wb') as symbols_path:
+        with open(path_sym, mode='w') as symbols_path:
             pickle.dump(symbols, symbols_path)
         path_ent = KL_entities + suffix
-        with open(path_ent, mode='wb') as entities_path:
+        with open(path_ent, mode='w') as entities_path:
             pickle.dump(entities, entities_path)
         path_events = KL_events + suffix
-        with open(path_events, mode='wb') as events_p:
+        with open(path_events, mode='w') as events_p:
             pickle.dump(sw_events, events_p)
 
 
@@ -345,13 +345,13 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
 def load_events_in_sliding_windows(b, k, w):
     suffix = '\\{}_{}_{}'.format(b, k, w)
     path_sym = KL_symbols + suffix
-    with open(path_sym, mode='wb') as symbols_path:
+    with open(path_sym, mode='rb') as symbols_path:
         symbols = pickle.load(symbols_path)
     path_ent = KL_entities + suffix
-    with open(path_ent, mode='wb') as entities_path:
+    with open(path_ent, mode='rb') as entities_path:
         entities = pickle.load(entities_path)
     path_events = KL_events + suffix
-    with open(path_events, mode='wb') as events_p:
+    with open(path_events, mode='rb') as events_p:
         events = pickle.load(events_p)
     return events, symbols, entities
 
@@ -389,7 +389,7 @@ def discover(b, k, w, test_path=None):
             else:
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{};'.format(writeable_entity, entity_index))
+                    writer.writerow(['{},{};'.format(writeable_entity, entity_index)])
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
