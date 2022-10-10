@@ -280,6 +280,8 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
     if test_path is not None:
         base_path = test_path
+    if not os.path.exists(base_path):
+        Path(base_path).mkdir(parents=True, exist_ok=True)
     # keys are the window number.
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
@@ -305,7 +307,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                 writer.writerow('numberOfEntities,{}'.format(entity_counter))
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{}'.format(entities[writeable_entity], entity_index))
+                    writer.writerow('{},{};'.format(entities[writeable_entity], entity_index))
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:
@@ -336,7 +338,10 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
 def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_symbols=None, ready_entities=None):
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
-    base_path = data.datasets_path + '\\KL' + '\\whole_input\\all_' + binning[b] + '_bins_{}_window_{}.csv'.format(k, w)
+    p_base = data.datasets_path + '//KL' + '//whole_input'
+    if not os.path.exists(p_base):
+        Path(p_base).mkdir(parents=True, exist_ok=True)
+    base_path = p_base + '\\all_' + binning[b] + '_bins_{}_window_{}.csv'.format(k, w)
     if test_path is not None:
         base_path = test_path
     # get a dictionary mapping from sw_number to the events in it.
@@ -363,7 +368,7 @@ def discover(plc_df, b, k, w, consider_last, stats_dict, test_path=None, ready_s
             else:
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow('{},{}'.format(entities[writeable_entity], entity_index))
+                    writer.writerow('{},{};'.format(entities[writeable_entity], entity_index))
                     entity_index += 1
                     events_row = ''
                     for event in events_to_write:

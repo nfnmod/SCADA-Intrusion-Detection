@@ -111,7 +111,7 @@ def make_input_for_KL(TIRP_config_file_path):
     pkt_df = data.load(data.datasets_path, "modbus")
     IP = data.plc
     # consider only response packets from the PLC.
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP) & (pkt_df['dst_ip'] == IP)]
+    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
     stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
     with open(TIRP_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
@@ -128,7 +128,7 @@ def make_input_for_KL(TIRP_config_file_path):
             k = option[1][0]
             w = option[1][1]
             TIRP.discover(plc_df, b, k, w, consider_last=True, stats_dict=stats_dict)
-            TIRP.make_input(plc_df, b, k, w, stats_dict, consider_last=True)
+            TIRP.make_input(plc_df, b, k, w, stats_dict=stats_dict, consider_last=True)
 
 
 def train_RF_from_KL(KL_config_file_path):
