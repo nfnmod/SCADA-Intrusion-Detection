@@ -135,7 +135,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     start_time = (df.iloc[0])['time']
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = ready_symbols
-    symbol_counter = 0
+    symbol_counter = len(symbols.keys())
     # per window
     prev_entities = []
 
@@ -214,7 +214,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
                                     new_finish = round((finish - start_time).total_seconds() * 1000)
-                                    last_event = (times[-1], new_finish, symbols[sym_event])
+                                    last_event = (times[-1], new_finish, symbols[sym_event],)
                                     entities_events[entity].append(last_event)
                                 elif len(values) == 1:
                                     # len(values) = 1, only 1 value was received for the entity.
