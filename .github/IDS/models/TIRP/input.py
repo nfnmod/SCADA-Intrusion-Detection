@@ -293,18 +293,20 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                 # now write the events of each entity to the file.
                 writer = csv.writer(window_file)
                 writer.writerow(['startToncepts'])
-                writer.writerow(['numberOfEntities,{}'.format(entity_counter)])
+                writer.writerow(['numberOfEntities', entity_counter])
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow(['{},{};'.format(writeable_entity, entity_index)])
+                    writer.writerow([str(writeable_entity), str(entity_index) + ';'])
                     entity_index += 1
-                    events_row = ''
+                    events_row = []
                     for event in events_to_write:
                         start = event[0]
                         finish = event[1]
                         symbol_number = event[2]
-                        events_row += '{},{},{};'.format(start, finish, symbol_number)
-                    writer.writerow([events_row])
+                        events_row.append(str(start))
+                        events_row.append(str(finish))
+                        events_row.append(str(symbol_number) + ';')
+                    writer.writerow(events_row)
     if test_path is None:
         # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
         # when testing and discovering.
