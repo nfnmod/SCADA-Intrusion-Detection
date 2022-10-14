@@ -2,6 +2,7 @@
 import csv
 import os.path
 import pickle
+from math import ceil
 from pathlib import Path
 
 import numpy as np
@@ -174,7 +175,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                     if entity not in checked_entities:
                         reg_num = entity[1]
                         values = [float(payload[str(reg_num)])]
-                        times = [round((pkt['time'] - start_time).total_seconds() * 1000)]
+                        times = [ceil((pkt['time'] - start_time).total_seconds() * 1000)]
                         for k_w in range(j + 1, w):
                             w_pkt = window.iloc[k_w]
                             # check for the entity in the payload.
@@ -183,7 +184,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 w_reg_val = w_pkt['payload'].get(str(reg_num), None)
                                 if w_IP == IP and w_reg_val is not None and (len(values) == 0 or values[-1] != w_reg_val):
                                     values.append(float(w_reg_val))
-                                    times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
+                                    times.append(ceil((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
@@ -213,13 +214,13 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
-                                    new_finish = round((finish - start_time).total_seconds() * 1000)
+                                    new_finish = ceil((finish - start_time).total_seconds() * 1000)
                                     last_event = (times[-1], new_finish, symbols[sym_event],)
                                     entities_events[entity].append(last_event)
                                 elif len(values) == 1:
                                     # len(values) = 1, only 1 value was received for the entity.
                                     # create new event for the duration of the entire window and add.
-                                    new_finish = round((finish - start_time).total_seconds() * 1000)
+                                    new_finish = ceil((finish - start_time).total_seconds() * 1000)
                                     sym_event = (entities[entity], values[0],)
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
@@ -231,7 +232,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 # of this window as there are no more windows.
                                 # if only 1 than that single value holds for the entire duration of the window.
                                 v = values[len(values) - 1]
-                                finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds() * 1000)
+                                finish_time = ceil((window.iloc[-1]['time'] - start_time).total_seconds() * 1000)
                                 if len(values) > 1:
                                     # they are different, add new event for the last value.
                                     event_start = times[-1]

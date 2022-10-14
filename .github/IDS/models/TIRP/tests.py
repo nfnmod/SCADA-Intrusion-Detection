@@ -90,7 +90,7 @@ class TestInputPreparation(unittest.TestCase):
         print(symbols)
         print('entities')
         print(entities)
-        base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\temp'
+        base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\temo'
         for sw_num in sorted(sw_events.keys()):
             # hold the events of all the entities in that window.
             window_events = sw_events[sw_num]
@@ -122,8 +122,8 @@ class TestInputPreparation(unittest.TestCase):
                             start = event[0]
                             finish = event[1]
                             symbol_number = event[2]
-                            events_row.append(str(start))
-                            events_row.append(str(finish))
+                            events_row.append(str(start) + ',')
+                            events_row.append(str(finish) + ',')
                             events_row.append(str(symbol_number) + ';')
                         writer.writerow(events_row)
 
