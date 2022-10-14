@@ -304,9 +304,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                         start = event[0]
                         finish = event[1]
                         symbol_number = event[2]
-                        events_row.append(str(start))
-                        events_row.append(str(finish))
-                        events_row.append(str(symbol_number) + ';')
+                        events_row += ['{},{},{};'.format(start, finish, symbol_number)]
                     writer.writerow(events_row)
     if test_path is None:
         # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them

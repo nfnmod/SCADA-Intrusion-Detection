@@ -122,9 +122,7 @@ class TestInputPreparation(unittest.TestCase):
                             start = event[0]
                             finish = event[1]
                             symbol_number = event[2]
-                            events_row.append(str(start) + ',')
-                            events_row.append(str(finish) + ',')
-                            events_row.append(str(symbol_number) + ';')
+                            events_row += ['{},{},{};'.format(start, finish, symbol_number)]
                         writer.writerow(events_row)
 
     def test_parse_raw_symbols(self):
