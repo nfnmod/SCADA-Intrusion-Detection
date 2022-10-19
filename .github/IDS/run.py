@@ -19,7 +19,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
 
-# TODO: retrain all LSTMs, and LSTM based OCSVMs and record their training time.
+# TODO: retrain all LSTMs.
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'

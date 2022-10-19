@@ -78,8 +78,6 @@ class TestInputPreparation(unittest.TestCase):
             reg_syms = [(entity_id, val,) for val in vals]
             compressed_expected_symbols = compressed_expected_symbols.union(set(reg_syms))
         symbols_no_ids = set(symbols.keys())
-        print(sorted(symbols_no_ids))
-        print(sorted(compressed_expected_symbols))
         assert symbols_no_ids.difference(
             compressed_expected_symbols) == set() and compressed_expected_symbols.difference(symbols_no_ids) == set()
         assert entities_set.difference(expected_entities_no_ids) == set() and expected_entities_no_ids.difference(
@@ -90,40 +88,6 @@ class TestInputPreparation(unittest.TestCase):
         print(symbols)
         print('entities')
         print(entities)
-        base_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\temo'
-        for sw_num in sorted(sw_events.keys()):
-            # hold the events of all the entities in that window.
-            window_events = sw_events[sw_num]
-            writeable = {}
-            entity_counter = 0
-            # counter number of entities which had some events. if there are none then there is nothing to
-            # run the algorithm on so just pass on to the next window.
-            for entity_id in sorted(window_events.keys()):
-                entity_events = window_events[entity_id]
-                if len(entity_events) > 0:
-                    entity_counter += 1
-                    writeable[entity_id] = entity_events
-            if entity_counter == 0:
-                continue
-            else:
-                window_path = base_path + '\\#window_{}.csv'.format(sw_num)
-                entity_index = 0
-                with open(window_path, 'w', newline='') as window_file:
-                    # now write the events of each entity to the file.
-                    writer = csv.writer(window_file)
-                    writer.writerow(['startToncepts'])
-                    writer.writerow(['numberOfEntities', entity_counter])
-                    for writeable_entity in writeable.keys():
-                        events_to_write = writeable[writeable_entity]
-                        writer.writerow([str(writeable_entity), str(entity_index) + ';'])
-                        entity_index += 1
-                        events_row = []
-                        for event in events_to_write:
-                            start = event[0]
-                            finish = event[1]
-                            symbol_number = event[2]
-                            events_row += ['{},{},{};'.format(start, finish, symbol_number)]
-                        writer.writerow(events_row)
 
     def test_parse_raw_symbols(self):
         raw_syms = '143-245-'

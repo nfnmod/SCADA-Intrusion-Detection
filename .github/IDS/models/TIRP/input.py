@@ -2,7 +2,6 @@
 import csv
 import os.path
 import pickle
-from math import ceil
 from pathlib import Path
 
 import numpy as np
@@ -133,7 +132,6 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
         entities = define_entities(df)
     else:
         entities = ready_entites
-    start_time = (df.iloc[0])['time']
     sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
     symbols = ready_symbols
     symbol_counter = len(symbols.keys())
@@ -143,6 +141,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     for i in range(len(df) - w + 1):
         checked_entities = []
         window = df.iloc[i: i + w]
+        start_time = (window.iloc[0])['time']
         window_entities = set()
         if i == 0:
             for w_i in range(len(window)):
@@ -175,7 +174,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                     if entity not in checked_entities:
                         reg_num = entity[1]
                         values = [float(payload[str(reg_num)])]
-                        times = [ceil((pkt['time'] - start_time).total_seconds() * 1000)]
+                        times = [round((pkt['time'] - start_time).total_seconds() * 1000)]
                         for k_w in range(j + 1, w):
                             w_pkt = window.iloc[k_w]
                             # check for the entity in the payload.
@@ -184,7 +183,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 w_reg_val = w_pkt['payload'].get(str(reg_num), None)
                                 if w_IP == IP and w_reg_val is not None and (len(values) == 0 or values[-1] != w_reg_val):
                                     values.append(float(w_reg_val))
-                                    times.append(ceil((w_pkt['time'] - start_time).total_seconds() * 1000))
+                                    times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
@@ -195,7 +194,9 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                             while n < len(values) - 1:
                                 value = values[n]
                                 s_t = times[n]
-                                n += 1
+                                n += 1  # avoid infinite loop if all values are different.
+                                while n < len(values) and value == values[n]:
+                                    n += 1
                                 f_t = times[min(n, len(values) - 1)]
                                 symbol = (entities[entity], value,)
                                 if symbols.get(symbol, None) is None:
@@ -209,18 +210,38 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 finish = df.iloc[i + w]['time']
                                 if len(values) > 1:
                                     # there have been more than 1 value changes.
-                                    # the last values persists until the start of the next sliding window.
-                                    sym_event = (entities[entity], v,)
-                                    if symbols.get(sym_event, None) is None:
-                                        symbols[sym_event] = symbol_counter
-                                        symbol_counter += 1
-                                    new_finish = ceil((finish - start_time).total_seconds() * 1000)
-                                    last_event = (times[-1], new_finish, symbols[sym_event],)
-                                    entities_events[entity].append(last_event)
+                                    # last event
+                                    event = entities_events[entity][-1]
+                                    event_symbol_number = event[2]
+                                    vals = list(symbols.values())
+                                    keys = list(symbols.keys())
+                                    position = vals.index(event_symbol_number)
+                                    # get symbol of event in the tuple form.
+                                    sym = keys[position]
+                                    # the value the entity received in the last event recorded
+                                    event_value = sym[1]
+                                    # same value then extend the last event
+                                    if event_value == v:
+                                        new_finish = round((finish - start_time).total_seconds() * 1000)
+                                        # same start time and same symbol number only new finish time.
+                                        new_event = (event[0], new_finish, event[2],)
+                                        entities_events[entity][-1] = new_event
+                                    else:
+                                        # different value, add new event until the beginning of the next sliding window.
+                                        sym_event = (entities[entity], v,)
+                                        if symbols.get(sym_event, None) is None:
+                                            symbols[sym_event] = symbol_counter
+                                            symbol_counter += 1
+                                        # until the start of the next window.
+                                        new_finish = round((finish - start_time).total_seconds() * 1000)
+                                        # create event
+                                        last_event = (times[-1], new_finish, symbols[sym_event],)
+                                        # add the event
+                                        entities_events[entity].append(last_event)
                                 elif len(values) == 1:
                                     # len(values) = 1, only 1 value was received for the entity.
                                     # create new event for the duration of the entire window and add.
-                                    new_finish = ceil((finish - start_time).total_seconds() * 1000)
+                                    new_finish = round((finish - start_time).total_seconds() * 1000)
                                     sym_event = (entities[entity], values[0],)
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
@@ -228,21 +249,36 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     event = (times[0], new_finish, symbols[sym_event],)
                                     entities_events[entity].append(event)
                             elif consider_last and i + w == len(df):
-                                # if more than 1 value changes have occurred than the last value persists until the end
-                                # of this window as there are no more windows.
-                                # if only 1 than that single value holds for the entire duration of the window.
+                                # more than 1 value: compare last 2 and extend events or add event accordingly
+                                # 1 value: make event for the whole window.
                                 v = values[len(values) - 1]
-                                finish_time = ceil((window.iloc[-1]['time'] - start_time).total_seconds() * 1000)
+                                finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds() * 1000)
                                 if len(values) > 1:
                                     # they are different, add new event for the last value.
-                                    event_start = times[-1]
-                                    event_finish = finish_time
-                                    sym_event = (entities[entity], v,)
-                                    if symbols.get(sym_event, None) is None:
-                                        symbols[sym_event] = symbol_counter
-                                        symbol_counter += 1
-                                    new_event = (event_start, event_finish, symbols[sym_event],)
-                                    entities_events[entity].append(new_event)
+                                    # there have been more than 1 value changes.
+                                    # last event
+                                    event = entities_events[entity][-1]
+                                    event_symbol_number = event[2]
+                                    vals = list(symbols.values())
+                                    keys = list(symbols.keys())
+                                    position = vals.index(event_symbol_number)
+                                    # get symbol of event in the tuple form.
+                                    sym = keys[position]
+                                    # the value the entity received in the last event recorded
+                                    event_value = sym[1]
+                                    if event_value == v:
+                                        # same start time and same symbol number only new finish time.
+                                        new_event = (event[0], finish_time, event[2],)
+                                        entities_events[entity][-1] = new_event
+                                    else:
+                                        event_start = times[-1]
+                                        event_finish = finish_time
+                                        sym_event = (entities[entity], v,)
+                                        if symbols.get(sym_event, None) is None:
+                                            symbols[sym_event] = symbol_counter
+                                            symbol_counter += 1
+                                        new_event = (event_start, event_finish, symbols[sym_event],)
+                                        entities_events[entity].append(new_event)
                                 elif len(values) == 1:
                                     # a single value was received, add an event for the duration of the entire window.
                                     sym_event = (entities[entity], values[0],)
@@ -343,46 +379,3 @@ def load_events_in_sliding_windows(b, k, w):
         events = pickle.load(events_p)
     return events, symbols, entities
 
-
-def discover(b, k, w, test_path=None):
-    binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
-               equal_width_discretization: 'equal_width'}
-    p_base = data.datasets_path + '//KL' + '//whole_input'
-    if not os.path.exists(p_base):
-        Path(p_base).mkdir(parents=True, exist_ok=True)
-    base_path = p_base + '\\all_' + binning[b] + '_bins_{}_window_{}.csv'.format(k, w)
-    if test_path is not None:
-        base_path = test_path
-    # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = load_events_in_sliding_windows(binning[b], k, w)
-    entity_index = 0
-    with open(base_path, 'w', newline='') as all_TIRPs:
-        writer = csv.writer(all_TIRPs)
-        writer.writerow(['startToncepts'])
-        writer.writerow(['numberOfEntities,{}'.format(len(entities.keys()))])
-        for sw_num in sorted(sw_events.keys()):
-            # hold the events of all the entities in that window.
-            window_events = sw_events[sw_num]
-            writeable = {}
-            entity_counter = 0
-            # counter number of entities which had some events. if there are none then there is nothing to
-            # run the algorithm on so just pass on to the next window.
-            for entity_id in sorted(window_events.keys()):
-                entity_events = window_events[entity_id]
-                if len(entity_events) > 0:
-                    entity_counter += 1
-                    writeable[entity_id] = entity_events
-            if entity_counter == 0:
-                continue
-            else:
-                for writeable_entity in writeable.keys():
-                    events_to_write = writeable[writeable_entity]
-                    writer.writerow(['{},{};'.format(writeable_entity, entity_index)])
-                    entity_index += 1
-                    events_row = ''
-                    for event in events_to_write:
-                        start = event[0]
-                        finish = event[1]
-                        symbol_number = event[2]
-                        events_row += '{},{},{};'.format(start, finish, symbol_number)
-                    writer.writerow([events_row])
