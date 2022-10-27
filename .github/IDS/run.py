@@ -43,7 +43,8 @@ RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'ma
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
               'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
 
-DFA_cols = {'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'injection epsilon', 'percentage', 'precision',
+            'recall', 'auc', 'f1'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc',
@@ -98,13 +99,26 @@ def train_OCSVM(OCSVM_train_config_file_path):
 
 def train_automaton():
     pkts = data.load(data.datasets_path, "modbus")
-    with open(DFA_log, mode='a') as log:
-        log.write('Creating DFA')
+    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
+             data.equal_width_discretization: "equal_width"}
+    n_bins = [5, 6, 7, 8, 9, 10]
+    options = itertools.product(binners, n_bins)
+    for option in options:
+        bins = option[1]
+        binner = option[0]
+
+        with open(DFA_log, mode='a') as log:
+            log.write('Creating DFA')
+
         start = time.time()
-        DFA = models.automaton.make_automaton(data.to_bin, pkts)
+        DFA = models.automaton.make_automaton(data.to_bin, pkts, binner, bins)
         end = time.time()
-        log.write('Done, time elapsed:{}'.format(end - start))
-        data.dump(data.automaton_path, "DFA", DFA)
+
+        with open(DFA_log, mode='a') as log:
+            log.write('Done, time elapsed:{}'.format(end - start))
+
+        data.dump(data.automaton_path, "DFA_{}_{}".format(names[binner], bins), DFA)
 
 
 def make_input_for_KL(TIRP_config_file_path):
@@ -173,7 +187,8 @@ def train_RF_from_KL(KL_config_file_path):
                 TIRP_df = TIRP.output.parse_output(whole_TIRPS_output_path, windows_outputs_folder_path)
                 windows_features = TIRP_df[:, :-1]
                 windows_labels = TIRP_df[:, -1]
-                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2, random_state=42)
+                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2,
+                                                                    random_state=42)
                 RF_params = params['RF']
                 parameters_combinations = itertools.product(RF_params['criterion'], RF_params['max_features'])
                 parameters_combinations = itertools.product(RF_params['n_estimators'], parameters_combinations)
@@ -291,7 +306,8 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                 else:
                     for percentage in percentages:
                         for epsilon in epsilons:
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                        percentage,
                                                                         epsilon)
                             #  process the data using the different versions
                             with open(data_versions_config, mode='r') as processing_config:
@@ -320,7 +336,8 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 name, injection_length,
                                                 step_over, percentage, epsilon)
 
-                                            Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True, exist_ok=True)
+                                            Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True,
+                                                                                                         exist_ok=True)
 
                                             with open(p_x_test_HTM, mode='w', newline='') as test_file:
                                                 writer = csv.writer(test_file)
@@ -340,10 +357,12 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
 
                                             # now same thing for LSTM, OCSVM.
                                             for number_of_bins in bins:
-                                                test_df = data.process(anomalous_data, name, number_of_bins, method_name)
+                                                test_df = data.process(anomalous_data, name, number_of_bins,
+                                                                       method_name)
                                                 # now create test data set for LSTM. Only need X_test and y_test.
-                                                X_train, X_test, y_train, y_test = models.custom_train_test_split(test_df,
-                                                                                                                  20, 42, train=0.0)
+                                                X_train, X_test, y_train, y_test = models.custom_train_test_split(
+                                                    test_df,
+                                                    20, 42, train=0.0)
                                                 # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
                                                 p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
                                                     folder_name, name, number_of_bins, desc, injection_length,
@@ -356,7 +375,9 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     step_over, percentage, epsilon)
 
                                                 # make sure dirs exist and dump.
-                                                Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(folder_name, name, number_of_bins)).mkdir(parents=True, exist_ok=True)
+                                                Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
+                                                    folder_name, name, number_of_bins)).mkdir(parents=True,
+                                                                                              exist_ok=True)
 
                                                 with open(p_x_test, mode='wb') as data_path:
                                                     pickle.dump(X_test, data_path)
@@ -368,8 +389,14 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
 
 def create_test_files_DFA(raw_test_data_df, injection_config):
     """
-    only one data version so just grid over all the injection parameters.
+     just grid over all the injection parameters and binning params.
     """
+
+    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
+             data.equal_width_discretization: "equal_width"}
+    n_bins = [5, 6, 7, 8, 9, 10]
+
     test_data = data.load(data.datasets_path, raw_test_data_df)
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
@@ -387,45 +414,49 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                 else:
                     for percentage in percentages:
                         for epsilon in epsilons:
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over, percentage,
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                        percentage,
                                                                         epsilon)
-                            test_df = data.process(anomalous_data, 'v3', None, None)
+                            for binner in binners:
+                                for bins in n_bins:
+                                    test_df = data.process(anomalous_data, 'v3', binner, bins)
 
-                            # we need to know which transitions include anomalies to create the test labels.
-                            # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
-                            # state as anomalous.
-                            # labels of transitions.
-                            transitions_labels = []
-                            # time in state.
-                            time_in_state = 0
-                            # number of state
-                            state_idx = 0
-                            # labels of the packets in the state.
-                            packet_labels_in_state = []
-                            for pkt_idx in range(len(anomalous_data)):
-                                time_in_state += test_df.iloc[pkt_idx, 0]
-                                if time_in_state == test_df.iloc[state_idx, 0]:
+                                    # we need to know which transitions include anomalies to create the test labels.
+                                    # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
+                                    # state as anomalous.
+                                    # labels of transitions.
+                                    transitions_labels = []
+                                    # time in state.
                                     time_in_state = 0
-                                    state_idx += 1
-                                    transitions_labels.append(max(packet_labels_in_state))
+                                    # number of state
+                                    state_idx = 0
+                                    # labels of the packets in the state.
                                     packet_labels_in_state = []
-                                else:
-                                    packet_labels_in_state.append(labels[pkt_idx])
+                                    for pkt_idx in range(len(anomalous_data)):
+                                        time_in_state += test_df.iloc[pkt_idx, 0]
+                                        if time_in_state == test_df.iloc[state_idx, 0]:
+                                            time_in_state = 0
+                                            state_idx += 1
+                                            transitions_labels.append(max(packet_labels_in_state))
+                                            packet_labels_in_state = []
+                                        else:
+                                            packet_labels_in_state.append(labels[pkt_idx])
 
-                            p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}_{}_{}'.format(injection_length,
-                                                                                                  step_over,
-                                                                                                  percentage, epsilon)
-                            p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}'.format(injection_length,
-                                                                                                  step_over,
-                                                                                                  percentage, epsilon)
+                                    p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}{}_{}_{}_{}'.format(
+                                        names[binner], bins, injection_length,
+                                        step_over,
+                                        percentage, epsilon)
+                                    p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}_{}_{}'.format(
+                                        names[binner], bins, injection_length,
+                                        step_over,
+                                        percentage, epsilon)
+                                    if not os.path.exists(test_sets_base_folder + '\\DFA'):
+                                        Path(test_sets_base_folder + '\\DFA').mkdir(parents=True, exist_ok=True)
 
-                            Path(p_x_test).mkdir(parents=True, exist_ok=True)
-                            Path(p_labels).mkdir(parents=True, exist_ok=True)
-
-                            with open(p_x_test, mode='wb') as test_path:
-                                pickle.dump(test_df, test_path)
-                            with open(p_labels, mode='wb') as p_labels:
-                                pickle.dump(transitions_labels, p_labels)
+                                    with open(p_x_test, mode='wb') as test_path:
+                                        pickle.dump(test_df, test_path)
+                                    with open(p_labels, mode='wb') as p_labels:
+                                        pickle.dump(transitions_labels, p_labels)
 
 
 def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
@@ -442,7 +473,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
     name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
                    'KMeans': TIRP.k_means_binning}
     func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
-               TIRP.equal_width_discretization: 'equal_width'}
+                   TIRP.equal_width_discretization: 'equal_width'}
     # first, grid over injection params.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
@@ -487,7 +518,8 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
 
                                             # discover TIRPs.
                                             # pass symbols and entities that were previously found.
-                                            suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]], number_of_bins, window_size)
+                                            suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]],
+                                                                         number_of_bins, window_size)
                                             symbols_path = TIRP.input.KL_symbols + suffix
                                             entities_path = TIRP.input.KL_entities + suffix
                                             with open(symbols_path, mode='rb') as syms_path:
@@ -496,7 +528,8 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                                 ready_entities = pickle.load(ent_path)
                                             TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
                                                             window_size, consider_last=True, stats_dict=stats_dict,
-                                                            test_path=test_path_sliding_windows, ready_symbols=ready_symbols, ready_entities=ready_entities)
+                                                            test_path=test_path_sliding_windows,
+                                                            ready_symbols=ready_symbols, ready_entities=ready_entities)
 
                                             # create the labels for the RF classifier.
                                             # for each window: [start, end]
@@ -566,7 +599,8 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                         output_base = test_sets_base_folder + '\\KL\\KL out'
                                                         desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
                                                             binning_method, b, window, injection_length, step_over,
-                                                            percentage, injection_epsilon, epsilon, min_ver_sup, max_gap)
+                                                            percentage, injection_epsilon, epsilon, min_ver_sup,
+                                                            max_gap)
                                                         out_dir = output_base + desc
                                                         # call parse_output
                                                         windows_TIRPs_df = TIRP.output.parse_output(whole_TIRP_file_out,
@@ -763,15 +797,28 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                                        axis=0,
                                                                        ignore_index=True)
                                                 with open(test_LSTM_RF_OCSVM_log, mode='a') as test_log:
-                                                    test_log.write('recorded results of model from type: {}\n'.format(prefix + model_type))
-                                                    test_log.write('injection parameters are: len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, epsilon))
+                                                    test_log.write('recorded results of model from type: {}\n'.format(
+                                                        prefix + model_type))
+                                                    test_log.write(
+                                                        'injection parameters are: len: {}, step: {}, %: {}, eps: {}\n'.format(
+                                                            injection_length, step_over, percentage, epsilon))
                                                     test_log.write('model parameters:\n')
-                                                    test_log.write('data version: {}, # bins: {}, binning method: {}\n'.format(data_version_for_excel, number_of_bins_for_excel, binning_method_for_excel))
+                                                    test_log.write(
+                                                        'data version: {}, # bins: {}, binning method: {}\n'.format(
+                                                            data_version_for_excel, number_of_bins_for_excel,
+                                                            binning_method_for_excel))
                                                     if model_type == 'RF':
-                                                        test_log.write('# estimators: {}, criterion: {}, max features: {}\n'.format(result['# estimators'], result['criterion'], result['max features']))
+                                                        test_log.write(
+                                                            '# estimators: {}, criterion: {}, max features: {}\n'.format(
+                                                                result['# estimators'], result['criterion'],
+                                                                result['max features']))
                                                     else:
-                                                        test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'], result['nu']))
-                                                    test_log.write('scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'], result['recall'], result['auc scores'], result['f1']))
+                                                        test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
+                                                                                                     result['nu']))
+                                                    test_log.write(
+                                                        'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(
+                                                            result['precision'], result['recall'], result['auc scores'],
+                                                            result['f1']))
             best_df = make_best(results_df)
 
             with pd.ExcelWriter(xl_path) as writer:
@@ -784,8 +831,11 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
 
 
 def test_DFA(injection_config):
-    with open(data.automaton_path + '\\DFA', mode='rb') as DFA_p:
-        DFA = pickle.load(DFA_p)
+    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
+             data.equal_width_discretization: "equal_width"}
+    n_bins = [5, 6, 7, 8, 9, 10]
+
     with open(injection_config, mode='r') as injections:
         injection_params = yaml.load(injections, Loader=yaml.FullLoader)
     injection_lengths = injection_params['InjectionLength']
@@ -797,49 +847,71 @@ def test_DFA(injection_config):
         for step_over in step_overs:
             for percentage in percentages:
                 for epsilon in epsilons:
-                    p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}_{}_{}'.format(injection_length, step_over,
-                                                                                          percentage, epsilon)
-                    p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}'.format(injection_length, step_over,
-                                                                                          percentage, epsilon)
-                    with open(p_x_test, mode='rb') as test_data_path:
-                        test_df = pickle.load(test_data_path)
-                    with open(p_labels, mode='rb') as labels_path:
-                        test_labels = pickle.load(labels_path)
+                    for binner in binners:
+                        for bins in n_bins:
+                            p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}{}_{}_{}_{}'.format(names[binner],
+                                                                                                       bins,
+                                                                                                       injection_length,
+                                                                                                       step_over,
+                                                                                                       percentage,
+                                                                                                       epsilon)
+                            p_labels = test_sets_base_folder + '\\DFA\\labels{}_{}_{}_{}_{}_{}'.format(names[binner],
+                                                                                                       bins,
+                                                                                                       injection_length,
+                                                                                                       step_over,
+                                                                                                       percentage,
+                                                                                                       epsilon)
+                            with open(p_x_test, mode='rb') as test_data_path:
+                                test_df = pickle.load(test_data_path)
+                            with open(p_labels, mode='rb') as labels_path:
+                                test_labels = pickle.load(labels_path)
+                            with open("DFA_{}_{}".format(names[binner], bins), mode='rb') as dfa_path:
+                                DFA = pickle.load(dfa_path)
+                            # the DFA classifies transitions.
+                            decisions = models.automaton.detect(DFA, test_df, DFA_regs)
 
-                    # the DFA classifies transitions.
-                    decisions = models.automaton.detect(DFA, test_df, DFA_regs)
+                            precision, recalls, thresholds = precision_recall_curve(
+                                y_true=test_labels,
+                                probas_pred=decisions)
+                            precision = precision[0]
+                            recall = recalls[0]
+                            auc_score = roc_auc_score(y_true=test_labels, y_score=decisions)
+                            f1 = f1_score(y_true=test_labels, y_pred=decisions)
 
-                    precision, recalls, thresholds = precision_recall_curve(
-                        y_true=test_labels,
-                        probas_pred=decisions)
-                    precision = precision[0]
-                    recall = recalls[0]
-                    auc_score = roc_auc_score(y_true=test_labels, y_score=decisions)
-                    f1 = f1_score(y_true=test_labels, y_pred=decisions)
+                            result = {'binning': names[binner],
+                                      '# bins': bins,
+                                      'injection length': injection_length,
+                                      'step over': step_over,
+                                      'injection epsilon': epsilon,
+                                      'percentage': percentage,
+                                      'precision': precision,
+                                      'recall': recall,
+                                      'auc': auc_score,
+                                      'f1': f1}
+                            for col_name in excel_cols.difference(DFA_cols):
+                                result[col_name] = '-'
+                            results_df = pd.concat(
+                                [results_df,
+                                 pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols, orient='index')],
+                                axis=0, ignore_index=True)
+                            with open(test_DFA_log, mode='a') as test_log:
+                                test_log.write('recorded DFA results for injection with parameters:\n')
+                                test_log.write('binning: {}, # bins: {}'.format(names[binner], bins))
+                                test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over,
+                                                                                            percentage, epsilon))
+                                test_log.write(
+                                    'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'],
+                                                                                                  result['recall'],
+                                                                                                  result['auc scores'],
+                                                                                                  result['f1']))
 
-                    result = {'injection length': injection_length,
-                              'step over': step_over,
-                              'injection epsilon': epsilon,
-                              'percentage': percentage,
-                              'precision': precision,
-                              'recall': recall,
-                              'auc': auc_score,
-                              'f1': f1}
-                    for col_name in excel_cols.difference(DFA_cols):
-                        result[col_name] = '-'
-                    results_df = pd.concat(
-                        [results_df, pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols, orient='index')],
-                        axis=0, ignore_index=True)
-                    with open(test_DFA_log, mode='a') as test_log:
-                        test_log.write('recorded DFA results for injection with parameters:\n')
-                        test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, epsilon))
-                        test_log.write(
-                            'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'], result['recall'], result['auc scores'], result['f1']))
-
-    # this already writes the best results achieved by DFA because there is only 1 version of it.
+    # write to excel.
+    best_df = make_best(results_df)
     with pd.ExcelWriter(xl_path) as writer:
         results_df['name'] = 'DFA'
         results_df.to_excel(excel_writer=writer, sheet_name='DFA performance')
+        best_df['name'] = 'DFA'
+        best_df.to_excel(excel_writer=writer, sheet_name='DFA best performance')
 
 
 def test_KL_based_RF(KL_config_path, injection_config_path):
@@ -957,11 +1029,16 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                         results_df = pd.concat([results_df, temp_df], axis=0,
                                                                                ignore_index=True)
                                                         with open(test_KL_RF_log, mode='a') as test_log:
-                                                            test_log.write('recorded results for KL-RF for injection with parameters:\n')
-                                                            test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over, percentage, injection_epsilon))
+                                                            test_log.write(
+                                                                'recorded results for KL-RF for injection with parameters:\n')
+                                                            test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(
+                                                                injection_length, step_over, percentage,
+                                                                injection_epsilon))
                                                             test_log.write('model parameters:\n')
-                                                            test_log.write('binning: {}, # bins: {}, window size: {}, KL epsilon: {}, minimal VS: {}, max gap: {}\n'.format(binning_method, number_of_bins, window,
-                                                                                                                                                                            KL_epsilon, min_ver_sup, max_gap))
+                                                            test_log.write(
+                                                                'binning: {}, # bins: {}, window size: {}, KL epsilon: {}, minimal VS: {}, max gap: {}\n'.format(
+                                                                    binning_method, number_of_bins, window,
+                                                                    KL_epsilon, min_ver_sup, max_gap))
                                                             test_log.write(
                                                                 'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(
                                                                     result['precision'], result['recall'],
@@ -980,4 +1057,3 @@ if __name__ == '__main__':
     pkt_df = data.load(data.datasets_path, 'modbus')
     plc_df = pkt_df.loc[(pkt_df['src_ip'] == data.plc)]
     print(len(plc_df))
-

@@ -85,13 +85,13 @@ def find_same(transition, transitions):
 
 
 # The registers don't always get their values together.
-def make_automaton(registers, pkts):
+def make_automaton(registers, pkts, binner, bins):
     states = []
     transitions = []
     transitions_times = []
 
     # this data version represents transitions. Each entry is a new state, we also save the time in the state
-    processed = data.process_data_v3(pkts, 5, None, None, False)
+    processed = data.process_data_v3(pkts, 5, binner, bins, False)
     processed_train, processed_test = train_test_split(processed, test_size=0.2)
     data.dump(data.automaton_datasets_path, "train", processed_train)
     data.dump(data.automaton_datasets_path, "test", processed_test)
