@@ -24,6 +24,7 @@ logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 LSTM_based_OCSVM_log = logs + 'LSTM based OCSVM.txt'
 LSTM_based_RF_log = logs + 'LSTM based RF.txt'
 SCADA_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA'
+LSTM_train_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\LSTM train.txt'
 
 
 def build_LSTM_series_prediction(epochs, batch_size):
@@ -278,12 +279,41 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
     return best_model
 
 
+def grid_search_train(pkt_data, series_len, np_seed, model_name, train=0.8):
+    global n_features
+    n_features = len(pkt_data.columns)
+    global series_length
+    series_length = series_len
+
+    X_train, X_test, y_train, y_test = custom_train_test_split(pkt_data, series_len, np_seed, train)
+
+    kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
+
+    params_dict = dict()
+    params_dict['epochs'] = np.linspace(3, 15, num=13, dtype=np.int)
+    params_dict['batch_size'] = [32, 48, 64]
+
+    for train, test in kf.split(X_train, y_train):
+        X_split_train, X_split_test = X_train[train], X_train[test]
+        y_split_train, y_split_test = y_train[train], y_train[test]
+        for epochs in params_dict['epochs']:
+            for batch in params_dict['batch_size']:
+                model = build_LSTM(epochs, batch)
+                with open(LSTM_train_log, mode='a') as log:
+                    log.write('training with: epochs = {}, batch size = {}\n'.format(epochs, batch))
+                start = time.time()
+                model.fit(X_split_train, y_split_train)
+                end = time.time()
+                with open(LSTM_train_log, mode='a') as log:
+                    log.write('trained, time elapsed: {}\n'.format(end - start))
+
+
 def build_LSTM(epochs, batch_size):
     model = tensorflow.keras.Sequential()
     model.add(layers.LSTM(units=n_features, input_shape=(series_length, n_features)))
     model.add(layers.Dropout(0.2))
     model.add(layers.Dense(n_features, activation='relu'))
-    model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error", "accuracy"],
+    model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error"],
                   optimizer='adam', )
 
     return model

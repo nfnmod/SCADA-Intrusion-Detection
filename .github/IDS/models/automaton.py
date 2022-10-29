@@ -5,8 +5,6 @@ from sklearn.model_selection import train_test_split
 
 import data
 
-transition_id = 0
-
 
 class Transition:
     def __init__(self, initial_state, final_state, difference, id):
@@ -89,7 +87,7 @@ def make_automaton(registers, pkts, binner, bins):
     states = []
     transitions = []
     transitions_times = []
-
+    transition_id = 0
     # this data version represents transitions. Each entry is a new state, we also save the time in the state
     processed = data.process_data_v3(pkts, 5, binner, bins, False)
     processed_train, processed_test = train_test_split(processed, test_size=0.2)
@@ -120,7 +118,6 @@ def make_automaton(registers, pkts, binner, bins):
         transition = Transition(state, switched_state, change, -1)
         # check if it's a new one
         if new_transition(transition, transitions):
-            global transition_id
             transition.id = transition_id
             transitions.append(transition)
             transitions_times.append([state_duration])

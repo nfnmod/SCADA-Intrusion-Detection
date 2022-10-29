@@ -1407,9 +1407,9 @@ def grid_search_binning():
     for binner_bins in options:
         binner = binner_bins[0]
         bins = binner_bins[1]
-        model_name = "v1_single_plc_make_entry_v1_20_packets_MP_min_{}_{}".format(names[binner], bins)
+        model_name = "v1_single_plc_make_entry_v1".format(names[binner], bins)
         processed_df = process_data_v1(pkt_df, 5, binner, bins, make_entry_v1)
-        models.matrix_profiles_LSTM(processed_df, 20, 10, 10, 42, model_name)
+        models.grid_search_train(processed_df, 20, 42, model_name, train=0.8)
 
 
 def compare_models(models_folder, metric, metric_name, plot_name):
