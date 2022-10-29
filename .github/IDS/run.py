@@ -19,8 +19,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
 
-# TODO: retrain all LSTMs.
-
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
 HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
@@ -29,6 +27,7 @@ test_sets_base_folder = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\
 KL_based_RF_log = logs + 'KarmaLego based RF.txt'
 DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
+TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
 
 DFA_regs = ['30', '120', '15']
 
@@ -173,7 +172,6 @@ def train_RF_from_KL(KL_config_file_path):
             window = window_binning_bins[0]
             binning = window_binning_bins[1][0]
             bins = window_binning_bins[1][1]
-            whole_TIRPs_folder = KL_base + "whole_out\\all_{}_bins_{}_window_{}".format(binning, bins, window)
             windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning, bins, window)
             max_gaps_times_supports = itertools.product(max_gaps, min_ver_supps)
             KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
@@ -182,9 +180,9 @@ def train_RF_from_KL(KL_config_file_path):
                 max_gap = eps_gap_supp[1][0]
                 ver_supp = eps_gap_supp[1][1]
                 path_suffix = "\\eps_{0}_minVS_{1}_maxGap_{2}_HS_true".format(epsilon, ver_supp, max_gap)
-                whole_TIRPS_output_path = whole_TIRPs_folder + path_suffix + ".txt"
                 windows_outputs_folder_path = windows_folders_folder + path_suffix
-                TIRP_df = TIRP.output.parse_output(whole_TIRPS_output_path, windows_outputs_folder_path)
+                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window, epsilon, ver_supp, max_gap)
+                TIRP_df = TIRP.output.parse_output(windows_outputs_folder_path, train=True, tirps_path=TIRP_path)
                 windows_features = TIRP_df[:, :-1]
                 windows_labels = TIRP_df[:, -1]
                 X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2,
@@ -336,7 +334,8 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 name, injection_length,
                                                 step_over, percentage, epsilon)
 
-                                            Path(test_sets_base_folder + '\\HTM\\{}'.format(name)).mkdir(parents=True,
+                                            if not os.path.exists(test_sets_base_folder + '\\HTM'.format(name)):
+                                                Path(test_sets_base_folder + '\\HTM'.format(name)).mkdir(parents=True,
                                                                                                          exist_ok=True)
 
                                             with open(p_x_test_HTM, mode='w', newline='') as test_file:
@@ -375,9 +374,10 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     step_over, percentage, epsilon)
 
                                                 # make sure dirs exist and dump.
-                                                Path(test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
-                                                    folder_name, name, number_of_bins)).mkdir(parents=True,
-                                                                                              exist_ok=True)
+                                                dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
+                                                    folder_name, name, number_of_bins)
+                                                if not os.path.exists(dir_path):
+                                                    Path(dir_path).mkdir(parents=True, exist_ok=True)
 
                                                 with open(p_x_test, mode='wb') as data_path:
                                                     pickle.dump(X_test, data_path)
@@ -434,7 +434,7 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                                     packet_labels_in_state = []
                                     for pkt_idx in range(len(anomalous_data)):
                                         time_in_state += test_df.iloc[pkt_idx, 0]
-                                        if time_in_state == test_df.iloc[state_idx, 0]:
+                                        if time_in_state == test_df.iloc[state_idx, 1]:
                                             time_in_state = 0
                                             state_idx += 1
                                             transitions_labels.append(max(packet_labels_in_state))
@@ -467,7 +467,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
     pkt_df = data.load(data.datasets_path, "modbus")
     IP = data.plc
     # consider only response packets from the PLC.
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP) & (pkt_df['dst_ip'] == IP)]
+    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
     stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
 
     name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
@@ -514,7 +514,9 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                                 percentage, epsilon)
 
                                             # make sure dirs exists.
-                                            Path(test_path_sliding_windows).mkdir(parents=True, exist_ok=True)
+                                            dir_path = test_sets_base_folder + '\\KL\\TIRP'
+                                            if not os.path.exists(dir_path):
+                                                Path(dir_path).mkdir(parents=True, exist_ok=True)
 
                                             # discover TIRPs.
                                             # pass symbols and entities that were previously found.
@@ -534,7 +536,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                             # create the labels for the RF classifier.
                                             # for each window: [start, end]
                                             test_labels_RF = []
-                                            for i in range(len(anomalous_data) - window_size):
+                                            for i in range(len(anomalous_data) - window_size + 1):
                                                 # get the labels for the windows' packets.
                                                 window_labels = labels[i, i + window_size]
                                                 # the label is 0 for a benign packet and 1 for an anomalous packets.
@@ -551,14 +553,16 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                                 percentage,
                                                 epsilon)
 
-                                            Path(path).mkdir(parents=True, exist_ok=True)
+                                            dir_path = test_sets_base_folder + '\\KL\\RF\\test_labels'
+                                            if not os.path.exists(dir_path):
+                                                Path(dir_path).mkdir(parents=True, exist_ok=True)
+
                                             with open(path, mode='wb') as labels_path:
                                                 pickle.dump(test_labels_RF, labels_path)
 
 
 def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
     # call parse_output with the respective folders and save the dataset (without the anomaly column).
-    base = data.datasets_path + "\\KL\\"
     with open(KL_config_path, mode='r') as KL_params_path:
         KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
         binning_methods = KL_params['BinningMethods']
@@ -571,14 +575,10 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
         for binning_method in binning_methods:
             for b in bins:
                 for window in windows:
-                    whole_TIRP_file_out_folder = base + 'whole_out\\all_{}_bins_{}_window_{}'.format(binning_method, b,
-                                                                                                     window)
-                    # iterate over all KL params, get the whole TIRPs file path.
+                    # iterate over all KL params, get the TIRPs file path.
                     for epsilon in epsilons:
                         for max_gap in max_gaps:
                             for min_ver_sup in min_ver_sups:
-                                whole_TIRP_file_out = whole_TIRP_file_out_folder + "\\" + 'eps_{}_minVS_{}_maxGap_{}_HS_true.txt'.format(
-                                    epsilon, min_ver_sup, max_gap)
                                 with open(injections_config_path, mode='r') as injection_config:
                                     injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
                                     injection_lengths = injection_params['InjectionLength']
@@ -595,16 +595,20 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                             else:
                                                 for percentage in percentages:
                                                     for injection_epsilon in injection_epsilons:
-                                                        # outDir + String.Format("\\{0}_{1}_{2}_{3}\
                                                         output_base = test_sets_base_folder + '\\KL\\KL out'
                                                         desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
                                                             binning_method, b, window, injection_length, step_over,
                                                             percentage, injection_epsilon, epsilon, min_ver_sup,
                                                             max_gap)
                                                         out_dir = output_base + desc
-                                                        # call parse_output
-                                                        windows_TIRPs_df = TIRP.output.parse_output(whole_TIRP_file_out,
-                                                                                                    out_dir)
+                                                        # call parse_output, get the tirps in the train set for the indexing.
+                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning_method,
+                                                                                                              bins,
+                                                                                                              window,
+                                                                                                              epsilon,
+                                                                                                              min_ver_sup,
+                                                                                                              max_gap)
+                                                        windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path, train=False)
                                                         # the true labels were saved earlier.
                                                         windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
                                                             columns=['anomaly'])
@@ -617,7 +621,10 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                             percentage,
                                                             injection_epsilon,
                                                             epsilon, min_ver_sup, max_gap)
-                                                        Path(path).mkdir(parents=True, exist_ok=True)
+                                                        dir_path = test_sets_base_folder + '\\KL\\RF\\test_samples'
+                                                        if not os.path.exists(dir_path):
+                                                            Path(dir_path).mkdir(parents=True, exist_ok=True)
+
                                                         with open(path, mode='wb') as samples_path:
                                                             pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
 
@@ -959,10 +966,6 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                         with open(RF_classifier_path, mode='rb') as path:
                                             RF_classifier = pickle.load(path)
                                         input_base = data.datasets_path + '\\KL\\'
-                                        whole_TIRP_file_out_folder = input_base + "whole_out\\all_" + binning_method + "_bins_{0}_window_{1}".format(
-                                            number_of_bins, window)
-                                        all_TIRPs_path = whole_TIRP_file_out_folder + "\\" + "eps_{0}_minVS_{1}_maxGap_{2}_HS_true.txt".format(
-                                            KL_epsilon, min_ver_sup, max_gap)
                                         for injection_length in injection_lengths:
                                             for step_over in step_overs:
                                                 for percentage in percentages:
@@ -982,9 +985,14 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                             KL_epsilon,
                                                             min_ver_sup,
                                                             max_gap)
-
-                                                        test_df = models.TIRP.output.parse_output(all_TIRPs_path,
-                                                                                                  windows_outputs_dir)
+                                                        # call parse_output, get the tirps in the train set for the indexing.
+                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning_method,
+                                                                                                              bins,
+                                                                                                              window,
+                                                                                                              injection_epsilon,
+                                                                                                              min_ver_sup,
+                                                                                                              max_gap)
+                                                        test_df = models.TIRP.output.parse_output(windows_outputs_dir, TIRP_path, train=False)
 
                                                         path_to_labels = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
                                                             binning_method,
@@ -1023,6 +1031,8 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                                   'recall': recall,
                                                                   'auc': auc_score,
                                                                   'f1': f1}
+                                                        for col_name in excel_cols.difference(KL_based_RF_cols):
+                                                            result[col_name] = '-'
                                                         temp_df = pd.DataFrame.from_dict(columns=excel_cols,
                                                                                          data={'0': result},
                                                                                          orient='index')
@@ -1054,6 +1064,4 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    pkt_df = data.load(data.datasets_path, 'modbus')
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == data.plc)]
-    print(len(plc_df))
+    print('hello')

@@ -3,6 +3,7 @@ The purpose of this file is to provide classes and functions for parsing the out
 It will be used for the featured definition of the classifier.
 """
 import os
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -149,10 +150,9 @@ def found_TIRP(TIRPs_in_window, tirp):
     return None
 
 
-def parse_output(all_TIRPs_path, window_TIRPs_folder):
+def parse_output(window_TIRPs_folder, tirps_path, train=True):
     """
 
-    :param all_TIRPs_path: path to an output of KL containing the TIRPs in the dataset.
     :param window_TIRPs_folder: the path to a folder which contains the output of KL on the separate windows.
     :return: a dataframe to be used for training classifiers.
     """
@@ -164,11 +164,21 @@ def parse_output(all_TIRPs_path, window_TIRPs_folder):
     # 4. return the dataset.
 
     # 1
-    TIRPs = []
-    with open(all_TIRPs_path, mode='r') as TIRPs_file:
-        for TIRP_line in TIRPs_file:
-            TIRPs.append(parse_line(TIRP_line))
-
+    # save the found tirps to be used when testing.
+    if train:
+        TIRPs = []
+        for output_file in os.listdir(window_TIRPs_folder):
+            with open(window_TIRPs_folder + '\\' + output_file, mode='r') as TIRPs_file:
+                for TIRP_line in TIRPs_file:
+                    TIRP = parse_line(TIRP_line)
+                    if found_TIRP(TIRPs, TIRP) is None:
+                        TIRPs.append(TIRP)
+        with open(tirps_path, mode='wb') as tirps_file:
+            pickle.dump(TIRPs, tirps_file)
+    else:
+        # testing, so need to load the TIRPs
+        with open(tirps_path, mode='wb') as tirps_file:
+            TIRPs = pickle.load(tirps_file)
     # 2
     TIRP_count = len(TIRPs)
     presence = [str(tirp.TIRP_ID) for tirp in TIRPs]
