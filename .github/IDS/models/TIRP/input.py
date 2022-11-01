@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 
 import numpy as np
+from numba import Integer
 from sklearn.preprocessing import KBinsDiscretizer
 
 import data
@@ -188,6 +189,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                         checked_entities.append(entity)
                         if bin:
                             values = b(values, k)  # bin.
+                            times = equal_width_discretization(times, Integer.maxval)
                         n = 0
                         if len(values) > 0:
                             # all but last value-time pair.
