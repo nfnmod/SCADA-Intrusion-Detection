@@ -5,7 +5,7 @@ import pickle
 from pathlib import Path
 
 import numpy as np
-from numba import Integer
+from numba import types
 from sklearn.preprocessing import KBinsDiscretizer
 
 import data
@@ -182,14 +182,15 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                             if w_pkt['src_port'] == data.plc_port:
                                 w_IP = w_pkt['src_ip']
                                 w_reg_val = w_pkt['payload'].get(str(reg_num), None)
-                                if w_IP == IP and w_reg_val is not None and (len(values) == 0 or values[-1] != w_reg_val):
+                                if w_IP == IP and w_reg_val is not None and (
+                                        len(values) == 0 or values[-1] != w_reg_val):
                                     values.append(float(w_reg_val))
                                     times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
                             values = b(values, k)  # bin.
-                            times = equal_width_discretization(times, Integer.maxval)
+                            times = equal_width_discretization(times, types.int32.maxval)
                         n = 0
                         if len(values) > 0:
                             # all but last value-time pair.
