@@ -796,9 +796,9 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                     result['max features'] = max_feature
                                                     for col_name in excel_cols.difference(RF_cols):
                                                         result[col_name] = '-'
-                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}'.format(data_version,
+                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version,
                                                                                              binning_method,
-                                                                                             number_of_bins, estimators, criterion, max_feature)
+                                                                                             number_of_bins, estimators, criterion, max_feature, injection_length, step_over, percentage, epsilon)
                                                 else:
                                                     OCSVM_params_for_excel = split_model.split(sep='_')
                                                     nu = OCSVM_params_for_excel[1]
@@ -807,7 +807,7 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                     result['nu'] = nu
                                                     for col_name in excel_cols.difference(OCSVM_cols):
                                                         result[col_name] = '-'
-                                                    p = p_dir + '\\{}_{}_{}_{}_{}'.format(data_version, binning_method, number_of_bins, kernel, nu)
+                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version, binning_method, number_of_bins, kernel, nu, injection_length, step_over, percentage, epsilon)
                                                 with open(p, mode='wb') as classifications_file:
                                                     pickle.dump(classifications, classifications_file)
                                                 results_df = pd.concat([results_df,
