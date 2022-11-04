@@ -28,6 +28,7 @@ KL_based_RF_log = logs + 'KarmaLego based RF.txt'
 DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
+LSTM_classifiers_classifications = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\LSTM_classifications'
 
 DFA_regs = ['30', '120', '15']
 
@@ -653,7 +654,7 @@ def make_best(results_df):
     return best_df
 
 
-def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path):
+def test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
     path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
@@ -744,13 +745,15 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                 else:
                                                     test = pred
 
-                                                # now get the exact RF model.
+                                                    # now get the exact RF model.
                                                 with open(classifiers_dir + '\\' + classifier,
                                                           mode='rb') as classifier_p:
                                                     trained_classifier = pickle.load(classifier_p)
 
                                                 # make classifications.
                                                 classifications = trained_classifier.predict(test)
+                                                with open('', mode='wb') as pred_file:
+                                                    pickle.dump(classifications, pred_file)
 
                                                 # parameters for excel.
                                                 data_version_for_excel = data_version_dict['name']
@@ -775,6 +778,10 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                           'step over': step_over,
                                                           'injection epsilon': epsilon,
                                                           'percentage': percentage}
+                                                p_dir = LSTM_classifiers_classifications + '\\' + prefix + model_type
+                                                # describe: data version, binning, number of bins, RF params
+                                                if not os.path.exists(p_dir):
+                                                    Path(p_dir).mkdir(parents=True, exist_ok=True)
                                                 if prefix == 'diff_':
                                                     split_model = classifier.split(model_name)[1]
                                                 else:
@@ -789,6 +796,9 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                     result['max features'] = max_feature
                                                     for col_name in excel_cols.difference(RF_cols):
                                                         result[col_name] = '-'
+                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}'.format(data_version,
+                                                                                             binning_method,
+                                                                                             number_of_bins, estimators, criterion, max_feature)
                                                 else:
                                                     OCSVM_params_for_excel = split_model.split(sep='_')
                                                     nu = OCSVM_params_for_excel[1]
@@ -797,6 +807,9 @@ def test_LSTM_based_RF(models_train_config, injection_config, tests_config_path)
                                                     result['nu'] = nu
                                                     for col_name in excel_cols.difference(OCSVM_cols):
                                                         result[col_name] = '-'
+                                                    p = p_dir + '\\{}_{}_{}_{}_{}'.format(data_version, binning_method, number_of_bins, kernel, nu)
+                                                with open(p, mode='wb') as classifications_file:
+                                                    pickle.dump(classifications, classifications_file)
                                                 results_df = pd.concat([results_df,
                                                                         pd.DataFrame.from_dict(data={'0': result},
                                                                                                orient='index',
