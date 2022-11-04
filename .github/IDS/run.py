@@ -603,13 +603,15 @@ def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
                                                             max_gap)
                                                         out_dir = output_base + desc
                                                         # call parse_output, get the tirps in the train set for the indexing.
-                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning_method,
-                                                                                                              bins,
-                                                                                                              window,
-                                                                                                              epsilon,
-                                                                                                              min_ver_sup,
-                                                                                                              max_gap)
-                                                        windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path, train=False)
+                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
+                                                            binning_method,
+                                                            bins,
+                                                            window,
+                                                            epsilon,
+                                                            min_ver_sup,
+                                                            max_gap)
+                                                        windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path,
+                                                                                                    train=False)
                                                         # the true labels were saved earlier.
                                                         windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
                                                             columns=['anomaly'])
@@ -750,6 +752,8 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                           mode='rb') as classifier_p:
                                                     trained_classifier = pickle.load(classifier_p)
 
+                                                p_dir = LSTM_classifiers_classifications + '\\' + prefix + model_type
+
                                                 # make classifications.
                                                 classifications = trained_classifier.predict(test)
                                                 with open('', mode='wb') as pred_file:
@@ -778,7 +782,6 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                           'step over': step_over,
                                                           'injection epsilon': epsilon,
                                                           'percentage': percentage}
-                                                p_dir = LSTM_classifiers_classifications + '\\' + prefix + model_type
                                                 # describe: data version, binning, number of bins, RF params
                                                 if not os.path.exists(p_dir):
                                                     Path(p_dir).mkdir(parents=True, exist_ok=True)
@@ -797,8 +800,15 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                     for col_name in excel_cols.difference(RF_cols):
                                                         result[col_name] = '-'
                                                     p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version,
-                                                                                             binning_method,
-                                                                                             number_of_bins, estimators, criterion, max_feature, injection_length, step_over, percentage, epsilon)
+                                                                                                         binning_method,
+                                                                                                         number_of_bins,
+                                                                                                         estimators,
+                                                                                                         criterion,
+                                                                                                         max_feature,
+                                                                                                         injection_length,
+                                                                                                         step_over,
+                                                                                                         percentage,
+                                                                                                         epsilon)
                                                 else:
                                                     OCSVM_params_for_excel = split_model.split(sep='_')
                                                     nu = OCSVM_params_for_excel[1]
@@ -807,7 +817,14 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                     result['nu'] = nu
                                                     for col_name in excel_cols.difference(OCSVM_cols):
                                                         result[col_name] = '-'
-                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version, binning_method, number_of_bins, kernel, nu, injection_length, step_over, percentage, epsilon)
+                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version,
+                                                                                                      binning_method,
+                                                                                                      number_of_bins,
+                                                                                                      kernel, nu,
+                                                                                                      injection_length,
+                                                                                                      step_over,
+                                                                                                      percentage,
+                                                                                                      epsilon)
                                                 with open(p, mode='wb') as classifications_file:
                                                     pickle.dump(classifications, classifications_file)
                                                 results_df = pd.concat([results_df,
@@ -999,13 +1016,16 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                             min_ver_sup,
                                                             max_gap)
                                                         # call parse_output, get the tirps in the train set for the indexing.
-                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning_method,
-                                                                                                              bins,
-                                                                                                              window,
-                                                                                                              injection_epsilon,
-                                                                                                              min_ver_sup,
-                                                                                                              max_gap)
-                                                        test_df = models.TIRP.output.parse_output(windows_outputs_dir, TIRP_path, train=False)
+                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
+                                                            binning_method,
+                                                            bins,
+                                                            window,
+                                                            injection_epsilon,
+                                                            min_ver_sup,
+                                                            max_gap)
+                                                        test_df = models.TIRP.output.parse_output(windows_outputs_dir,
+                                                                                                  TIRP_path,
+                                                                                                  train=False)
 
                                                         path_to_labels = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
                                                             binning_method,
