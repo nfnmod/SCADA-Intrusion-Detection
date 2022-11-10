@@ -1569,6 +1569,69 @@ def process(anomalous_data, name, bins, binning):
         return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
 
 
+def naive_PLCs_grouping(pkt_df, groupings, path):
+    """
+
+    :param pkt_df: a data set containing modbus/tcp packets.
+    :param groupings: the plc ips groupings.
+    :return: a dataset describing the traffic sent to each group.
+    """
+
+    grouped_df = pd.DataFrame(columns=pkt_df.columns)
+    # map :group id -> dict for each plc in that group. the dict maps: register number -> register ID
+    groups_registers = {}
+    register_counter = 0
+
+    def find_group(ip):
+        for k in groupings:
+            if ip in groupings[k]:
+                return k
+
+    for i in range(len(pkt_df)):
+        p = pkt_df.iloc[i]
+        src_port = p['src_port']
+        if src_port == plc_port:
+            ip = p['src_ip']
+            group = find_group(ip)
+            group_dict = groups_registers[group]
+            plc_dict = group_dict.get(ip, None)
+            new_payload = {}
+            if plc_dict is None:
+                group_dict[ip] = {}
+            payload = p['payload']
+            for reg_num in payload.keys():
+                if reg_num in group_dict.keys():
+                    group_reg_num = group_dict[reg_num]
+                else:
+                    group_dict[reg_num] = register_counter
+                    group_reg_num = register_counter
+                    register_counter += 1
+                new_payload[group_reg_num] = payload[reg_num]
+            r = {}
+            for c in pkt_df.columns:
+                if c == 'IP':
+                    r[c] = group
+                elif c == 'payload':
+                    r[c] = new_payload
+                else:
+                    r[c] = p[c]
+            r_df = pd.DataFrame.from_dict(data={'0': r}, columns=pkt_df.columns, orient='index')
+            grouped_df = pd.concat([grouped_df, r_df], ignore_index=True)
+        else:
+            group = find_group(p['dst_ip'])
+            q = {}
+            for c in pkt_df.columns:
+                if c == 'IP':
+                    q[c] = group
+                else:
+                    q[c] = p[c]
+
+            q_df = pd.DataFrame.from_dict(data={'0': q}, columns=pkt_df.columns, orient='index')
+            grouped_df = pd.concat([grouped_df, q_df], ignore_index=True)
+    with open(path, mode='wb') as df_path:
+        pickle.dump(grouped_df, df_path)
+
+
 # ---------------------------------------------------------------------------------------------------------------------------
 # bring the data to excel, used to analyze the performance of regressors.
 def export_results(models_folder, columns, sheet_name, data_version, series_length, binning, pred_len=1, layer=1,
@@ -1627,4 +1690,3 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
     with pd.ExcelWriter(comparisons_file, mode='w') as writer:
         results_df.to_excel(writer, sheet_name=sheet_name)
-
