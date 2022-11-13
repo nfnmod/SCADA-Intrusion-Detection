@@ -73,28 +73,44 @@ def get_models_folders_data_folders(train_config):
     return models_folders, data_folders, binning_dict, params
 
 
-def train_RF(RF_train_config_file_path):
+def train_RF(RF_train_config_file_path, many=False):
     with open(RF_train_config_file_path, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
         zipped = zip(models_folders, data_folders)
         for folder_pair in zipped:
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]
-            binning_version = (data_folder.split(sep='_'))[0]
-            models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                          binning=binning_dict[binning_version], params=params, RF_only=True)
+            if not many:
+                binning_version = (data_folder.split(sep='_'))[0]
+                models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
+                                              binning=binning_dict[binning_version], params=params, RF_only=True)
+            else:
+                binning_version = (data_folder.split(sep='_'))[1]
+                for group in params['groups']:
+                    models_folder = group + '_' + models_folder
+                    data_folder = group + '_' + data_folder
+                models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
+                                              binning=binning_dict[binning_version], params=params, RF_only=True)
 
 
-def train_OCSVM(OCSVM_train_config_file_path):
+def train_OCSVM(OCSVM_train_config_file_path, many=False):
     with open(OCSVM_train_config_file_path, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
         zipped = zip(models_folders, data_folders)
         for folder_pair in zipped:
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]
-            binning_version = (data_folder.split(sep='_'))[0]
-            models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                          binning=binning_dict[binning_version], params=params, OCSVM_only=True)
+            if not many:
+                binning_version = (data_folder.split(sep='_'))[0]
+                models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
+                                              binning=binning_dict[binning_version], params=params, OCSVM_only=True)
+            else:
+                binning_version = (data_folder.split(sep='_'))[1]
+                for group in params['groups']:
+                    models_folder = group + '_' + models_folder
+                    data_folder = group + '_' + data_folder
+                    models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
+                                                  binning=binning_dict[binning_version], params=params, OCSVM_only=True)
 
 
 def train_automaton():
@@ -1097,4 +1113,4 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    print('hello')
+    make_input_for_KL('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\config\\TIRP config.yaml')

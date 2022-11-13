@@ -1518,58 +1518,58 @@ def get_inter_arrival_times_stats():
     return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
-def process(anomalous_data, name, bins, binning):
+def process(data, name, bins, binning):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_deltas_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_values_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_regs_deltas_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
     elif name == 'embedding_regs_times_deltas':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
     elif name == 'embedding_regs_times_values':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
     elif name == 'embedding_regs_values_state_duration':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
     elif name == 'MP_embedding_regs_times_values':
-        return embedding_v1(anomalous_data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'v1_1':
-        return process_data_v1(anomalous_data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v1)
+        return process_data_v1(data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v1)
     elif name == 'v1_2':
-        return process_data_v1(anomalous_data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v2)
+        return process_data_v1(data, None, binner=names[binning], n_bins=bins, entry_func=make_entry_v2)
     elif name == 'v2':
-        return process_data_v2(anomalous_data, None, binner=names[binning], n_bins=bins)
+        return process_data_v2(data, None, binner=names[binning], n_bins=bins)
     elif name == 'v2_abstract':
-        return process_data_v2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
+        return process_data_v2(data, None, binner=names[binning], n_bins=bins, abstract=True)
     elif name == 'v3':
-        return process_data_v3(anomalous_data, None, binner=names[binning], n_bins=bins)
+        return process_data_v3(data, None, binner=names[binning], n_bins=bins)
     elif name == 'v3_2':
-        return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins)
+        return process_data_v3_2(data, None, binner=names[binning], n_bins=bins)
     else:
-        return process_data_v3_2(anomalous_data, None, binner=names[binning], n_bins=bins, abstract=True)
+        return process_data_v3_2(data, None, binner=names[binning], n_bins=bins, abstract=True)
 
 
-def naive_PLCs_grouping(pkt_df, groupings, path):
+def naive_PLCs_grouping(pkt_df, groupings, base_path):
     """
 
     :param pkt_df: a data set containing modbus/tcp packets.
@@ -1628,8 +1628,10 @@ def naive_PLCs_grouping(pkt_df, groupings, path):
 
             q_df = pd.DataFrame.from_dict(data={'0': q}, columns=pkt_df.columns, orient='index')
             grouped_df = pd.concat([grouped_df, q_df], ignore_index=True)
-    with open(path, mode='wb') as df_path:
-        pickle.dump(grouped_df, df_path)
+    # save dataframe for each group.
+    for g_id in groupings.keys():
+        with open(base_path + '_' + g_id, mode='wb') as df_path:
+            pickle.dump(grouped_df.loc[(grouped_df['src_ip'] == g_id) or (grouped_df['dst_ip'] == g_id)], df_path)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------

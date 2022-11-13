@@ -7,6 +7,7 @@ from pathlib import Path
 import keras
 import numpy as np
 import tensorflow
+import yaml
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDOneClassSVM
@@ -74,7 +75,7 @@ def build_SGD(nu):
 # train classifier with models from the first folder and train sets from the other folder.
 # Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
-def make_classifier(models_folder, data_folder, binning, params, RF_only=False, OCSVM_only=False):
+def make_classifier(models_folder, data_folder, binning, params, grouping=None, RF_only=False, OCSVM_only=False):
     # models folder described the data version and binning method.
     for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
         # model folder is the specific LSTM model.
@@ -243,7 +244,8 @@ def post_lstm_classifier_Random_Forest(lstm_model, x_train, y_train, model_name,
             data.dump(dirc, p, model_raw)
 
 
-def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None):
+def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_creator=None, dump_df=data.datasets_path,
+                  dump_model=data.modeles_path):
     global n_features
     n_features = len(pkt_data.columns)
     global series_length
@@ -251,10 +253,10 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     X_train, X_test, y_train, y_test = custom_train_test_split(pkt_data, series_len, np_seed, train)
 
-    data.dump(data.datasets_path, "X_train_{}".format(model_name), X_train)
-    data.dump(data.datasets_path, "y_train_{}".format(model_name), y_train)
-    data.dump(data.datasets_path, "X_test_{}".format(model_name), X_test)
-    data.dump(data.datasets_path, "y_test_{}".format(model_name), y_test)
+    data.dump(dump_df, "X_train_{}".format(model_name), X_train)
+    data.dump(dump_df, "y_train_{}".format(model_name), y_train)
+    data.dump(dump_df, "X_test_{}".format(model_name), X_test)
+    data.dump(dump_df, "y_test_{}".format(model_name), y_test)
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
@@ -271,7 +273,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     model = model_creator(best_params['epochs'], best_params['batch_size'])
     model.fit(X_train, y_train)
-    tensorflow.keras.models.save_model(model, data.modeles_path + model_name)
+    tensorflow.keras.models.save_model(model, dump_model + model_name)
 
     print('Best Score: %s' % best_model.best_score_)
     print('Best Hyper parameters: %s' % best_model.best_params_)
@@ -355,3 +357,33 @@ def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
     X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
 
     return X_train, X_test, y_train, y_test
+
+
+def train_LSTM_many_PLCs(datasets_base_path, train_config):
+    # for each configuration of LSTM training:
+    #   train LSTM for each group.
+    #   save models.
+    with open(train_config, mode='r') as config:
+        LSTM_params = yaml.load(config, Loader=yaml.FullLoader)
+    versions = LSTM_params['version_name']
+    bins = LSTM_params['bins']
+    binning_methods = LSTM_params['binning_method']
+    for version in versions:
+        name = version['name']
+        description = versions['description']
+        for number_of_bins in bins:
+            for binning_method in binning_methods:
+                for dataset in os.listdir(datasets_base_path):
+                    group_id = dataset.split(sep='_')[-1]
+                    with open(datasets_base_path + '\\' + dataset, mode='wb') as df_path:
+                        raw_df = pickle.load(df_path)
+                    processed = data.process(raw_df, name, number_of_bins, binning_method)
+                    model_name = description + '{}_{}'.format(binning_method, number_of_bins)
+                    df_p = data.datasets_path + '\\{}_{}_{}'.format(group_id, binning_method, name)
+                    model_p = data.modeles_path + '\\{}_{}_{}'.format(group_id, binning_method, name)
+                    if not os.path.exists(df_p):
+                        Path(df_p).mkdir(exist_ok=True, parents=True)
+                    if not os.path.exists(model_p):
+                        Path(model_p).mkdir(exist_ok=True, parents=True)
+                    make_my_model(processed, 20, 42, model_name, train=0.8, model_creator=simple_LSTM, dump_df=df_p, dump_model=model_p)
+
