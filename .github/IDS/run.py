@@ -772,8 +772,6 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
 
                                                 # make classifications.
                                                 classifications = trained_classifier.predict(test)
-                                                with open('', mode='wb') as pred_file:
-                                                    pickle.dump(classifications, pred_file)
 
                                                 # parameters for excel.
                                                 data_version_for_excel = data_version_dict['name']
