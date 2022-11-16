@@ -29,7 +29,7 @@ DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
 LSTM_classifiers_classifications = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\LSTM_classifications'
-
+group_df_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\group'
 DFA_regs = ['30', '120', '15']
 
 excel_cols = {'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators', 'criterion', 'max features',
@@ -235,14 +235,23 @@ def train_RF_from_KL(KL_config_file_path):
 
 # process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
 # The csv file is formatted by the requirements of HTM.
-def create_data_for_HTM(HTM_input_creation_config):
+def create_data_for_HTM(HTM_input_creation_config, many=False, g_ids=None):
     """
     open file, for each data version:
                     go over all bins, methods combinations and apply data processing.
                     save the train and test sets.
     """
+    if not many:
+        pkt_df = data.load(data.datasets_path, "modbus")
+        helper(HTM_input_creation_config, pkt_df)
+    else:
+        for g in g_ids:
+            with open(group_df_base + '_' + g, mode='rb') as group_df_path:
+                g_df = pickle.load(group_df_path)
+                helper(HTM_input_creation_config, g_df, g)
 
-    pkt_df = data.load(data.datasets_path, "modbus")
+
+def helper(HTM_input_creation_config, pkt_df, g=''):
     with open(HTM_input_creation_config, mode='r') as input_config:
         params = yaml.load(input_config, Loader=yaml.FullLoader)
         versions_dicts = params['processing_config']
@@ -261,8 +270,8 @@ def create_data_for_HTM(HTM_input_creation_config):
                 # 3. write df to csv without the columns names.
                 folder = HTM_base + '\\datasets\\' + '{}'.format(data_version)
 
-                train_path_str = folder + '\\' + "X_train_" + data_version + ".csv"
-                test_path_str = folder + '\\' + "X_test_" + data_version + ".csv"
+                train_path_str = folder + '\\' + "X_train_" + g + '_' + data_version + ".csv"
+                test_path_str = folder + '\\' + "X_test_" + g + '_' + data_version + ".csv"
                 train_path = Path(train_path_str)
                 test_path = Path(test_path_str)
 

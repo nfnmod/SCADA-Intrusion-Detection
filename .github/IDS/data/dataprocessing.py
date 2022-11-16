@@ -1576,8 +1576,9 @@ def naive_PLCs_grouping(pkt_df, groupings, base_path):
     :param groupings: the plc ips groupings.
     :return: a dataset describing the traffic sent to each group.
     """
-
-    grouped_df = pd.DataFrame(columns=pkt_df.columns)
+    cols = list(pkt_df.columns)
+    cols.append('group')
+    grouped_df = pd.DataFrame(columns=cols)
     # map :group id -> dict for each plc in that group. the dict maps: register number -> register ID
     groups_registers = {}
     register_counter = 0
@@ -1609,29 +1610,31 @@ def naive_PLCs_grouping(pkt_df, groupings, base_path):
                 new_payload[group_reg_num] = payload[reg_num]
             r = {}
             for c in pkt_df.columns:
-                if c == 'IP':
-                    r[c] = group
-                elif c == 'payload':
+                if c == 'payload':
                     r[c] = new_payload
-                else:
+                elif c != 'IP':
                     r[c] = p[c]
+                else:
+                    r[c] = group
             r_df = pd.DataFrame.from_dict(data={'0': r}, columns=pkt_df.columns, orient='index')
             grouped_df = pd.concat([grouped_df, r_df], ignore_index=True)
         else:
             group = find_group(p['dst_ip'])
             q = {}
             for c in pkt_df.columns:
-                if c == 'IP':
-                    q[c] = group
-                else:
+                if c != 'IP':
                     q[c] = p[c]
+                else:
+                    q[c] = group
 
             q_df = pd.DataFrame.from_dict(data={'0': q}, columns=pkt_df.columns, orient='index')
             grouped_df = pd.concat([grouped_df, q_df], ignore_index=True)
     # save dataframe for each group.
     for g_id in groupings.keys():
         with open(base_path + '_' + g_id, mode='wb') as df_path:
-            pickle.dump(grouped_df.loc[(grouped_df['src_ip'] == g_id) or (grouped_df['dst_ip'] == g_id)], df_path)
+            g_df = grouped_df.loc[(grouped_df['src_ip'] == g_id) or (grouped_df['dst_ip'] == g_id)]
+            dropped_df = g_df.drop(columns='group', axis=1)
+            pickle.dump(dropped_df, df_path)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------
