@@ -1612,7 +1612,7 @@ def naive_PLCs_grouping(pkt_df, groupings, base_path):
             for c in pkt_df.columns:
                 if c == 'payload':
                     r[c] = new_payload
-                elif c != 'IP':
+                elif c != 'group':
                     r[c] = p[c]
                 else:
                     r[c] = group
@@ -1622,7 +1622,7 @@ def naive_PLCs_grouping(pkt_df, groupings, base_path):
             group = find_group(p['dst_ip'])
             q = {}
             for c in pkt_df.columns:
-                if c != 'IP':
+                if c != 'group':
                     q[c] = p[c]
                 else:
                     q[c] = group
@@ -1632,7 +1632,7 @@ def naive_PLCs_grouping(pkt_df, groupings, base_path):
     # save dataframe for each group.
     for g_id in groupings.keys():
         with open(base_path + '_' + g_id, mode='wb') as df_path:
-            g_df = grouped_df.loc[(grouped_df['src_ip'] == g_id) or (grouped_df['dst_ip'] == g_id)]
+            g_df = grouped_df.loc[(grouped_df['group'] == g_id)]
             dropped_df = g_df.drop(columns='group', axis=1)
             pickle.dump(dropped_df, df_path)
 
