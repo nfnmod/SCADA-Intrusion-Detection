@@ -578,8 +578,12 @@ def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=
         new['time'] = delta_t.total_seconds()
 
         src_port = curr['src_port']
-
-        new = entry_func(src_port, curr, registers, new, time_vals_df.iloc[len(time_vals_df) - 1], i, avgs_dict[IP], prev, last_values)
+        df_len = len(time_vals_df)
+        if df_len == 0:
+            prev_entry = {}
+        else:
+            prev_entry = time_vals_df.iloc[df_len - 1]
+        new = entry_func(src_port, curr, registers, new, prev_entry, i, avgs_dict[IP], prev, last_values)
         temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                          data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
         time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
@@ -616,14 +620,14 @@ def make_entry_v1(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
                 new[reg_num] = np.float64(payload[reg_num])
             else:
                 # the value of this register wasn't recorded in the packet. get the last value known
-                if i == 1:
+                if prev_entry == {}:
                     new[reg_num] = np.nan
                 else:
                     new[reg_num] = np.float64(prev_entry[reg_num])
     else:
         # a query packet
         for reg_num in registers:
-            if i == 1:
+            if prev_entry == {}:
                 new[reg_num] = np.nan
             else:
                 new[reg_num] = np.float64(prev_entry[reg_num])
@@ -644,6 +648,10 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
                 new[reg_num] = abs(np.float64(payload[reg_num]) - np.float64(prev_reg_val))
                 last_values[reg_num] = np.float64(payload[reg_num])
             else:
+                # if the register is not from this PLC, then get the last known value.
+                if reg_num not in avgs.keys():
+                    new[reg_num] = prev_entry.get(reg_num, np.nan)
+                    continue
                 avg = avgs[reg_num]
                 if payload.get(reg_num, np.nan) is not np.nan:
                     new[reg_num] = abs(avg - np.float64(payload[reg_num]))
@@ -658,12 +666,14 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
     else:
         # a query packet
         for reg_num in registers:
-            if i == 1:
+            if prev_entry == {}:
                 new[reg_num] = np.nan
             else:
                 prev_reg_val = prev['payload'].get(reg_num, np.nan)
                 avg = avgs.get(reg_num, np.nan)
-                if prev_reg_val is not np.nan:
+                if avg == np.nan:
+                    new[reg_num] = np.nan
+                elif prev_reg_val is not np.nan:
                     new[reg_num] = abs(avg - np.float64(prev_reg_val))
                 else:
                     new[reg_num] = abs(avg - np.float64(last_values.get(reg_num, np.nan)))
@@ -683,27 +693,15 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
 
-    IPs = list(pkt_df['src_ip'].unique())
     times = ['time_' + str(r_num) for r_num in registers]
     cols = np.concatenate((['time'], registers, times))
-    # last entry in the dataframe for each PLC
-    last_entries = {IP: None for IP in IPs}
-    # last packet the PLC received so far
-    last_packets = {IP: None for IP in IPs}
+
     time_vals_df = pd.DataFrame(columns=cols)
 
-    for i in range(len(pkt_df)):
+    for i in range(1, len(pkt_df)):
         # entries from the original data frame
         curr = pkt_df.iloc[i]
-
-        IP = curr['src_ip']
-        if plc_port != curr['src_port']:
-            IP = curr['dst_ip']
-        if last_packets[IP] is None:
-            last_packets[IP] = curr
-            continue
-
-        prev = last_packets[IP]
+        prev = pkt_df.iloc[i - 1]
 
         # the new entry
         new = {}
@@ -711,8 +709,9 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
         # previous entry in the constructed data frame
         prev_entry = {}
 
-        if last_entries[IP] is not None:
-            prev_entry = last_entries[IP]
+        df_len = len(time_vals_df)
+        if df_len != 0:
+            prev_entry = time_vals_df.iloc[df_len - 1]
 
         if abstract:
             for reg in registers:
@@ -768,8 +767,6 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
         temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                          data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
         time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
-        last_entries[IP] = time_vals_df.iloc[-1]
-        last_packets[IP] = curr
     if abstract:
         # fill missing values for registers and bin. prepare dataframe for the time calculation.
         for reg_num in registers:
@@ -799,6 +796,7 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
             reg_key = 'time_' + str(reg_num)
             # fill missing values for times.
             time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
+            time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
             if scale:
                 time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
                 time_vals_df[reg_key] = scale_col(time_vals_df, reg_key)
@@ -831,37 +829,22 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
         registers = np.concatenate([registers, PLCs_registers[PLC]])
 
     regs_copy = registers.copy()
-    IPs = list(pkt_df['src_ip'].unique())
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
-    # last entry in the dataset for each PLC
-    last_entries = {IP: None for IP in IPs}
-    # last packet received so far
-    last_packets = {IP: None for IP in IPs}
     time_vals_df = pd.DataFrame(columns=cols)
 
-    for i in range(len(pkt_df)):
+    for i in range(1, len(pkt_df)):
         # entries from the original data frame
         curr = pkt_df.iloc[i]
+        prev = pkt_df.iloc[i - 1]
         similarity = 0
-        # the new entry
-        IP = curr['src_ip']
-        if curr['src_port'] != plc_port:
-            IP = curr['dst_ip']
-        if last_packets[IP] is None:
-            last_packets[IP] = curr
-            continue
-
-        prev = last_packets[IP]
 
         new = {}
 
         # previous entry in the constructed data frame
         prev_entry = {}
-        prev_entry_idx = -1
-        if last_entries[IP] is not None:
-            prev_entry_and_Idx = last_entries[IP]
-            prev_entry = prev_entry_and_Idx[0]
-            prev_entry_idx = prev_entry_and_Idx[1]
+        df_len = len(time_vals_df)
+        if df_len != 0:
+            prev_entry = time_vals_df.iloc[df_len - 1]
 
         # inter-arrival time
         delta_t = curr['time'] - prev['time']
@@ -905,22 +888,16 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
                 similarity = np.nan
 
             if similarity == 1:
-                if prev_entry_idx == -1:
-                    raise ValueError
-                time_vals_df.iloc[prev_entry_idx, 1] += new['time']
+                time_vals_df.iloc[df_len - 1, 1] += new['time']
             else:
                 new['time_in_state'] = 0
 
                 if prev_entry != {}:
-                    time_vals_df.iloc[prev_entry_idx, 1] += new['time']
+                    time_vals_df.iloc[df_len - 1, 1] += new['time']
                 temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                                  data={'0': [new[col] for col in time_vals_df.columns]},
                                                  orient='index')
                 time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
-
-                # update last entry and packet for the PLC.
-                last_entries[IP] = [time_vals_df.iloc[-1], len(time_vals_df) - 1]
-                last_packets[IP] = curr
         else:
             # a query packet
             if prev_entry == {}:
@@ -936,10 +913,7 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
                 time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
             else:
                 # there was no state change. so we got 1 more packet in the same state and stayed longer in it
-                time_vals_df.iloc[prev_entry_idx, 1] += new['time']
-            # update dictionaries.
-            last_entries[IP] = [time_vals_df.iloc[-1], len(time_vals_df) - 1]
-            last_packets[IP] = curr
+                time_vals_df.iloc[df_len - 1, 1] += new['time']
 
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
@@ -965,40 +939,25 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
-    IPs = list(pkt_df['src_ip'].unique())
     regs_copy = registers.copy()
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
 
-    # last entries of each PLC in the data set.
-    last_entries = {IP: None for IP in IPs}
-    # last packet of each PLC in the raw data.
-    last_packets = {IP: None for IP in IPs}
     time_vals_df = pd.DataFrame(columns=cols)
 
-    for i in range(len(pkt_df)):
+    for i in range(1, len(pkt_df)):
         # entries from the original data frame
         curr = pkt_df.iloc[i]
+        prev = pkt_df.iloc[i - 1]
         similarity = 0
 
-        IP = curr['src_ip']
-        if plc_port != curr['src_port']:
-            IP = curr['dst_ip']
-        if last_packets[IP] is None:
-            last_packets[IP] = curr
-            continue
-
-        prev = last_packets[IP]
         # the new entry
         new = {}
 
         # previous entry in the constructed data frame
         prev_entry = {}
-        prev_entry_idx = -1
         df_len = len(time_vals_df)
-        if last_entries[IP] is not None:
-            prev_entry_and_idx = last_entries[IP]
-            prev_entry = prev_entry_and_idx[0]
-            prev_entry_idx = prev_entry_and_idx[1]
+        if df_len != 0:
+            prev_entry = time_vals_df.iloc[df_len - 1]
 
         has_prev = prev_entry != {}
         # inter-arrival time
@@ -1039,9 +998,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
             if not abstract:
                 if similarity == 1 and has_prev:
                     # we stayed in the stayed for some more time
-                    if prev_entry_idx == -1:
-                        raise ValueError
-                    new['time_in_state'] = (time_vals_df.iloc[prev_entry_idx, 1] + new['time'])
+                    new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
                 else:
                     new['time_in_state'] = 0
                     # if this holds than there is no prev
@@ -1050,7 +1007,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
                     # if this holds than similarity is different from 1, still need to update the time in state to account for the time until
                     # the arrival of the current packet
                     if df_len > 0:
-                        time_vals_df.iloc[prev_entry_idx, 1] += new['time']
+                        time_vals_df.iloc[df_len - 1, 1] += new['time']
         else:
             # a query packet
             if df_len == 0:
@@ -1072,7 +1029,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
 
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
-        if binner is not None and reg_num in to_bin:
+        if binner is not None:
             time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins)
         if scale:
             time_vals_df[reg_num] = scale_col(time_vals_df, reg_num)
@@ -1115,13 +1072,15 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
 # ----------------------------------------------------- #
 # this version has packets of the form:
 # [d1, d2, d3, t1, t2, t3, ss-upper, ss-lower, inter-arrival time]
-def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True,
+def embedding_v1(pkt_df, n, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True,
                  state_duration=False, matrix_profiles=False, w=-1, j=-1):
-    IP = plc
-    # plc packets
-    plc_pkts = pkt_df.loc[(pkt_df['src_ip'] == IP) | (pkt_df['dst_ip'] == IP)]
 
-    registers = to_bin
+    frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
+    PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
+    registers = []
+    for PLC in PLCs_registers.keys():
+        registers = np.concatenate([registers, PLCs_registers[PLC]])
+
     registers_times = ['time_' + reg for reg in registers]
     if not state_duration:
         cols = np.concatenate(
@@ -1134,12 +1093,17 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         cols = np.concatenate(([cols, ['mp_time_' + str(i) for i in range(mp_len)]]))
     embedded_df = pd.DataFrame(columns=cols)
 
-    avgs = get_avg_vals(plc_pkts, IP, registers)
+    IPs = list(pkt_df['src_ip'].unique())
+    avgs_dict = {IP: None for IP in IPs}
+    for IP in IPs:
+        avgs = get_avg_vals(pkt_df, IP, registers)
+        avgs_dict[IP] = avgs
+
     last_values = {r: np.nan for r in registers}
 
     # initialize last_values, there is a neighborhood that we don't process
     for i in range(neighborhood):
-        curr = plc_pkts.iloc[i]
+        curr = pkt_df.iloc[i]
         src_port = curr['src_port']
         if src_port == plc_port:
             payload = curr['payload']
@@ -1149,10 +1113,10 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                 if r in changed:
                     last_values[r] = np.float64(payload[r])
     # iterate over the dataframe, look at 20 packets and embed the 21st packet. slide one packet forward
-    for i in range(neighborhood, len(plc_pkts)):
+    for i in range(neighborhood, len(pkt_df)):
         # neighborhood previous packets
-        prev_pkts = plc_pkts.iloc[i - neighborhood:i, :]
-        curr_pkt = plc_pkts.iloc[i]
+        prev_pkts = pkt_df.iloc[i - neighborhood:i, :]
+        curr_pkt = pkt_df.iloc[i]
         prev_entry = {}
 
         if i != neighborhood:
@@ -1160,10 +1124,13 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
 
         # build the new df entry
         new = dict()
-        time = (curr_pkt['time'] - plc_pkts.iloc[i - 1]['time']).total_seconds()
+        time = (curr_pkt['time'] - pkt_df.iloc[i - 1]['time']).total_seconds()
         new['time'] = time
 
         src_port = curr_pkt['src_port']
+        IP = curr_pkt['dst_port']
+        if src_port == plc_port:
+            IP = curr_pkt['src_port']
 
         # we need to initialize the value durations
         # this is different from v2. In v2 we know the values in the previous packet and their duration
@@ -1171,7 +1138,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
         # when processing new packets. this checks for how long the last value is in the register.
         durations = {r: np.nan for r in registers}
         if i == neighborhood:
-            p0 = plc_pkts.iloc[0]
+            p0 = pkt_df.iloc[0]
             if p0['src_port'] == plc_port:
                 payload = p0['payload']
                 for r in payload.keys():
@@ -1179,8 +1146,8 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                         durations[r] = 0
             # forward iteration.
             for j in range(1, neighborhood):
-                p = plc_pkts.iloc[j]
-                p_prev = plc_pkts.iloc[j - 1]
+                p = pkt_df.iloc[j]
+                p_prev = pkt_df.iloc[j - 1]
                 inter_arrival = (p['time'] - p_prev['time']).total_seconds()
 
                 src_port = p['src_port']
@@ -1225,7 +1192,7 @@ def embedding_v1(pkt_df, neighborhood=20, regs_times_maker=None, binner=None, n_
                         # in all other cases last_values[r] is nan so we don't consider them.
 
         regs_times_maker(src_port, curr_pkt, last_values, neighborhood, i, durations, new, prev_entry,
-                         time, avgs, plc_pkts.iloc[i - 1]['payload'], registers, state_duration, embedded_df)
+                         time, avgs_dict[IP], pkt_df.iloc[i - 1]['payload'], registers, state_duration, embedded_df)
         # calculate state switches times
         num_state_switches = 0
         time_in_same_state = 0
@@ -1444,7 +1411,7 @@ def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhoo
             durations[reg] += time
             if not state_duration:
                 new['time_' + reg] = durations[reg]
-            new[reg] = prev_entry[reg]
+            new[reg] = prev_entry.get(reg, np.nan)
     if state_duration:
         nans = np.isnan(np.array(list(durations.values()), dtype=np.float64))
         if np.alltrue(nans):
@@ -1578,35 +1545,35 @@ def process(data, name, bins, binning):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_deltas_state_duration':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_MP_regs_values_state_duration':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10)
     elif name == 'embedding_regs_deltas_state_duration':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
     elif name == 'embedding_regs_times_deltas':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
     elif name == 'embedding_regs_times_values':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=False)
     elif name == 'embedding_regs_values_state_duration':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=True, matrix_profiles=False)
     elif name == 'MP_embedding_regs_times_values':
-        return embedding_v1(data, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
+        return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'v1_1':

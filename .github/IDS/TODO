@@ -1,6 +1,5 @@
 # TODO: entail only closest state in time.
 # TODO: order the transitions by time.
-# TODO: convert data processing versions to many PLCs.
 # TODO: adapt train and test functions for many PLCs.
 # TODO: get data.
 # TODO: train and test the models.
