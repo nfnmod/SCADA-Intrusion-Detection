@@ -4,20 +4,6 @@ import numpy as np
 import pandas as pd
 
 
-def cant_entail(s1, s2, states_appearances):
-    s1_appearances = states_appearances[s1]
-    s2_appearances = states_appearances[s2]
-
-    # idx of last appearance of s1
-    first_s1_idx = s1_appearances[0]
-    # idx of first appearance of s2.
-    last_s2_idx = s2_appearances[-1]
-
-    if first_s1_idx > last_s2_idx:
-        return True
-    return False
-
-
 def find_frequent_transitions_sequences(packets, time_window, support):
     """
 
@@ -80,50 +66,36 @@ def find_frequent_transitions_sequences(packets, time_window, support):
         if len(appearances) / length >= support:
             frequent_states.append(state)
 
-    num_frequent_states = len(frequent_states)
-    for i in range(num_frequent_states):
-        s1 = frequent_states[i]
-        for j in range(num_frequent_states):
-            s2 = frequent_states[j]
-            if s1 == s2 or cant_entail(s1, s2, frequent_states):
-                pass
-            else:
-                # for each occurrence of s1, find some occurrence of s2 such that
-                # s1's occurrence has happened at most t time units before the one of s2.
-                entailments = 0
-                last_used = -1
-                sorted_appearances_s1 = sorted(states_appearances[s1])
-                sorted_appearances_s2 = sorted(states_appearances[s2])
-                sorted_appearances_s2_length = len(sorted_appearances_s2)
-                s1_s2_times = []
+    # change into the form of (state,idx)
+    flat_states = []
+    for s in states_appearances.keys():
+        idx_list = states_appearances[s]
+        for state_idx in idx_list:
+            flat_states.append((state_idx, s,))
 
-                for s1_occurrence_idx in sorted_appearances_s1:
-                    s1_occurrence_time = packets.loc[s1_occurrence_idx, 'timestamp']
-                    for appearance_idx in range(last_used + 1, sorted_appearances_s2_length):
-                        s2_occurrence_idx = sorted_appearances_s2[appearance_idx]
-                        if s2_occurrence_idx < s1_occurrence_idx:
-                            pass
-                        else:
-                            # entail the closest one in time.
-                            s2_occurrence_time = packets.loc[s2_occurrence_idx, 'timestamp']
-                            difference = (s2_occurrence_time - s1_occurrence_time)
-                            if 0 < difference <= time_window:
-                                entailments += 1
-                                last_used = appearance_idx
-                                s1_s2_times.append((s1_occurrence_time, s2_occurrence_time,))
-                                # break, let the next appearance of s1 entail some appearance of s2.
-                                break
+    # sort by appearances, this is just like sorting by time of state occurrence.
+    flat_states = sorted(flat_states, key=lambda idx_s: idx_s[0])
+    # create all possible transitions.
+    transitions_times = {}
+    for i in range(len(flat_states) - 1):
+        s = flat_states[i]
+        f = flat_states[i + 1]
+        s_idx = s[0]
+        f_idx = f[0]
+        time_delta = packets.loc[f_idx, 'timestamp'] - packets.loc[s_idx, 'timestamp']
+        if time_delta <= time_window:
+            transition = (s, f,)
+            prev_times = transitions_times.get(transition, [])
+            prev_times.append(time_delta)
+            transitions_times[transition] = prev_times
 
-                # check if frequent.
-                supp = entailments / length
-                if supp >= support:
-                    t = (s1, s2,)
-                    time_spaces = []
-                    for (s1_occurrence_time, s2_occurrence_time,) in s1_s2_times:
-                        time_spaces.append(s2_occurrence_time - s1_occurrence_time)
-                    mean_space = statistics.mean(time_spaces)
-                    std_space = statistics.stdev(time_spaces)
-                    frequent_transitions.append((t, supp, mean_space, std_space))
+    for t in sorted(transitions_times.keys(), key=lambda t: (t[0][0], t[1][0])):
+        t_times = transitions_times[t]
+        supp = len(t_times) / length
+        if supp >= support:
+            mean = statistics.mean(t_times)
+            std = statistics.stdev(t_times)
+            frequent_transitions.append(((t[0][1], t[1][1],), supp, mean, std))
 
     return frequent_transitions
 

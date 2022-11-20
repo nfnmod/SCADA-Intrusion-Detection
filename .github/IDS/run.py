@@ -1120,4 +1120,7 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
 
 
 if __name__ == '__main__':
-    make_input_for_KL('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\config\\TIRP config.yaml')
+    test_arr = [(1, (4, 4), (2, (3, 3,)))]
+    s1 = sorted(test_arr, key=lambda element: element[1][0])
+    s2 = sorted(s1, key=lambda element: element[1][1])
+    print(s2)

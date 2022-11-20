@@ -1,4 +1,4 @@
-import itertools
+import json
 import json
 import os
 import pickle
@@ -14,8 +14,6 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.preprocessing import MinMaxScaler
-
-import models
 
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
@@ -1418,21 +1416,6 @@ def embed_v1_with_values_regs_times(src_port, curr_pkt, last_values, neighborhoo
             new['time_in_state'] = np.nan
         else:
             new['time_in_state'] = min(durations.values())
-
-
-def grid_search_binning():
-    binners = [k_means_binning, equal_frequency_discretization, equal_width_discretization]
-    names = {k_means_binning: "k_means", equal_frequency_discretization: "equal_frequency",
-             equal_width_discretization: "equal_width"}
-    n_bins = [5, 6, 7, 8, 9, 10]
-    pkt_df = load(datasets_path, "modbus")
-    options = itertools.product(binners, n_bins)
-    for binner_bins in options:
-        binner = binner_bins[0]
-        bins = binner_bins[1]
-        model_name = "v1_single_plc_make_entry_v1".format(names[binner], bins)
-        processed_df = process_data_v1(pkt_df, 5, binner, bins, make_entry_v1)
-        models.grid_search_train(processed_df, 20, 42, model_name, train=0.8)
 
 
 def compare_models(models_folder, metric, metric_name, plot_name):
