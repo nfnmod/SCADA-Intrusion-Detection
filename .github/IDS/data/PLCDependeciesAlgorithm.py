@@ -3,9 +3,6 @@ import statistics
 import numpy as np
 import pandas as pd
 
-# TODO: entail only closest one in time.
-# TODO: order the transitions by time.
-
 
 def cant_entail(s1, s2, states_appearances):
     s1_appearances = states_appearances[s1]

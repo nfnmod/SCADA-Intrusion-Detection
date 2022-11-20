@@ -557,7 +557,7 @@ def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=
     last_packets = {IP: None for IP in IPs}
     time_vals_df = pd.DataFrame(columns=cols)
 
-    for i in range(1, len(pkt_df)):
+    for i in range(len(pkt_df)):
         # entries from the original data frame
         curr = pkt_df.iloc[i]
 
