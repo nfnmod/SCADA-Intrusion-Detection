@@ -310,7 +310,7 @@ Use configuration file to create them.
 """
 
 
-def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_config, injection_config):
+def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_config, injection_config, group_id=''):
     """
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
     when doing this for many PLCs, need to do this for every group separately.
@@ -355,12 +355,13 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                             # the classifiers based on the HTM network.
                                             # no binning for HTM, only scaling.
                                             test_df = data.process(anomalous_data, name, None, None)
-                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_{}_{}_{}_{}.csv'.format(
+                                            suffix = '_{}_{}_{}_{}.csv'.format(
                                                 name, injection_length,
                                                 step_over, percentage, epsilon)
-                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_{}_{}_{}_{}'.format(
-                                                name, injection_length,
-                                                step_over, percentage, epsilon)
+                                            if group_id != '':
+                                                suffix = group_id + suffix
+                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_' + suffix
+                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_' + suffix
 
                                             if not os.path.exists(test_sets_base_folder + '\\HTM'.format(name)):
                                                 Path(test_sets_base_folder + '\\HTM'.format(name)).mkdir(parents=True,
@@ -391,15 +392,14 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     test_df,
                                                     20, 42, train=0.0)
                                                 # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
-                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_{}_{}_{}_{}_{}'.format(
+                                                p_suffix = '_{}_{}_{}_{}_{}'.format(
                                                     folder_name, name, number_of_bins, desc, injection_length,
                                                     step_over, percentage, epsilon)
-                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_{}_{}_{}_{}_{}'.format(
-                                                    folder_name, name, number_of_bins, desc, injection_length,
-                                                    step_over, percentage, epsilon)
-                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_{}_{}_{}_{}_{}'.format(
-                                                    folder_name, name, number_of_bins, desc, injection_length,
-                                                    step_over, percentage, epsilon)
+                                                if group_id != '':
+                                                    p_suffix = group_id + p_suffix
+                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_' + p_suffix
+                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_' + p_suffix
+                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_' + p_suffix
 
                                                 # make sure dirs exist and dump.
                                                 dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
@@ -992,7 +992,8 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                                                      'injection length': injection_length,
                                                      'step over': step_over, 'percentage': percentage,
                                                      'injection epsilon': epsilon}
-                                        entry_df = pd.DataFrame.from_dict(columns=best_df.columns, data={'0': new_entry}, orient='index')
+                                        entry_df = pd.DataFrame.from_dict(columns=best_df.columns,
+                                                                          data={'0': new_entry}, orient='index')
                                         best_df = pd.concat([best_df, entry_df], ignore_index=True)
 
                                         # write to xl.
