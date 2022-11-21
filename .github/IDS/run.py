@@ -51,6 +51,8 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal V
                     'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc',
                     'f1'}
 
+best_cols = DFA_cols.copy()
+
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
 test_LSTM_RF_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM-RF-OCSVM.txt'
@@ -360,12 +362,12 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 step_over, percentage, epsilon)
                                             if group_id != '':
                                                 suffix = group_id + suffix
-                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\{}\\X_test_' + suffix
-                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\{}\\labels_' + suffix
+                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix
+                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
 
-                                            if not os.path.exists(test_sets_base_folder + '\\HTM'.format(name)):
-                                                Path(test_sets_base_folder + '\\HTM'.format(name)).mkdir(parents=True,
-                                                                                                         exist_ok=True)
+                                            if not os.path.exists(test_sets_base_folder + '\\HTM'):
+                                                Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
+                                                                                            exist_ok=True)
 
                                             with open(p_x_test_HTM, mode='w', newline='') as test_file:
                                                 writer = csv.writer(test_file)
@@ -750,17 +752,15 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                     for step_over in step_overs:
                                         for percentage in percentages:
                                             for epsilon in epsilons:
-                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\X_test_{}_{}_{}_{}_{}'.format(
-                                                    injection_sets_folder, desc, injection_length,
+                                                p_suffix = '_{}_{}_{}_{}_{}'.format(
+                                                    injection_sets_folder, desc, number_of_bins, desc, injection_length,
                                                     step_over, percentage, epsilon)
+                                                if group != '':
+                                                    p_suffix = group + p_suffix
 
-                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\y_test_{}_{}_{}_{}_{}'.format(
-                                                    injection_sets_folder, desc, injection_length,
-                                                    step_over, percentage, epsilon)
-
-                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}}\\labels_{}_{}_{}_{}_{}'.format(
-                                                    injection_sets_folder, desc, injection_length,
-                                                    step_over, percentage, epsilon)
+                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_' + p_suffix
+                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_' + p_suffix
+                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_' + p_suffix
 
                                                 with open(p_x_test, mode='rb') as X_test_path:
                                                     X_test = pickle.load(X_test_path)
@@ -929,7 +929,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
 
     # read test sets lengths.
     for group_id in groups_ids:
-        with open(test_base + '\\group_{}'.format(group_id), mode='rd') as test_path:
+        with open(test_base + '\\group_{}'.format(group_id), mode='rb') as test_path:
             test_df = pickle.load(test_path)
             total_samples += len(test_df)
             test_sets_lengths[group_id] = len(test_df)
@@ -943,7 +943,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
     for model_type in ['OCSVM', 'RF']:
         for prefix in ['', 'diff_']:
             sheets_dfs = {}
-            best_df = pd.DataFrame(columns=excel_cols)
+            best_df = pd.DataFrame(columns=best_cols)
             for group_id in groups_ids:
                 sheet = prefix + model_type + ' best scores. group {}'.format(group_id)
                 sheets_dfs[group_id] = pd.read_excel(xl_path, sheet)
@@ -996,10 +996,10 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                                                                           data={'0': new_entry}, orient='index')
                                         best_df = pd.concat([best_df, entry_df], ignore_index=True)
 
-                                        # write to xl.
-                                        with pd.ExcelWriter(xl_path) as writer:
-                                            sheet = model_type + prefix + ':many PLCs, best scores'
-                                            best_df.to_excel(writer, sheet_name=sheet)
+            # write to xl.
+            with pd.ExcelWriter(xl_path) as writer:
+                sheet = model_type + prefix + ':many PLCs, best scores'
+                best_df.to_excel(writer, sheet_name=sheet)
 
 
 def test_DFA(injection_config):
