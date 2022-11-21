@@ -32,7 +32,8 @@ LSTM_classifiers_classifications = 'C:\\Users\\michael zaslavski\\OneDrive\\Desk
 group_df_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\group'
 DFA_regs = ['30', '120', '15']
 
-excel_cols = {'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators', 'criterion', 'max features',
+excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
+              'criterion', 'max features',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -312,6 +313,7 @@ Use configuration file to create them.
 def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_config, injection_config):
     """
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
+    when doing this for many PLCs, need to do this for every group separately.
     """
     test_data = data.load(test_sets_base_folder, raw_test_data_df)
     lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
@@ -681,7 +683,7 @@ def make_best(results_df):
     return best_df
 
 
-def test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path):
+def test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path, group=''):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
     path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
@@ -708,6 +710,10 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
     # 1.
     with open(models_train_config, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
+        for i in range(len(models_folders)):
+            models_folders[i] = group + '_' + models_folders[i]
+        for i in range(len(data_folders)):
+            data_folders[i] = group + '_' + data_folders[i]
     with open(injection_config, mode='r') as injection_config:
         injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
     with open(tests_config_path, mode='r') as test_config:
@@ -884,10 +890,115 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
             with pd.ExcelWriter(xl_path) as writer:
                 best_df['name'] = prefix + model_type
                 results_df['name'] = prefix + model_type
-                sheet = prefix + model_type + ' performance'
+                sheet = prefix + model_type + ' performance.'
+                if group != '':
+                    sheet += 'group: {}'.format(group)
                 results_df.to_excel(excel_writer=writer, sheet_name=sheet)
-                sheet = prefix + model_type + ' best scores'
+                sheet = prefix + model_type + ' best scores.'
+                if group != '':
+                    sheet += 'group: {}'.format(group)
                 best_df.to_excel(excel_writer=writer, sheet_name=sheet)
+
+
+def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config, tests_config_path, groups_ids):
+    with open(injection_config, mode='r') as injection_conf:
+        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
+    with open(models_train_config, mode='r') as train_config:
+        models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
+        params = yaml.load(train_config, Loader=yaml.FullLoader)['bin_number']
+        data_versions = params['data_version']
+        bin_range = params['bin_number']
+    for group_id in groups_ids:
+        # this creates the sheet for each group.
+        test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path, group_id)
+
+    # Decide on the best parameter configuration. Use a weighted average of the scores.
+    test_base = test_sets_base_folder
+    test_sets_lengths = {}
+    weights = {}
+    total_samples = 0
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
+
+    binning_methods = binning_dict.keys()
+    bin_start = bin_range['start']
+    bin_end = bin_range['end'] + 1
+
+    # read test sets lengths.
+    for group_id in groups_ids:
+        with open(test_base + '\\group_{}'.format(group_id), mode='rd') as test_path:
+            test_df = pickle.load(test_path)
+            total_samples += len(test_df)
+            test_sets_lengths[group_id] = len(test_df)
+
+    # assign weights to each group.
+    for group_id in groups_ids:
+        from_group = test_sets_lengths[group_id]
+        weight = from_group / total_samples
+        weights[group_id] = weight
+
+    for model_type in ['OCSVM', 'RF']:
+        for prefix in ['', 'diff_']:
+            sheets_dfs = {}
+            best_df = pd.DataFrame(columns=excel_cols)
+            for group_id in groups_ids:
+                sheet = prefix + model_type + ' best scores. group {}'.format(group_id)
+                sheets_dfs[group_id] = pd.read_excel(xl_path, sheet)
+            # now, get the metric scores for each injection x models configuration combination.
+            for injection_length in injection_lengths:
+                for step_over in step_overs:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            for data_version in data_versions:
+                                for bins in range(bin_start, bin_end):
+                                    for binning_method in binning_methods:
+                                        # now calculate the scores.
+                                        method_f1 = 0
+                                        method_auc = 0
+                                        method_recall = 0
+                                        method_precision = 0
+                                        for group_id in groups_ids:
+                                            group_best = sheets_dfs[group_id]
+                                            mask = group_best['data_version'] == data_version and group_best[
+                                                '# bins'] == bins \
+                                                   and group_best['binning'] == binning_method and group_best[
+                                                       'injection length'] == injection_length and group_best[
+                                                       'step over'] == step_over and \
+                                                   group_best['percentage'] == percentage and group_best[
+                                                       'injection epsilon'] == epsilon
+
+                                            # get the relevant entry in the df.
+                                            matching = group_best.loc[mask]
+                                            f1 = matching['f1']
+                                            precision = matching['precision']
+                                            auc_score = matching['auc score']
+                                            recall = matching['recall']
+
+                                            # update group scores.
+                                            group_w = weights[group_id]
+                                            method_auc += auc_score * group_w
+                                            method_f1 += f1 * group_w
+                                            method_recall += recall * group_w
+                                            method_precision += precision * group_w
+
+                                        # add entry to best_df
+                                        new_entry = {'data version': data_version, 'binning': binning_method,
+                                                     '# bins': bins,
+                                                     'precision': method_precision, 'recall': method_recall,
+                                                     'auc': method_auc, 'f1': method_f1,
+                                                     'injection length': injection_length,
+                                                     'step over': step_over, 'percentage': percentage,
+                                                     'injection epsilon': epsilon}
+                                        entry_df = pd.DataFrame.from_dict(columns=best_df.columns, data={'0': new_entry}, orient='index')
+                                        best_df = pd.concat([best_df, entry_df], ignore_index=True)
+
+                                        # write to xl.
+                                        with pd.ExcelWriter(xl_path) as writer:
+                                            sheet = model_type + prefix + ':many PLCs, best scores'
+                                            best_df.to_excel(writer, sheet_name=sheet)
 
 
 def test_DFA(injection_config):
