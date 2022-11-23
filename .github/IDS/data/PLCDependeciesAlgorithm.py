@@ -132,8 +132,8 @@ def find_frequent_transitions_sequences(packets, time_window, support):
     # extend as long as possible.
     while len(frequent_transitions) > 1:
         flat_transitions = []
-        times = {}
-        indices = {}
+        times = prev_times
+        indices = prev_indices
         components = {}
 
         # change into form of (transitions states, indices) = ((s1->s2->..s_n), (idx1,idx2...idx_n))
@@ -211,13 +211,11 @@ def find_frequent_transitions_sequences(packets, time_window, support):
             # now we filter out the infrequent/fully extended sequences.
             indices_and_transition = flat_transitions[i]
 
-            t_indices = indices_and_transition[0]
             transition = indices_and_transition[1]
 
             for j in range(i + 1, len(flat_transitions) - 1):
                 following_transition_and_indices = flat_transitions[j]
 
-                following_indices = following_transition_and_indices[0]
                 following_transition = following_transition_and_indices[1]
 
                 extension_states = transition + following_transition[1:]
@@ -235,73 +233,75 @@ def find_frequent_transitions_sequences(packets, time_window, support):
                         keep[transition] = True
                         keep[following_transition] = True
                     # this will be performed when the transition wasn't extended by any other one.
-                    if t_supp < support:
-                        # not frequent.
 
-                        if not parts:
-                            # it means it was never extended.
-                            fully_extended.append(transition)
-                            fully_extended_times[transition] = prev_times[transition]
-                            fully_extended_indices[transition] = prev_indices[transition]
-                        else:
-                            for part in parts:
-                                fully_extended.append(part)
-                                fully_extended_times[part] = prev_times[part]
-                                fully_extended_indices[part] = prev_indices[part]
+        for i in range(len(frequent_transitions)):
+            transition = frequent_transitions[i]
+            state = transition[1]
+            # wasn't extended by any other transition.
+            # it's fully extended.
+            if not keep[state]:
+                # save result and remove.
+                fully_extended.append(state)
+                fully_extended_times[state] = times[state]
+                fully_extended_indices[state] = indices[state]
+                frequent_transitions.remove(transition)
 
-    return frequent_transitions
+        # save times and indices for next iteration.
+        prev_times = times
+        prev_indices = indices
+
+    # when getting here we have:
+    # 1. longest frequent transitions (s1,s2..,s_n)
+    # 2. indices of each states in each occurrence of the transition (i1,i2...,i_n)
+    # 3. time deltas which are the time passed from the occurrence of s1 until the occurrence of s_n (depending on the indices)
+    # we want the transitions to be ordered by the times. So, we need to flatten and sort with the indices' comparator.
+    flat_transitions = []
+    for frequent_transition in frequent_transitions:
+        t_seq_idx = transitions_indices[frequent_transition]
+        flat_t_seq = (t_seq_idx, frequent_transition,)
+        flat_transitions.append(flat_t_seq)
+
+    flat_transitions = sorted(flat_transitions, key=lambda x: comparator(x))
+
+    return flat_transitions, prev_times, prev_indices, longest
 
 
-def extract_features(frequent_transitions, registers):
+def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, registers):
     """
-
-    :param frequent_transitions: output of the above algorithm.
+    :param longest: length of the longest frequent sequence of transitions.
+    :param prev_indices: indices of transition sequences and of their subsequences.
+    :param prev_times: same structure for times between states.
+    :param flat_transitions: tuples of the form transition x state_indices.
     :param registers: the names of all the registers in the group which the transitions occur in.
     :return: a dataframe with features describing the frequent transitions.
     """
-    entailing = ['entailing_{}'.format(reg) for reg in registers]
-    following = ['following_{}'.format(reg) for reg in registers]
-    delta_regs = ['changed_{}'.format(reg) for reg in registers]
-    stats = ['support', 'mean_space', 'std_space']
-    cols = np.concatenate([entailing, following, delta_regs, stats])
-    extracted_df = pd.DataFrame(columns=cols)
 
-    for frequent_transition in frequent_transitions:
-        states = frequent_transition[0]
-        # from.
-        entailing_state = states[0]
-        # to.
-        following_state = states[1]
-        # delta.
-        entailing_regs = []
-        for i in range(len(registers)):
-            if entailing_state[i][1] != following_state[i][1]:
-                entailing_regs.append(registers[i])
+    """
+    given a flat transition (s1,...sn),(i1,...in):
+        break into (s_j, s_j+1) (i_j, i_j+1)
+        get registers values for previous state, source state and the destination state.
+        get times between the transitions.
+        index of transition in the sequence.
+        mark the changed registers which triggered the transition. 
+    """
 
-        support = frequent_transition[1]
-        mean_space = frequent_transition[2]
-        std_space = frequent_transition[3]
+    return None
 
-        frequent_transition_entry = {col: None for col in cols}
-        for entailing_reg in entailing:
-            reg_num = entailing_reg.split(sep='_')[1]
-            frequent_transition_entry[entailing_reg] = entailing_state[reg_num[1]]
 
-        for following_reg in following:
-            reg_num = following_reg.split(sep='_')[1]
-            frequent_transition_entry[following_reg] = entailing_state[reg_num[1]]
+def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, registers):
+    """
+    :param longest: length of the longest frequent sequence of transitions.
+    :param prev_indices: indices of transition sequences and of their subsequences.
+    :param prev_times: same structure for times between states.
+    :param flat_transitions: tuples of the form transition x state_indices.
+    :param registers: the names of all the registers in the group which the transitions occur in.
+    :return: a dataframe with features describing the frequent transitions.
+    """
 
-        for entailing_reg in delta_regs:
-            reg_num = entailing_reg.split(sep='_')[1]
-            if reg_num in entailing_regs:
-                frequent_transition_entry[entailing_reg] = 1
-            else:
-                frequent_transition_entry[entailing_reg] = 0
-
-        frequent_transition_entry['support'] = support
-        frequent_transition_entry['mean_space'] = mean_space
-        frequent_transition_entry['std_space'] = std_space
-        transition_df = pd.DataFrame.from_dict(data={'0': frequent_transition_entry}, orient='index', columns=cols)
-        extracted_df = pd.concat([extracted_df, transition_df], ignore_index=True)
-
-    return extracted_df
+    """
+    given a flat transition (s1,...,sn), (i1,...in):
+        use longest x registers features to describe each state in the sequence.
+        use longest features to describe the times between states.
+        sequences with length less than longest will be filled with 0 states and 0 time transitions.
+    """
+    return None
