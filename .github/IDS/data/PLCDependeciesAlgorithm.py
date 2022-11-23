@@ -285,6 +285,53 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, reg
         mark the changed registers which triggered the transition. 
     """
 
+    prev_registers = ['prev_{}'.format(reg) for reg in registers]
+    curr_registers = ['curr_{}'.format(reg) for reg in registers]
+    next_registers = ['next_{}'.format(reg) for reg in registers]
+    delta_registers = ['delta_{}'.format(reg) for reg in registers]
+    static_cols = ['position', 'mean', 'std']
+    cols = np.concatenate([prev_registers, curr_registers, next_registers, delta_registers, static_cols])
+
+    extracted_df = pd.DataFrame(columns=cols)
+
+    for i in range(len(flat_transitions)):
+        entry = {}
+        flat_transition = flat_transitions[i]
+        states_sequence = flat_transition[1]
+        indices_sequence = flat_transitions[0]
+
+        for j in range(len(states_sequence)):
+            position = j
+            mark = []
+            if j == 0:
+                for prev_reg in prev_registers:
+                    entry[prev_reg] = 0
+            else:
+                prev_state = states_sequence[j - 1]
+                for reg_val in prev_state:
+                    reg = reg_val[0]
+                    entry['prev_{}'.format(reg)] = reg_val[1]
+
+            curr_state = states_sequence[j]
+            for reg_val in curr_state:
+                reg = reg_val[0]
+                entry['curr_{}'.format(reg)] = reg_val[1]
+
+            if j == len(states_sequence) - 1:
+                for next_reg in next_registers:
+                    entry[next_reg] = 0
+            else:
+                next_state = states_sequence[j + 1]
+                for reg_val in next_state:
+                    reg = reg_val[0]
+                    entry['next_{}'.format(reg)] = reg_val[1]
+            # find delta regs and finish.
+
+
+
+
+
+
     return None
 
 
