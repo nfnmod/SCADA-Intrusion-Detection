@@ -263,13 +263,11 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
     flat_transitions = sorted(flat_transitions, key=lambda x: comparator(x))
 
-    return flat_transitions, prev_times, prev_indices, longest
+    return flat_transitions, prev_times, prev_indices, longest, packets.loc['timestamp']
 
 
-def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, registers):
+def extract_features_v1(flat_transitions, prev_times, prev_indices, timestamps, registers):
     """
-    :param longest: length of the longest frequent sequence of transitions.
-    :param prev_indices: indices of transition sequences and of their subsequences.
     :param prev_times: same structure for times between states.
     :param flat_transitions: tuples of the form transition x state_indices.
     :param registers: the names of all the registers in the group which the transitions occur in.
@@ -289,7 +287,7 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, reg
     curr_registers = ['curr_{}'.format(reg) for reg in registers]
     next_registers = ['next_{}'.format(reg) for reg in registers]
     delta_registers = ['delta_{}'.format(reg) for reg in registers]
-    static_cols = ['position', 'mean', 'std']
+    static_cols = ['position', 'mean', 'std', 'transition time']
     cols = np.concatenate([prev_registers, curr_registers, next_registers, delta_registers, static_cols])
 
     extracted_df = pd.DataFrame(columns=cols)
@@ -298,19 +296,19 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, reg
         entry = {}
         flat_transition = flat_transitions[i]
         states_sequence = flat_transition[1]
-        indices_sequence = flat_transitions[0]
+        indices_sequence = flat_transition[0]
 
-        for j in range(len(states_sequence)):
+        start = 1
+        end = max(len(states_sequence) - 1, 2)
+
+        for j in range(start, end):
             position = j
-            mark = []
-            if j == 0:
-                for prev_reg in prev_registers:
-                    entry[prev_reg] = 0
-            else:
-                prev_state = states_sequence[j - 1]
-                for reg_val in prev_state:
-                    reg = reg_val[0]
-                    entry['prev_{}'.format(reg)] = reg_val[1]
+            next_state = None
+
+            prev_state = states_sequence[j - 1]
+            for reg_val in prev_state:
+                reg = reg_val[0]
+                entry['prev_{}'.format(reg)] = reg_val[1]
 
             curr_state = states_sequence[j]
             for reg_val in curr_state:
@@ -325,14 +323,38 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, longest, reg
                 for reg_val in next_state:
                     reg = reg_val[0]
                     entry['next_{}'.format(reg)] = reg_val[1]
+
             # find delta regs and finish.
+            for reg in registers:
+                c_reg = entry['prev_{}'.format(reg)]
+                n_reg = entry['curr_{}'.format(reg)]
+                if c_reg != n_reg or j == 0:
+                    entry['delta_{}'.format(reg)] = 1
+                else:
+                    entry['delta_{}'.format(reg)] = 0
 
+            entry['position'] = position
 
+            if next_state is None:
+                # only happens if this is a transition of length 2 = (s1,s2).
+                # get statistics for (s1,s2).
+                times = prev_times[states_sequence]
+                time = timestamps.iloc[indices_sequence[1]] - timestamps.iloc[states_sequence[0]]
+            else:
+                # get statistics for (s_curr -> s_next)
+                times = prev_times[(curr_state, next_state,)]
+                time = timestamps.iloc[indices_sequence[j + 1]] - timestamps.iloc[states_sequence[j]]
 
+            mean = statistics.mean(times)
+            std = statistics.stdev(times)
+            entry['mean'] = mean
+            entry['std'] = std
+            entry['time'] = time
 
+            entry_df = pd.DataFrame.from_dict(columns=extracted_df.columns, data={'0': entry}, orient='index')
+            extracted_df = pd.concat([extracted_df, entry_df], ignore_index=True)
 
-
-    return None
+    return extracted_df
 
 
 def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, registers):
@@ -351,4 +373,20 @@ def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, reg
         use longest features to describe the times between states.
         sequences with length less than longest will be filled with 0 states and 0 time transitions.
     """
+
+    cols = []
+    for i in range(longest):
+        # make group of register for the ith state in the sequence.
+        i_state = []
+        for reg in registers:
+            i_state = reg + '_{}'.format(i)
+        cols = np.concatenate([cols, i_state])
+
+    for i in range(longest):
+        # now add features to describe the times between states in the transitions sequence.
+        transition = '{}_to_{}'.format(i, i + 1)
+        mean = 'mean_' + transition
+        std = 'std_' + transition
+        cols = np.concatenate([cols, [transition, mean, std]])
+
     return None

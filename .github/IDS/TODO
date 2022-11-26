@@ -1,7 +1,6 @@
 # TODO: adapt train and test functions for many PLCs.
-# TODO: extend and fix the dependency algorithm.
+# TODO: dependency algorithm.
 
-# TODO: get data.
 # TODO: train and test the models.
 
 # TODO: articles comparison table.
