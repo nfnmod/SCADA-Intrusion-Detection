@@ -140,7 +140,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
         for frequent_transition in frequent_transitions:
             # number of transitioned states.
             transition_sequence_length = len(frequent_transition)
-            longest = max(longest, transition_sequence_length)
+            longest = max(longest, transition_sequence_length - 1)
 
             t_seq_idx = transitions_indices[frequent_transition]
             flat_t_seq = (t_seq_idx, frequent_transition,)
@@ -357,7 +357,7 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, timestamps, 
     return extracted_df
 
 
-def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, registers):
+def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, registers, timestamps):
     """
     :param longest: length of the longest frequent sequence of transitions.
     :param prev_indices: indices of transition sequences and of their subsequences.
@@ -389,4 +389,55 @@ def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, reg
         std = 'std_' + transition
         cols = np.concatenate([cols, [transition, mean, std]])
 
-    return None
+    extracted_df = pd.DataFrame(columns=cols)
+
+    for i in range(len(flat_transitions)):
+        entry = dict()
+
+        states_indices = flat_transitions[i]
+        indices_seq = states_indices[0]
+
+        states_seq = states_indices[1]
+        seq_length = len(indices_seq)
+
+        # fill features of states. until the end of the sequence.
+        for j in range(len(states_seq)):
+            state_j = states_seq[j]
+            for reg_num, reg_val in state_j:
+                j_state = reg_num + '_{}'.format(j)
+                entry[j_state] = reg_val
+
+        for j in range(len(states_seq) - 1):
+            curr = states_seq[j]
+            next_state = states_seq[j + 1]
+            t = (curr, next_state,)
+
+            transition = '{}_to_{}'.format(j, j + 1)
+            mean = 'mean_' + transition
+            std = 'std_' + transition
+
+            curr_time = timestamps.iloc[indices_seq[j]]
+            next_time = timestamps.iloc[indices_seq[j + 1]]
+
+            times = prev_times[t]
+            entry[transition] = next_time - curr_time
+            entry[mean] = statistics.mean(times)
+            entry[std] = statistics.stdev(times)
+
+        if seq_length < longest:
+            for j in range(seq_length, longest):
+                transition = '{}_to_{}'.format(j, j + 1)
+                mean = 'mean_' + transition
+                std = 'std_' + transition
+
+                entry[transition] = 0
+                entry[mean] = 0
+                entry[std] = 0
+
+                for reg in registers:
+                    j_state = reg + '_{}'.format(j)
+                    entry[j_state] = 0
+        entry_df = pd.DataFrame.from_dict(columns=extracted_df.columns, data={'0': entry}, orient='index')
+        extracted_df = pd.concat([extracted_df, entry_df], ignore_index=True)
+
+    return extracted_df
