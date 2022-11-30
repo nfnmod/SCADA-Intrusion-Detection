@@ -116,8 +116,18 @@ def train_OCSVM(OCSVM_train_config_file_path, many=False):
                                                   binning=binning_dict[binning_version], params=params, OCSVM_only=True)
 
 
-def train_automaton():
-    pkts = data.load(data.datasets_path, "modbus")
+# single plc or groups of plcs.
+def train_automaton(group=None):
+    """
+    :param group: group name, if none then we do it for a single plc.
+                  otherwise, it can be used to train a PLC for each "real" group or for each PLC separately
+                  it depends on the partitioning of the PLCs into group.
+    :return:
+    """
+    if group is not None:
+        pkts = data.load(data.datasets_path, "modbus_{}".format(group))
+    else:
+        pkts = data.load(data.datasets_path, "modbus")
     binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
     names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
              data.equal_width_discretization: "equal_width"}
@@ -136,8 +146,15 @@ def train_automaton():
 
         with open(DFA_log, mode='a') as log:
             log.write('Done, time elapsed:{}'.format(end - start))
+        if group is None:
+            data.dump(data.automaton_path, "DFA_{}_{}".format(names[binner], bins), DFA)
+        else:
+            data.dump(data.automaton_path, "{}\\DFA_{}_{}".format(group, names[binner], bins), DFA)
 
-        data.dump(data.automaton_path, "DFA_{}_{}".format(names[binner], bins), DFA)
+
+def train_automatons(groups):
+    for group in groups:
+        train_automaton(group)
 
 
 def make_input_for_KL(TIRP_config_file_path):
@@ -417,7 +434,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     pickle.dump(labels, data_path)
 
 
-def create_test_files_DFA(raw_test_data_df, injection_config):
+def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
     """
      just grid over all the injection parameters and binning params.
     """
@@ -471,17 +488,20 @@ def create_test_files_DFA(raw_test_data_df, injection_config):
                                             packet_labels_in_state = []
                                         else:
                                             packet_labels_in_state.append(labels[pkt_idx])
-
-                                    p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}{}_{}_{}_{}'.format(
+                                    if group != '':
+                                        middle = '\\DFA_{}'.format(group)
+                                    else:
+                                        middle = '\\DFA'
+                                    p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
                                         names[binner], bins, injection_length,
                                         step_over,
                                         percentage, epsilon)
-                                    p_labels = test_sets_base_folder + '\\DFA\\labels_{}_{}_{}_{}_{}_{}'.format(
+                                    p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}_{}'.format(
                                         names[binner], bins, injection_length,
                                         step_over,
                                         percentage, epsilon)
-                                    if not os.path.exists(test_sets_base_folder + '\\DFA'):
-                                        Path(test_sets_base_folder + '\\DFA').mkdir(parents=True, exist_ok=True)
+                                    if not os.path.exists(test_sets_base_folder + middle):
+                                        Path(test_sets_base_folder + middle).mkdir(parents=True, exist_ok=True)
 
                                     with open(p_x_test, mode='wb') as test_path:
                                         pickle.dump(test_df, test_path)
@@ -1002,7 +1022,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                 best_df.to_excel(writer, sheet_name=sheet)
 
 
-def test_DFA(injection_config):
+def test_DFA(injection_config, group=''):
     binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
     names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
              data.equal_width_discretization: "equal_width"}
@@ -1015,29 +1035,36 @@ def test_DFA(injection_config):
     percentages = injection_params['Percentage']
     epsilons = injection_params['Epsilon']
     results_df = pd.DataFrame(columns=excel_cols)
+    if group is '':
+        middle = '\\DFA'
+    else:
+        middle = '\\DFA_{}'.format(group)
     for injection_length in injection_lengths:
         for step_over in step_overs:
             for percentage in percentages:
                 for epsilon in epsilons:
                     for binner in binners:
                         for bins in n_bins:
-                            p_x_test = test_sets_base_folder + '\\DFA\\X_test_{}_{}{}_{}_{}_{}'.format(names[binner],
-                                                                                                       bins,
-                                                                                                       injection_length,
-                                                                                                       step_over,
-                                                                                                       percentage,
-                                                                                                       epsilon)
-                            p_labels = test_sets_base_folder + '\\DFA\\labels{}_{}_{}_{}_{}_{}'.format(names[binner],
-                                                                                                       bins,
-                                                                                                       injection_length,
-                                                                                                       step_over,
-                                                                                                       percentage,
-                                                                                                       epsilon)
+                            p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
+                                names[binner],
+                                bins,
+                                injection_length,
+                                step_over,
+                                percentage,
+                                epsilon)
+                            p_labels = test_sets_base_folder + middle + '\\labels{}_{}_{}_{}_{}_{}'.format(
+                                names[binner],
+                                bins,
+                                injection_length,
+                                step_over,
+                                percentage,
+                                epsilon)
                             with open(p_x_test, mode='rb') as test_data_path:
                                 test_df = pickle.load(test_data_path)
                             with open(p_labels, mode='rb') as labels_path:
                                 test_labels = pickle.load(labels_path)
-                            with open("DFA_{}_{}".format(names[binner], bins), mode='rb') as dfa_path:
+                            with open(data.automaton_path + middle + "\\DFA_{}_{}".format(names[binner], bins),
+                                      mode='rb') as dfa_path:
                                 DFA = pickle.load(dfa_path)
                             # the DFA classifies transitions.
                             decisions = models.automaton.detect(DFA, test_df, DFA_regs)
@@ -1079,11 +1106,117 @@ def test_DFA(injection_config):
 
     # write to excel.
     best_df = make_best(results_df)
+    if group == '':
+        name = 'DFA'
+        performance = ''
+    else:
+        name = 'DFA_{}'.format(group)
+        performance = 'for group {}'.format(group)
     with pd.ExcelWriter(xl_path) as writer:
-        results_df['name'] = 'DFA'
-        results_df.to_excel(excel_writer=writer, sheet_name='DFA performance')
-        best_df['name'] = 'DFA'
-        best_df.to_excel(excel_writer=writer, sheet_name='DFA best performance')
+        results_df['name'] = name
+        results_df.to_excel(excel_writer=writer, sheet_name='DFA ' + performance)
+        best_df['name'] = name
+        best_df.to_excel(excel_writer=writer, sheet_name='DFA best ' + performance)
+
+
+def many_PLC_DFAs(groups_ids, injection_config):
+    # Decide on the best parameter configuration. Use a weighted average of the scores.
+    best_df = pd.DataFrame(columns=best_cols)
+    test_base = test_sets_base_folder
+    test_sets_lengths = {}
+    weights = {}
+    total_samples = 0
+
+    # test all DFAs.
+    for group_id in groups_ids:
+        test_DFA(injection_config, group_id)
+
+    # read test sets lengths.
+    for group_id in groups_ids:
+        with open(test_base + '\\group_{}'.format(group_id), mode='rb') as test_path:
+            test_df = pickle.load(test_path)
+            total_samples += len(test_df)
+            test_sets_lengths[group_id] = len(test_df)
+
+    # assign weights to each group.
+    for group_id in groups_ids:
+        from_group = test_sets_lengths[group_id]
+        weight = from_group / total_samples
+        weights[group_id] = weight
+
+    # dfa parameters.
+    numbers_of_bins = [5, 6, 7, 8, 9, 10]
+    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
+             data.equal_width_discretization: "equal_width"}
+
+    # injection paramters.
+    with open(injection_config, mode='rb') as injection_conf:
+        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
+
+    sheets_dfs = dict()
+
+    # get best scores for each group
+    for group_id in groups_ids:
+        sheet_name = 'DFA best for group ' + group_id
+        sheets_dfs[group_id] = pd.read_excel(xl_path, sheet_name)
+
+    for number_of_bins in numbers_of_bins:
+        for binner in binners:
+            for injection_length in injection_lengths:
+                for step_over in step_overs:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            # now calculate the scores.
+                            method_f1 = 0
+                            method_auc = 0
+                            method_recall = 0
+                            method_precision = 0
+                            for group_id in groups_ids:
+                                group_best = sheets_dfs[group_id]
+                                mask = group_best[
+                                           '# bins'] == number_of_bins \
+                                       and group_best['binning'] == names[binner] and group_best[
+                                           'injection length'] == injection_length and group_best[
+                                           'step over'] == step_over and \
+                                       group_best['percentage'] == percentage and group_best[
+                                           'injection epsilon'] == epsilon
+
+                                # get the relevant entry in the df.
+                                matching = group_best.loc[mask]
+                                f1 = matching['f1']
+                                precision = matching['precision']
+                                auc_score = matching['auc score']
+                                recall = matching['recall']
+
+                                # update group scores.
+                                group_w = weights[group_id]
+                                method_auc += auc_score * group_w
+                                method_f1 += f1 * group_w
+                                method_recall += recall * group_w
+                                method_precision += precision * group_w
+
+                            # add entry to best_df
+                            new_entry = {'data version': '-', 'binning': names[binner],
+                                         '# bins': numbers_of_bins,
+                                         'precision': method_precision, 'recall': method_recall,
+                                         'auc': method_auc, 'f1': method_f1,
+                                         'injection length': injection_length,
+                                         'step over': step_over, 'percentage': percentage,
+                                         'injection epsilon': epsilon}
+                            entry_df = pd.DataFrame.from_dict(columns=best_df.columns,
+                                                              data={'0': new_entry}, orient='index')
+                            best_df = pd.concat([best_df, entry_df], ignore_index=True)
+
+    # write to xl.
+    with pd.ExcelWriter(xl_path) as writer:
+        sheet = 'DFA, many PLCs, best scores'
+        best_df.to_excel(writer, sheet_name=sheet)
 
 
 def test_KL_based_RF(KL_config_path, injection_config_path):
