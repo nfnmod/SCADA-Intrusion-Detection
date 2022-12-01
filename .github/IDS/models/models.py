@@ -58,8 +58,8 @@ def predict_series_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8):
     return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM_series_prediction)
 
 
-def simple_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8):
-    return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM)
+def simple_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8, models_path=data.modeles_path, data_path=data.datasets_path):
+    return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM, dump_model=models_path, dump_df=data_path)
 
 
 def build_One_Class_SVM(kernel, nu):
@@ -75,15 +75,12 @@ def build_SGD(nu):
 # train classifier with models from the first folder and train sets from the other folder.
 # Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
-def make_classifier(models_folder, data_folder, binning, params, grouping=None, RF_only=False, OCSVM_only=False):
+def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_only=False):
     # models folder described the data version and binning method.
     for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
         # model folder is the specific LSTM model.
         model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
         model = keras.models.load_model(model_path)
-        bin_numbers = params['bin_numbers']
-        bin_start = bin_numbers['start']
-        bin_end = bin_numbers['end']
 
         x_train_path = data.datasets_path + data_folder + '\\X_train_' + model_folder
         y_train_path = data.datasets_path + data_folder + '\\y_train_' + model_folder
@@ -255,8 +252,8 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     data.dump(dump_df, "X_train_{}".format(model_name), X_train)
     data.dump(dump_df, "y_train_{}".format(model_name), y_train)
-    data.dump(dump_df, "X_test_{}".format(model_name), X_test)
-    data.dump(dump_df, "y_test_{}".format(model_name), y_test)
+    # data.dump(dump_df, "X_test_{}".format(model_name), X_test)
+    # data.dump(dump_df, "y_test_{}".format(model_name), y_test)
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
@@ -354,9 +351,11 @@ def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
     y = np.array(y)
     X_grouped = np.asarray(X_grouped).astype(np.float32)
     y = np.asarray(y).astype(np.float32)
-    X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
-
-    return X_train, X_test, y_train, y_test
+    if train == 0:
+        return X_grouped, y
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
+        return X_train, X_test, y_train, y_test
 
 
 def train_LSTM_many_PLCs(datasets_base_path, train_config):

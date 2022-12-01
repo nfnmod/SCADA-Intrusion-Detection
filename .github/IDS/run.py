@@ -84,16 +84,14 @@ def train_RF(RF_train_config_file_path, many=False):
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]
             if not many:
-                binning_version = (data_folder.split(sep='_'))[0]
                 models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                              binning=binning_dict[binning_version], params=params, RF_only=True)
+                                              params=params, RF_only=True)
             else:
-                binning_version = (data_folder.split(sep='_'))[1]
                 for group in params['groups']:
                     models_folder = group + '_' + models_folder
                     data_folder = group + '_' + data_folder
                 models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                              binning=binning_dict[binning_version], params=params, RF_only=True)
+                                              params=params, RF_only=True)
 
 
 def train_OCSVM(OCSVM_train_config_file_path, many=False):
@@ -104,16 +102,14 @@ def train_OCSVM(OCSVM_train_config_file_path, many=False):
             models_folder = folder_pair[0]
             data_folder = folder_pair[1]
             if not many:
-                binning_version = (data_folder.split(sep='_'))[0]
                 models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                              binning=binning_dict[binning_version], params=params, OCSVM_only=True)
+                                              params=params, OCSVM_only=True)
             else:
-                binning_version = (data_folder.split(sep='_'))[1]
                 for group in params['groups']:
                     models_folder = group + '_' + models_folder
                     data_folder = group + '_' + data_folder
                     models.models.make_classifier(models_folder=models_folder, data_folder=data_folder,
-                                                  binning=binning_dict[binning_version], params=params, OCSVM_only=True)
+                                                  params=params, OCSVM_only=True)
 
 
 # single plc or groups of plcs.
@@ -155,6 +151,71 @@ def train_automaton(group=None):
 def train_automatons(groups):
     for group in groups:
         train_automaton(group)
+
+
+def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=None):
+    """
+    1. get data.
+    2. process data using algorithm.
+    3. train lstm on the output of step 2.
+    """
+    with open(FSTM_config, mode='r') as algo_config:
+        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
+
+    with open(raw_data, mode='rb') as data_path:
+        pkts = pickle.load(data_path)
+
+    funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
+                  "equal_width": data.equal_width_discretization}
+
+    time_windows = FSTM_params['window']
+    min_supports = FSTM_params['supp']
+    numbers_of_bins = FSTM_params['bins']
+    binning_methods = FSTM_params['binning']
+    series_lengths = FSTM_params['series']
+
+    for binning_method in binning_methods:
+        for number_of_bins in numbers_of_bins:
+            processed = data.process_data_v3(pkts, 5, funcs_dict[binning_method], number_of_bins, False)
+            for time_window in time_windows:
+                for min_support in min_supports:
+                    # call algo.
+                    flat_transitions, prev_times, prev_indices, longest, time_stamps = data.find_frequent_transitions_sequences(
+                        processed, time_window, min_support)
+
+                    # get features.
+                    df_v1 = data.extract_features_v1(flat_transitions, prev_times, time_stamps, group_registers)
+                    df_v2 = data.extract_features_v2(flat_transitions, prev_times, longest, group_registers,
+                                                     time_stamps)
+
+                    # scale.
+                    for c in df_v1.columns():
+                        df_v1[c] = data.scale_col(df_v1, c)
+                    for c in df_v2.columns():
+                        df_v2[c] = data.scale_col(df_v2, c)
+
+                    for series_length in series_lengths:
+                        dump_model = data.modeles_path + '\\{}_FSTM\\'.format(group)
+                        dump_df = data.datasets_path + '\\{}_FSTM\\'.format(group)
+                        model_name = 'FSTM_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, time_window,
+                                                                  min_support, series_length)
+                        models.simple_LSTM(processed, series_length, 42, model_name, train=0, models_path=dump_model,
+                                           data_path=dump_df)
+
+
+def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=True):
+    with open(classifier_config, mode='r') as classifier_conf:
+        params = yaml.load(classifier_conf, Loader=yaml.FullLoader)
+
+    train_data_path = data.datasets_path + '\\{}_FSTM\\'.format(group)
+    models_path = data.modeles_path + '\\{}_FSTM\\'.format(group)
+
+    if RF:
+        models.models.make_classifier(models_folder=models_path, data_folder=train_data_path, params=params,
+                                      RF_only=True, OCSVM_only=False)
+    else:
+        models.models.make_classifier(models_folder=models_path, data_folder=train_data_path, params=params,
+                                      RF_only=False, OCSVM_only=True)
 
 
 def make_input_for_KL(TIRP_config_file_path):
@@ -407,7 +468,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 test_df = data.process(anomalous_data, name, number_of_bins,
                                                                        method_name)
                                                 # now create test data set for LSTM. Only need X_test and y_test.
-                                                X_train, X_test, y_train, y_test = models.custom_train_test_split(
+                                                X_test, y_test = models.custom_train_test_split(
                                                     test_df,
                                                     20, 42, train=0.0)
                                                 # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
@@ -416,13 +477,14 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     step_over, percentage, epsilon)
                                                 if group_id != '':
                                                     p_suffix = group_id + p_suffix
-                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_' + p_suffix
-                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_' + p_suffix
-                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_' + p_suffix
 
                                                 # make sure dirs exist and dump.
                                                 dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
                                                     folder_name, name, number_of_bins)
+
+                                                p_x_test = dir_path + '\\X_test_' + p_suffix
+                                                p_y_test = dir_path + '\\y_test_' + p_suffix
+                                                p_labels = dir_path + '\\labels_' + p_suffix
                                                 if not os.path.exists(dir_path):
                                                     Path(dir_path).mkdir(parents=True, exist_ok=True)
 
@@ -432,6 +494,143 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                     pickle.dump(y_test, data_path)
                                                 with open(p_labels, mode='wb') as data_path:
                                                     pickle.dump(labels, data_path)
+
+
+def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
+    test_data = data.load(test_sets_base_folder, raw_test_data_df)
+
+    with open(injection_config, mode='r') as injection_conf:
+        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
+
+    with open(FSTM_config, mode='r') as algo_config:
+        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
+
+    funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
+                  "equal_width": data.equal_width_discretization}
+    folders_dict = {"k_means": "KMeans", "equal_frequency": "EqualFreq",
+                    "equal_width": "EqualWidth"}
+
+    time_windows = FSTM_params['window']
+    min_supports = FSTM_params['supp']
+    numbers_of_bins = FSTM_params['bins']
+    binning_methods = FSTM_params['binning']
+    series_lengths = FSTM_params['series']
+    lim = 0.2
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
+
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        anomalous_data, labels = data.inject_to_raw_data(test_data, injection_length, step_over,
+                                                                         percentage,
+                                                                         epsilon)
+                        for binning_method in binning_methods:
+                            for number_of_bins in numbers_of_bins:
+                                processed = data.process_data_v3(anomalous_data, 5, funcs_dict[binning_method],
+                                                                 number_of_bins, False)
+                                transitions_labels = []
+                                # time in state.
+                                time_in_state = 0
+                                # number of state
+                                state_idx = 0
+                                # labels of the packets in the state.
+                                packet_labels_in_state = [labels[0]]
+                                # arrival time of the last known packet in the state.
+                                last_time = anomalous_data.loc[0, 'time']
+                                for pkt_idx in range(1, len(anomalous_data)):
+                                    time_in_state += (anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
+                                    if time_in_state == processed.iloc[state_idx, 1]:
+                                        time_in_state = 0
+                                        state_idx += 1
+                                        transitions_labels.append(max(packet_labels_in_state))
+                                        packet_labels_in_state = []
+                                    else:
+                                        packet_labels_in_state.append(labels[pkt_idx])
+                                    last_time = anomalous_data.loc[pkt_idx, 'time']
+                                for time_window in time_windows:
+                                    for min_support in min_supports:
+                                        flat_transitions, prev_times, prev_indices, longest, time_stamps = data.find_frequent_transitions_sequences(
+                                            processed, time_window, min_support)
+                                        # create test labels for the classifiers.
+                                        # labels for v1, v2.
+                                        v1_labels = []
+                                        v2_labels = []
+                                        for flat_t in flat_transitions:
+                                            indices = flat_t[0]
+                                            idx_len = len(indices)
+                                            start = 1
+                                            end = max(len(indices) - 1, 2)
+                                            sequence_label = 0
+
+                                            for i in range(start, end):
+                                                # indices of adjacent states in the sequence of transitions.
+                                                prev = indices[i - 1]
+                                                curr = indices[i]
+                                                prev_label = transitions_labels[prev]
+                                                curr_label = transitions_labels[curr]
+                                                transition_label = max(prev_label, curr_label)
+                                                # this means there was more than 1 transition in the sequence.
+                                                # the last one won't be checked so check now.
+                                                if i == idx_len - 2:
+                                                    transition_label = max(transition_label,
+                                                                           transitions_labels[indices[idx_len - 1]])
+                                                v1_labels.append(transition_label)
+                                                sequence_label = max(sequence_label, transition_label)
+
+                                            v2_labels.append(sequence_label)
+
+                                        v1_test_set = data.extract_features_v1(flat_transitions, prev_times,
+                                                                               time_stamps, group_regs)
+                                        v2_test_set = data.extract_features_v2(flat_transitions, prev_times, longest,
+                                                                               time_stamps, group_regs)
+
+                                        for series_length in series_lengths:
+                                            X_test_v1, y_test_v1 = models.models.custom_train_test_split(v1_test_set,
+                                                                                                         series_length,
+                                                                                                         42, 0.0)
+                                            X_test_v2, y_test_v2 = models.models.custom_train_test_split(v2_test_set,
+                                                                                                         series_length,
+                                                                                                         42, 0.0)
+                                            # make sure dirs exist and dump.
+                                            dir_path = test_sets_base_folder + '\\FSTM\\{}\\{}_{}_{}'.format(group
+                                                                                                             ,
+                                                                                                             folders_dict[
+                                                                                                                 binning_method],
+                                                                                                             number_of_bins,
+                                                                                                             series_length)
+                                            if not os.path.exists(dir_path):
+                                                Path(dir_path).mkdir(exist_ok=True, parents=True)
+
+                                            suffix_path = '{}_{}_{}_{}_{}_{}'.format(time_window, min_support,
+                                                                                     injection_length, step_over,
+                                                                                     percentage, epsilon)
+
+                                            x_test_path = dir_path + '\\X_test_{}_' + suffix_path
+                                            y_test_path = dir_path + '\\y_test_{}_' + suffix_path
+                                            labels_path = dir_path + '\\labels_{}_' + suffix_path
+
+                                            with open(x_test_path.format('v1'), mode='wb') as x_test:
+                                                pickle.dump(X_test_v1, x_test)
+                                            with open(x_test_path.format('v2'), mode='wb') as x_test:
+                                                pickle.dump(X_test_v2, x_test)
+
+                                            with open(y_test_path.format('v1'), mode='wb') as y_test:
+                                                pickle.dump(y_test_v1, y_test)
+                                            with open(y_test_path.format('v2'), mode='wb') as y_test:
+                                                pickle.dump(y_test_v2, y_test)
+
+                                            with open(labels_path.format('v1'), mode='wb') as labels_p:
+                                                pickle.dump(v1_labels, labels_p)
+                                            with open(labels_path.format('v2'), mode='wb') as labels_p:
+                                                pickle.dump(v2_labels, labels_p)
 
 
 def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
@@ -466,7 +665,7 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                                                                         epsilon)
                             for binner in binners:
                                 for bins in n_bins:
-                                    test_df = data.process(anomalous_data, 'v3', binner, bins)
+                                    test_df = data.process(anomalous_data, 'v3', binner, bins, False)
 
                                     # we need to know which transitions include anomalies to create the test labels.
                                     # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
@@ -478,9 +677,12 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                                     # number of state
                                     state_idx = 0
                                     # labels of the packets in the state.
-                                    packet_labels_in_state = []
-                                    for pkt_idx in range(len(anomalous_data)):
-                                        time_in_state += test_df.iloc[pkt_idx, 0]
+                                    packet_labels_in_state = [labels[0]]
+                                    # arrival time of the last known packet in the state.
+                                    last_time = anomalous_data.loc[0, 'time']
+                                    for pkt_idx in range(1, len(anomalous_data)):
+                                        time_in_state += (
+                                                anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
                                         if time_in_state == test_df.iloc[state_idx, 1]:
                                             time_in_state = 0
                                             state_idx += 1
@@ -488,6 +690,7 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                                             packet_labels_in_state = []
                                         else:
                                             packet_labels_in_state.append(labels[pkt_idx])
+                                        last_time = anomalous_data.loc[pkt_idx, 'time']
                                     if group != '':
                                         middle = '\\DFA_{}'.format(group)
                                     else:
@@ -918,6 +1121,10 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                 if group != '':
                     sheet += 'group: {}'.format(group)
                 best_df.to_excel(excel_writer=writer, sheet_name=sheet)
+
+
+def test_FSTM():
+    return None
 
 
 def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config, tests_config_path, groups_ids):

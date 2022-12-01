@@ -1524,7 +1524,7 @@ def get_inter_arrival_times_stats():
     return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
-def process(data, name, bins, binning):
+def process(data, name, bins, binning, scale=True):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
@@ -1560,19 +1560,19 @@ def process(data, name, bins, binning):
                             binner=names[binning],
                             n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10)
     elif name == 'v1_1':
-        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v1)
+        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v1, scale=scale)
     elif name == 'v1_2':
-        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2)
+        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2, scale=scale)
     elif name == 'v2':
-        return process_data_v2(data, 5, binner=names[binning], n_bins=bins)
+        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale)
     elif name == 'v2_abstract':
-        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True)
+        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale)
     elif name == 'v3':
-        return process_data_v3(data, 5, binner=names[binning], n_bins=bins)
+        return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale)
     elif name == 'v3_2':
-        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins)
+        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale)
     else:
-        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True)
+        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale)
 
 
 def naive_PLCs_grouping(pkt_df, groupings, base_path):

@@ -15,4 +15,8 @@ from .dataprocessing import to_bin
 from .dataprocessing import automaton_path
 from .dataprocessing import automaton_datasets_path
 from .dataprocessing import process
+from .dataprocessing import scale_col
+from .PLCDependeciesAlgorithm import find_frequent_transitions_sequences
+from .PLCDependeciesAlgorithm import extract_features_v1
+from .PLCDependeciesAlgorithm import extract_features_v2
 from .injections import inject_to_raw_data

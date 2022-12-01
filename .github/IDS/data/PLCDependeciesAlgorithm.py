@@ -266,7 +266,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
     return flat_transitions, prev_times, prev_indices, longest, packets.loc['timestamp']
 
 
-def extract_features_v1(flat_transitions, prev_times, prev_indices, timestamps, registers):
+def extract_features_v1(flat_transitions, prev_times, timestamps, registers):
     """
     :param prev_times: same structure for times between states.
     :param flat_transitions: tuples of the form transition x state_indices.
@@ -357,10 +357,9 @@ def extract_features_v1(flat_transitions, prev_times, prev_indices, timestamps, 
     return extracted_df
 
 
-def extract_features_v2(flat_transitions, prev_times, prev_indices, longest, registers, timestamps):
+def extract_features_v2(flat_transitions, prev_times, longest, registers, timestamps):
     """
     :param longest: length of the longest frequent sequence of transitions.
-    :param prev_indices: indices of transition sequences and of their subsequences.
     :param prev_times: same structure for times between states.
     :param flat_transitions: tuples of the form transition x state_indices.
     :param registers: the names of all the registers in the group which the transitions occur in.
