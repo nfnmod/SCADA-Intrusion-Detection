@@ -1123,7 +1123,7 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                 best_df.to_excel(excel_writer=writer, sheet_name=sheet)
 
 
-def test_FSTM():
+def test_FSTM(models_train_config, injection_config, tests_config_path, group=''):
     return None
 
 
