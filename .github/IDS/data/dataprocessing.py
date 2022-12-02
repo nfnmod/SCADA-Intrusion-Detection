@@ -1715,8 +1715,11 @@ if __name__ == '__main__':
                 df = df_mb
             else:
                 df = pd.concat([df, df_mb], ignore_index=True)
-    print(len(df))
-    stats_df = get_plcs_values_statistics(df, 8, to_df=True)
-    with pd.ExcelWriter('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\plc_stats_8_registers.xlsx') as writer:
-        stats_df.to_excel(writer, '8 regs stats')
+                print("appended")
+
+    with open(datasets_path + "\\MB_TCP", mode='wb') as df_path:
+        pickle.dump(df, df_path)
+
+    print(len(df[(df['src_ip'] == '132.72.35.161') | (df['dst_ip'] == '132.72.35.161')]))
+    print(len(df[(df['src_ip'] == '132.72.249.42') | (df['dst_ip'] == '132.72.249.42')]))
 

@@ -199,7 +199,7 @@ def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=
                         dump_df = data.datasets_path + '\\{}_FSTM\\'.format(group)
                         model_name = 'FSTM_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, time_window,
                                                                   min_support, series_length)
-                        models.simple_LSTM(processed, series_length, 42, model_name, train=0, models_path=dump_model,
+                        models.simple_LSTM(processed, series_length, 42, model_name, train=1.0, models_path=dump_model,
                                            data_path=dump_df)
 
 
@@ -470,7 +470,7 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                                                 # now create test data set for LSTM. Only need X_test and y_test.
                                                 X_test, y_test = models.custom_train_test_split(
                                                     test_df,
-                                                    20, 42, train=0.0)
+                                                    20, 42, train=1.0)
                                                 # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
                                                 p_suffix = '_{}_{}_{}_{}_{}'.format(
                                                     folder_name, name, number_of_bins, desc, injection_length,
@@ -1569,6 +1569,36 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
         results_df['name'] = 'KL-RF'
         best_df.to_excel(excel_writer=writer, sheet_name='KL based RF best scores')
         results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
+
+
+# functions for training LSTMs.
+def train_LSTM(train_config):
+    """
+    for each data version * bins * binning method:
+        process raw data
+        train lstm
+    :param train_config:
+    :return:
+    """
+    with open(train_config, mode='r') as train_conf:
+        train_params = yaml.load(train_conf, Loader=yaml.FullLoader)
+    data_versions = train_params['versions']
+    bins = train_params['bins']
+    methods = train_params['binning_methods']
+    raw_df = pd.DataFrame()
+
+    for data_version in data_versions:
+        folder_name = data_version['name']
+        file_name = data_version['desc']
+        for number_of_bins in bins:
+            for method in methods:
+                method_folder = method['name']
+                method_name = data_version['desc']
+                processed = data.process(raw_df, folder_name, number_of_bins, method_name, True)
+                model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
+                dump_model = data.modeles_path + '\\{}_{}'.format(method_folder, folder_name)
+                dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
+                models.models.simple_LSTM(processed, 20, 42, model_name, train=1.0, models_path=dump_model, data_path=dump_df)
 
 
 if __name__ == '__main__':

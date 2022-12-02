@@ -270,7 +270,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     model = model_creator(best_params['epochs'], best_params['batch_size'])
     model.fit(X_train, y_train)
-    tensorflow.keras.models.save_model(model, dump_model + model_name)
+    tensorflow.keras.models.save_model(model, dump_model + '\\' + model_name)
 
     print('Best Score: %s' % best_model.best_score_)
     print('Best Hyper parameters: %s' % best_model.best_params_)
@@ -351,7 +351,7 @@ def custom_train_test_split(pkt_data, series_len, np_seed, train=0.8):
     y = np.array(y)
     X_grouped = np.asarray(X_grouped).astype(np.float32)
     y = np.asarray(y).astype(np.float32)
-    if train == 0:
+    if train == 0 or train == 1:
         return X_grouped, y
     else:
         X_train, X_test, y_train, y_test = train_test_split(X_grouped, y, test_size=1 - train, random_state=np_seed)
