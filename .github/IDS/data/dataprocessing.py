@@ -1701,3 +1701,22 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
     with pd.ExcelWriter(comparisons_file, mode='w') as writer:
         results_df.to_excel(writer, sheet_name=sheet_name)
+
+
+if __name__ == '__main__':
+    payloads = 0
+    df = pd.DataFrame()
+    for i in range(1, 12):
+        name = "modbus" + str(i)
+        p = datasets_path + '\\' + name
+        with open(p, mode='rb') as df_p:
+            df_mb = pickle.load(df_p)
+            if i == 1:
+                df = df_mb
+            else:
+                df = pd.concat([df, df_mb], ignore_index=True)
+    print(len(df))
+    stats_df = get_plcs_values_statistics(df, 8, to_df=True)
+    with pd.ExcelWriter('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\plc_stats_8_registers.xlsx') as writer:
+        stats_df.to_excel(writer, '8 regs stats')
+

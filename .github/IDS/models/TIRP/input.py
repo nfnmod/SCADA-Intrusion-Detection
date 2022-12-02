@@ -174,7 +174,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                     if entity not in checked_entities:
                         reg_num = entity[1]
                         values = [float(payload[str(reg_num)])]
-                        times = [round((pkt['time'] - start_time).total_seconds() * 1000)]
+                        times = [round((pkt['time'] - start_time).total_seconds())]
                         for k_w in range(j + 1, w):
                             w_pkt = window.iloc[k_w]
                             # check for the entity in the payload.
@@ -184,7 +184,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 if w_IP == IP and w_reg_val is not None and (
                                         len(values) == 0 or values[-1] != w_reg_val):
                                     values.append(float(w_reg_val))
-                                    times.append(round((w_pkt['time'] - start_time).total_seconds() * 1000))
+                                    times.append(round((w_pkt['time'] - start_time).total_seconds()))
                         # mark as checked.
                         checked_entities.append(entity)
                         if bin:
@@ -224,7 +224,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     event_value = sym[1]
                                     # same value then extend the last event
                                     if event_value == v:
-                                        new_finish = round((finish - start_time).total_seconds() * 1000)
+                                        new_finish = round((finish - start_time).total_seconds())
                                         # same start time and same symbol number only new finish time.
                                         new_event = (event[0], new_finish, event[2],)
                                         entities_events[entity][-1] = new_event
@@ -235,7 +235,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                             symbols[sym_event] = symbol_counter
                                             symbol_counter += 1
                                         # until the start of the next window.
-                                        new_finish = round((finish - start_time).total_seconds() * 1000)
+                                        new_finish = round((finish - start_time).total_seconds())
                                         # create event
                                         last_event = (times[-1], new_finish, symbols[sym_event],)
                                         # add the event
@@ -243,7 +243,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 elif len(values) == 1:
                                     # len(values) = 1, only 1 value was received for the entity.
                                     # create new event for the duration of the entire window and add.
-                                    new_finish = round((finish - start_time).total_seconds() * 1000)
+                                    new_finish = round((finish - start_time).total_seconds())
                                     sym_event = (entities[entity], values[0],)
                                     if symbols.get(sym_event, None) is None:
                                         symbols[sym_event] = symbol_counter
@@ -254,7 +254,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                 # more than 1 value: compare last 2 and extend events or add event accordingly
                                 # 1 value: make event for the whole window.
                                 v = values[len(values) - 1]
-                                finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds() * 1000)
+                                finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds())
                                 if len(values) > 1:
                                     # they are different, add new event for the last value.
                                     # there have been more than 1 value changes.
@@ -311,6 +311,8 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
     if not os.path.exists(base_path):
         Path(base_path).mkdir(parents=True, exist_ok=True)
     # keys are the window number.
+    entity_index = 0
+    entity_to_idx = {}
     for sw_num in sorted(sw_events.keys()):
         # hold the events of all the entities in that window.
         window_events = sw_events[sw_num]
@@ -327,16 +329,17 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
             continue
         else:
             window_path = base_path + '\\#window_{}.csv'.format(sw_num)
-            entity_index = 0
             with open(window_path, 'w', newline='') as window_file:
                 # now write the events of each entity to the file.
                 writer = csv.writer(window_file)
                 writer.writerow(['startToncepts'])
-                writer.writerow(['numberOfEntities', entity_counter])
+                writer.writerow(['numberOfEntities,', entity_counter])
                 for writeable_entity in writeable.keys():
                     events_to_write = writeable[writeable_entity]
-                    writer.writerow([str(writeable_entity), str(entity_index) + ';'])
-                    entity_index += 1
+                    if entity_to_idx.get(writeable_entity, -1) == -1:
+                        entity_to_idx[writeable_entity] = entity_index
+                        entity_index += 1
+                    writer.writerow(['{},{};'.format(str(writeable_entity), str(entity_to_idx[writeable_entity]))])
                     events_row = []
                     for event in events_to_write:
                         start = event[0]
