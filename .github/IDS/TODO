@@ -5,6 +5,5 @@
 # TODO: debug dependency algorithm-fix flattening.
 
 """
-try to find TIRPs for it.
 start training LSTMs for the new PLC.
 """

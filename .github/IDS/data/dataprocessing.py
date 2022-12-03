@@ -1,5 +1,4 @@
 import json
-import json
 import os
 import pickle
 import statistics
@@ -23,9 +22,9 @@ automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
 automaton_datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
-plc = '132.72.249.110'
-to_bin = ['30', '120', '15']
-most_used = ['30', '75', '120', '195', '15']
+plc = '132.72.249.42'
+to_bin = ['13', '26', '25', '24', '23', '22', '21', '20']
+most_used = ['13', '26', '25', '24', '23', '22', '21', '20']
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -684,7 +683,6 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
 # save inter-arrival time, values of registers ,
 # time since registers got those values, similarity score to previous known state
 def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False):
-
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -819,7 +817,6 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
 def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_vals=None):
-
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -930,7 +927,6 @@ def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_va
 
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
 def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False):
-
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -1072,7 +1068,6 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
 # [d1, d2, d3, t1, t2, t3, ss-upper, ss-lower, inter-arrival time]
 def embedding_v1(pkt_df, n, neighborhood=20, regs_times_maker=None, binner=None, n_bins=None, scale=True,
                  state_duration=False, matrix_profiles=False, w=-1, j=-1):
-
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -1704,22 +1699,33 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    payloads = 0
-    df = pd.DataFrame()
-    for i in range(1, 12):
-        name = "modbus" + str(i)
-        p = datasets_path + '\\' + name
-        with open(p, mode='rb') as df_p:
-            df_mb = pickle.load(df_p)
-            if i == 1:
-                df = df_mb
-            else:
-                df = pd.concat([df, df_mb], ignore_index=True)
-                print("appended")
+    with open(datasets_path + "\\MB_TCP", mode='rb') as df_path:
+        df = pickle.load(df_path)
 
-    with open(datasets_path + "\\MB_TCP", mode='wb') as df_path:
-        pickle.dump(df, df_path)
+    plc_df = df.loc[(df['src_ip'] == plc) | (df['dst_ip'] == plc)]
+    plc_df = plc_df.reset_index()
+    plc_df = plc_df.drop(axis=1, columns=['index'])
+    print(plc_df.index)
 
-    print(len(df[(df['src_ip'] == '132.72.35.161') | (df['dst_ip'] == '132.72.35.161')]))
-    print(len(df[(df['src_ip'] == '132.72.249.42') | (df['dst_ip'] == '132.72.249.42')]))
+    train_len = round(len(plc_df) * 0.8)
 
+    train = plc_df.iloc[:train_len]
+    test = plc_df.iloc[train_len:]
+
+    print(train)
+
+    print('R in train')
+    print(len(train.loc[train['src_ip'] == plc]))
+    print('R in test')
+    print(len(test.loc[test['src_ip'] == plc]))
+
+    print('Q in train')
+    print(len(train.loc[train['dst_ip'] == plc]))
+    print('Q in test')
+    print(len(test.loc[test['dst_ip'] == plc]))
+
+    with open(datasets_path + '\\MB_TCP_TRAIN', mode='wb') as train_p:
+        pickle.dump(train, train_p)
+
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST', mode='wb') as test_p:
+        pickle.dump(test, test_p)

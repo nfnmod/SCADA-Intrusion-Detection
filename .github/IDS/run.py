@@ -1600,9 +1600,3 @@ def train_LSTM(train_config):
                 dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
                 models.models.simple_LSTM(processed, 20, 42, model_name, train=1.0, models_path=dump_model, data_path=dump_df)
 
-
-if __name__ == '__main__':
-    test_arr = [(1, (4, 4), (2, (3, 3,)))]
-    s1 = sorted(test_arr, key=lambda element: element[1][0])
-    s2 = sorted(s1, key=lambda element: element[1][1])
-    print(s2)

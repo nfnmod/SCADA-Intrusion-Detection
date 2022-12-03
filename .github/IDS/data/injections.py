@@ -9,9 +9,6 @@ import numpy as np
 
 import data
 
-min_inter_arrival = 0
-max_inter_arrival = 0
-
 
 def get_next_pkt_idx(pkt, test_data, j):
     """
