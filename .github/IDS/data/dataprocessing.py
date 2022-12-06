@@ -1570,6 +1570,15 @@ def process(data, name, bins, binning, scale=True):
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale)
 
 
+def bin_col(df, method, col, n_bins):
+    if method == 'k_means':
+        df[col] = k_means_binning(df, col, n_bins)
+    elif method == 'equal_frequency':
+        df[col] = equal_frequency_discretization(df, col, n_bins)
+    else:
+        df[col] = equal_width_discretization(df, col, n_bins)
+
+
 def naive_PLCs_grouping(pkt_df, groupings, base_path):
     """
 

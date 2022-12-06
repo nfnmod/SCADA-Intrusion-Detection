@@ -418,82 +418,49 @@ def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_
                             #  process the data using the different versions
                             with open(data_versions_config, mode='r') as processing_config:
                                 config = yaml.load(processing_config, Loader=yaml.FullLoader)
-                                binnings = config['binning']
+                                # binnings = config['binning']
                                 data_versions = config['processing_config']
-                                for folder_name, method_name in binnings.items():
-                                    # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
-                                    for data_version in data_versions:
-                                        to_use = data_version['use']
-                                        if not to_use:
-                                            pass
-                                        else:
-                                            name = data_version['name']
-                                            bins = data_version['bins']
-                                            desc = data_version['desc']
 
-                                            # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
-                                            # the classifiers based on the HTM network.
-                                            # no binning for HTM, only scaling.
-                                            test_df = data.process(anomalous_data, name, None, None)
-                                            suffix = '_{}_{}_{}_{}.csv'.format(
-                                                name, injection_length,
-                                                step_over, percentage, epsilon)
-                                            if group_id != '':
-                                                suffix = group_id + suffix
-                                            p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix
-                                            p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
+                                for data_version in data_versions:
+                                    to_use = data_version['use']
+                                    if not to_use:
+                                        pass
+                                    else:
+                                        name = data_version['name']
+                                        # bins = data_version['bins']
+                                        # desc = data_version['desc']
 
-                                            if not os.path.exists(test_sets_base_folder + '\\HTM'):
-                                                Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
-                                                                                            exist_ok=True)
+                                        # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
+                                        # the classifiers based on the HTM network.
+                                        # no binning for HTM, only scaling.
+                                        test_df = data.process(anomalous_data, name, None, None)
+                                        suffix = '_{}_{}_{}_{}.csv'.format(
+                                            name, injection_length,
+                                            step_over, percentage, epsilon)
+                                        if group_id != '':
+                                            suffix = group_id + suffix
+                                        p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix
+                                        p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
 
-                                            with open(p_x_test_HTM, mode='w', newline='') as test_file:
-                                                writer = csv.writer(test_file)
-                                                test_cols = list(test_df.columns)
-                                                # write columns names
-                                                writer.writerow(test_cols)
-                                                # write columns types
-                                                columns_types = ['float'] * len(test_cols)
-                                                # no flags
-                                                writer.writerow(columns_types)
-                                                writer.writerow([])
-                                            test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
-                                                           mode='a')
+                                        if not os.path.exists(test_sets_base_folder + '\\HTM'):
+                                            Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
+                                                                                        exist_ok=True)
 
-                                            with open(p_labels_HTM, mode='wb') as labels_path:
-                                                pickle.dump(labels, labels_path)
+                                        with open(p_x_test_HTM, mode='w', newline='') as test_file:
+                                            writer = csv.writer(test_file)
+                                            test_cols = list(test_df.columns)
+                                            # write columns names
+                                            writer.writerow(test_cols)
+                                            # write columns types
+                                            columns_types = ['float'] * len(test_cols)
+                                            # no flags
+                                            writer.writerow(columns_types)
+                                            writer.writerow([])
+                                        test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
+                                                       mode='a')
 
-                                            # now same thing for LSTM, OCSVM.
-                                            for number_of_bins in bins:
-                                                test_df = data.process(anomalous_data, name, number_of_bins,
-                                                                       method_name)
-                                                # now create test data set for LSTM. Only need X_test and y_test.
-                                                X_test, y_test = models.custom_train_test_split(
-                                                    test_df,
-                                                    20, 42, train=1.0)
-                                                # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
-                                                p_suffix = '_{}_{}_{}_{}_{}'.format(
-                                                    folder_name, name, number_of_bins, desc, injection_length,
-                                                    step_over, percentage, epsilon)
-                                                if group_id != '':
-                                                    p_suffix = group_id + p_suffix
-
-                                                # make sure dirs exist and dump.
-                                                dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
-                                                    folder_name, name, number_of_bins)
-
-                                                p_x_test = dir_path + '\\X_test_' + p_suffix
-                                                p_y_test = dir_path + '\\y_test_' + p_suffix
-                                                p_labels = dir_path + '\\labels_' + p_suffix
-                                                if not os.path.exists(dir_path):
-                                                    Path(dir_path).mkdir(parents=True, exist_ok=True)
-
-                                                with open(p_x_test, mode='wb') as data_path:
-                                                    pickle.dump(X_test, data_path)
-                                                with open(p_y_test, mode='wb') as data_path:
-                                                    pickle.dump(y_test, data_path)
-                                                with open(p_labels, mode='wb') as data_path:
-                                                    pickle.dump(labels, data_path)
+                                        with open(p_labels_HTM, mode='wb') as labels_path:
+                                            pickle.dump(labels, labels_path)
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
@@ -1590,13 +1557,119 @@ def train_LSTM(train_config):
     for data_version in data_versions:
         folder_name = data_version['name']
         file_name = data_version['desc']
+        processed = None
+        if not data_version['reprocess']:
+            processed = data.process(raw_df, folder_name, None, None, False)
         for number_of_bins in bins:
             for method in methods:
                 method_folder = method['name']
                 method_name = data_version['desc']
-                processed = data.process(raw_df, folder_name, number_of_bins, method_name, True)
+
+                if data_version['reprocess']:
+                    lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True)
+                else:
+                    lstm_input = processed.copy()
+                    cols_not_to_bin = data_version['no_bin']
+
+                    # scale everything, bin by config file.
+                    for col_name in lstm_input.columns:
+                        if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
+                            data.bin_col(lstm_input, method, col_name, number_of_bins)
+                        lstm_input[col_name] = data.scale_col(lstm_input, col_name)
+
                 model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
                 dump_model = data.modeles_path + '\\{}_{}'.format(method_folder, folder_name)
                 dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
-                models.models.simple_LSTM(processed, 20, 42, model_name, train=1.0, models_path=dump_model, data_path=dump_df)
+                models.models.simple_LSTM(lstm_input, 20, 42, model_name, train=1.0, models_path=dump_model,
+                                          data_path=dump_df)
 
+# for LSTM classifiers.
+def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
+    test_data = data.load(test_sets_base_folder, raw_test_df)
+    lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
+    with open(injection_config, mode='r') as anomalies_config:
+        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
+        injection_lengths = injection_params['InjectionLength']
+        step_overs = injection_params['StepOver']
+        percentages = injection_params['percentage']
+        epsilons = injection_params['Epsilon']
+        # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
+        for injection_length in injection_lengths:
+            for step_over in step_overs:
+                anomaly_percentage = injection_length / (injection_length + step_over)
+                if anomaly_percentage > lim:
+                    pass
+                else:
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                        percentage,
+                                                                        epsilon)
+                            #  process the data using the different versions
+                            with open(train_config, mode='r') as processing_config:
+                                config = yaml.load(processing_config, Loader=yaml.FullLoader)
+                                binnings = config['binning_methods']
+                                data_versions = config['train_sets_config']
+                                numbers_of_bins = config['bins']
+
+                            for method_name in binnings:
+                                folder_name = folders[method_name]
+                                # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
+                                for data_version in data_versions:
+                                    name = data_version['name']
+                                    desc = data_version['desc']
+                                    if not data_version['reprocess']:
+                                        processed = data.process(anomalous_data, folder_name, None, None, False)
+                                    for number_of_bins in numbers_of_bins:
+                                        if data_version['reprocess']:
+                                            lstm_input = data.process(anomalous_data, folder_name, number_of_bins, method_name,
+                                                                      True)
+                                        else:
+                                            lstm_input = processed.copy()
+                                            cols_not_to_bin = data_version['no_bin']
+
+                                            # scale everything, bin by config file.
+                                            for col_name in lstm_input.columns:
+                                                if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
+                                                    data.bin_col(lstm_input, method_name, col_name, number_of_bins)
+                                                lstm_input[col_name] = data.scale_col(lstm_input, col_name)
+
+                                        # now create test data set for LSTM. Only need X_test and y_test.
+                                        X_test, y_test = models.custom_train_test_split(
+                                            lstm_input,
+                                            20, 42, train=1.0)
+                                        # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
+                                        p_suffix = '_{}_{}_{}_{}_{}'.format(
+                                            folder_name, name, number_of_bins, desc, injection_length,
+                                            step_over, percentage, epsilon)
+                                        # if group_id != '':
+                                        # p_suffix = group_id + p_suffix
+
+                                        # make sure dirs exist and dump.
+                                        dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
+                                            folder_name, name, number_of_bins)
+
+                                        p_x_test = dir_path + '\\X_test_' + p_suffix
+                                        p_y_test = dir_path + '\\y_test_' + p_suffix
+                                        p_labels = dir_path + '\\labels_' + p_suffix
+                                        if not os.path.exists(dir_path):
+                                            Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                        with open(p_x_test, mode='wb') as data_path:
+                                            pickle.dump(X_test, data_path)
+                                        with open(p_y_test, mode='wb') as data_path:
+                                            pickle.dump(y_test, data_path)
+                                        with open(p_labels, mode='wb') as data_path:
+                                            pickle.dump(labels, data_path)
+
+
+def test_LSTM(train_config):
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
+    results_df = pd.DataFrame(columns=['data_version', 'binning', '# bins', 'mse', 'r2'])
+
+    # go over all combinations, process raw test set, test and save metric scores.
