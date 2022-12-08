@@ -236,7 +236,8 @@ def find_frequent_transitions_sequences(packets, time_window, support):
                         components[extended_transition] = [start_states, end_states]
 
         frequently_used = {t: False for t in frequent_transitions}
-
+        added = {}
+        base_transitions_count = len(frequent_transitions)
         for i in range(len(flat_transitions) - 1):
             # now we filter out the infrequent/fully extended sequences.
             indices_and_transition = flat_transitions[i]
@@ -262,31 +263,26 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
                     # frequently extended so the components are to be saved aside as they
                     # can no longer make any other extensions.
-                    if t_supp >= support:
+                    if t_supp >= support and not added.get(extension_states, False):
                         frequently_used[transition] = True
                         frequently_used[following_transition] = True
                         # add the transition.
                         frequent_transitions.append(extension_states)
+                        added[extension_states] = True
 
-        for i in range(len(frequent_transitions)):
+        for i in range(base_transitions_count):
             transition = frequent_transitions[i]
 
             # the transition never extended any other one OR extended some other transition but the extension wasn't
             # frequent enough.
-            if not frequently_used.get(transition, True):
+            if not frequently_used[transition]:
                 # save result and remove.
                 fully_extended.append(transition)
                 fully_extended_times[transition] = times[transition]
                 fully_extended_indices[transition] = indices[transition]
                 frequent_transitions.remove(transition)
-            elif transition in frequently_used.keys():
-                parts = components[transition]
-                start = parts[0]
-                end = parts[1]
-                sub_sequences.append(start)
-                sub_sequences.append(end)
-                frequent_transitions.remove(start)
-                frequent_transitions.remove(end)
+            else:
+                frequent_transitions.remove(transition)
 
         # save times and indices for next iteration.
         prev_times = times
