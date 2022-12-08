@@ -468,13 +468,15 @@ class TestDataConversions(unittest.TestCase):
         times_in_state = [1, 9, 2, 3, 15, 5, 4, 8, 8, 7, 2, 6, 8, 3, 3, 1, 1, 2, 4, 20]
         reg_values = [8, 0, 1, 2, 8, 2, 3, 4, 7, 2, 3, 4, 0, 1, 0, 2, 3, 4, 7, 19]
         window = 10
-        length = 20
 
         df['time'] = times
         df['time_in_state'] = times_in_state
         df['1'] = reg_values
         flat_transitions, prev_times, prev_indices, longest, time_stamp = data.PLCDependeciesAlgorithm.find_frequent_transitions_sequences(
             df, window, 10)
+
+        for f_t in flat_transitions:
+            print(f_t)
 
 
 if __name__ == 'main':

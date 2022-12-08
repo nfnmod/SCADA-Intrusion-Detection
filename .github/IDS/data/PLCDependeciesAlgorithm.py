@@ -135,7 +135,9 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
     states_appearances, frequent_states, packets = get_base_states(packets.copy(), registers, support)
 
-    frequent_transitions, transitions_times, transitions_indices = base_transitions(frequent_states, states_appearances, packets, time_window, length, support)
+    frequent_transitions, transitions_times, transitions_indices = base_transitions(frequent_states, states_appearances,
+                                                                                    packets, time_window, length,
+                                                                                    support)
 
     # now we want to extend the transitions into longer sequences which are frequent
     # and also occur within a time window of at most time_window time units.
@@ -275,14 +277,15 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
             # the transition never extended any other one OR extended some other transition but the extension wasn't
             # frequent enough.
+            if transition not in frequently_used.keys():
+                break
             if not frequently_used[transition]:
                 # save result and remove.
                 fully_extended.append(transition)
                 fully_extended_times[transition] = times[transition]
                 fully_extended_indices[transition] = indices[transition]
-                frequent_transitions.remove(transition)
-            else:
-                frequent_transitions.remove(transition)
+
+        frequent_transitions = frequent_transitions[base_transitions_count:]
 
         # save times and indices for next iteration.
         prev_times = times
@@ -294,7 +297,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
     # 3. time deltas which are the time passed from the occurrence of s1 until the occurrence of s_n (depending on the indices)
     # we want the transitions to be ordered by the times. So, we need to flatten and sort with the indices' comparator.
     flat_transitions = []
-    for frequent_transition in frequent_transitions:
+    for frequent_transition in set(frequent_transitions).union(fully_extended):
         t_seq_idx_list = transitions_indices[frequent_transition]
         for t_seq_idx in t_seq_idx_list:
             flat_t_seq = (t_seq_idx, frequent_transition,)
@@ -302,7 +305,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
     flat_transitions = sorted(flat_transitions, key=lambda x: comparator(x))
 
-    return flat_transitions, prev_times, prev_indices, longest, packets.loc['timestamp']
+    return flat_transitions, prev_times, prev_indices, longest, packets['timestamp']
 
 
 def extract_features_v1(flat_transitions, prev_times, timestamps, registers):
