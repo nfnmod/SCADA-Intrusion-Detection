@@ -5,10 +5,12 @@ import pickle
 import time
 from pathlib import Path
 
+import keras.models
 import numpy as np
 import pandas as pd
 import tensorflow
 import yaml
+from keras.losses import mean_squared_error
 
 import data
 import models
@@ -17,7 +19,7 @@ import models.TIRP as TIRP
 from data.injections import inject_to_raw_data
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
@@ -1547,6 +1549,9 @@ def train_LSTM(train_config):
     :param train_config:
     :return:
     """
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
     with open(train_config, mode='r') as train_conf:
         train_params = yaml.load(train_conf, Loader=yaml.FullLoader)
     data_versions = train_params['versions']
@@ -1562,7 +1567,7 @@ def train_LSTM(train_config):
             processed = data.process(raw_df, folder_name, None, None, False)
         for number_of_bins in bins:
             for method in methods:
-                method_folder = method['name']
+                method_folder = folders[method]
                 method_name = data_version['desc']
 
                 if data_version['reprocess']:
@@ -1582,6 +1587,7 @@ def train_LSTM(train_config):
                 dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
                 models.models.simple_LSTM(lstm_input, 20, 42, model_name, train=1.0, models_path=dump_model,
                                           data_path=dump_df)
+
 
 # for LSTM classifiers.
 def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
@@ -1625,7 +1631,8 @@ def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
                                         processed = data.process(anomalous_data, folder_name, None, None, False)
                                     for number_of_bins in numbers_of_bins:
                                         if data_version['reprocess']:
-                                            lstm_input = data.process(anomalous_data, folder_name, number_of_bins, method_name,
+                                            lstm_input = data.process(anomalous_data, folder_name, number_of_bins,
+                                                                      method_name,
                                                                       True)
                                         else:
                                             lstm_input = processed.copy()
@@ -1666,10 +1673,68 @@ def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
                                             pickle.dump(labels, data_path)
 
 
-def test_LSTM(train_config):
+def test_LSTM(train_config, raw_test_data):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
+
+    test_df = data.load(data.datasets_path, raw_test_data)
 
     results_df = pd.DataFrame(columns=['data_version', 'binning', '# bins', 'mse', 'r2'])
 
     # go over all combinations, process raw test set, test and save metric scores.
+    with open(train_config, mode='r') as c:
+        train_params = yaml.load(c, Loader=yaml.FullLoader)
+
+    binning_methods = train_params['binning_methods']
+    numbers_of_bins = train_params['bins']
+    data_versions = train_params['train_sets_config']
+
+    for data_version in data_versions:
+        test_lstm = None
+        if not data_version['reprocess']:
+            test_lstm = data.process_data_v3(test_df, None, None, False)
+        for binning_method in binning_methods:
+            for number_of_bins in numbers_of_bins:
+                if data_version['reprocess']:
+                    lstm_in = data.process(test_df, number_of_bins, binning_method, True)
+                else:
+                    lstm_in = test_lstm.copy()
+                    cols_not_to_bin = data_version['no_bin']
+
+                    # scale everything, bin by config file.
+                    for col_name in lstm_in.columns:
+                        if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
+                            data.bin_col(lstm_in, binning_method, col_name, number_of_bins)
+                        lstm_in[col_name] = data.scale_col(lstm_in, col_name)
+
+                bin_part = folders[binning_method]
+                version_part = data_version['name']
+                model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
+                dump_model = data.modeles_path + '\\{}_{}'.format(bin_part, version_part)
+
+                with open(dump_model + '\\' + model_name, mode='rb') as model_path:
+                    LSTM = keras.models.load_model(model_path)
+
+                X_test, y_test = models.models.custom_train_test_split(lstm_in, 20, 42, train=1.0)
+
+                with open(test_sets_base_folder + '\\{}_{}'.format(bin_part,
+                                                                   version_part) + '\\X_test_' + model_name) as x_test_p:
+                    pickle.dump(X_test, x_test_p)
+
+                with open(test_sets_base_folder + '\\{}_{}'.format(bin_part,
+                                                                   version_part) + '\\y_test_' + model_name) as y_test_p:
+                    pickle.dump(y_test, y_test_p)
+
+                y_pred = LSTM.predict(X_test)
+                r2 = r2_score(y_test, y_pred)
+                mse = mean_squared_error(y_test, y_pred)
+                result = {'data version': data_version['name'],
+                          'binning': folders[binning_method],
+                          '# bins': number_of_bins,
+                          'mse': mse,
+                          'r2': r2}
+                res_df = pd.DataFrame.from_dict(columns=results_df.columns, data={'0': result}, orient='index')
+                results_df = pd.concat([results_df, res_df], ignore_index=True)
+
+    with pd.ExcelWriter(xl_path) as writer:
+        results_df.to_excel(writer, sheet_name='LSTM scores')

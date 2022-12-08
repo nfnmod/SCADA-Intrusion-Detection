@@ -9,6 +9,14 @@ import data
 test_captures_path = "C:\\Users\\User\\Desktop\\SCADA\\testcaptures"
 
 
+def est_find_frequent_basic_transitions():
+    return None
+
+
+def est_find_frequent_extended_transitions():
+    return None
+
+
 class TestDataConversions(unittest.TestCase):
 
     # need to cancel the scaling to run this correctly
@@ -292,7 +300,7 @@ class TestDataConversions(unittest.TestCase):
                                                         scale=False)
         print(processed_df)
 
-    def test_injection(self):
+    def est_injection(self):
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
         datestrs = ["Mar 22, 2022 21:13:36.902262",
@@ -374,6 +382,83 @@ class TestDataConversions(unittest.TestCase):
         expected_ia = [50, 100, 150, 100, 50, 100, 100, 150, 100]
         expected_labels = [0, 1, 1, 0, 0, 1, 1, 1, 0, 0]
         check(expected_labels, expected_ia)
+
+    def test_find_frequent_states(self):
+        df = pd.DataFrame(columns=['time', 'time_in_state', '1'])
+        times = [0] * 8
+        times_in_state = [13, 11, 12, 10, 8, 1, 2, 7]
+        reg_values = [8, 9, 10, 8, 10, 11, 1, 8]
+
+        df['time'] = times
+        df['time_in_state'] = times_in_state
+        df['1'] = reg_values
+
+        states_appearances, frequent_states, packets = data.PLCDependeciesAlgorithm.get_base_states(
+            df, ['1'], 25)
+        expected_states_appearances = {(('1', 8,),): [0, 3, 7], (('1', 9,),): [1], (('1', 10,),): [2, 4],
+                                       (('1', 1,),): [6],
+                                       (('1', 11,),): [5]}
+        for i in range(len(packets)):
+            timestamp = packets.loc[i, 'timestamp']
+            expected = 0
+            for j in range(i):
+                expected += packets.loc[j, 'time_in_state']
+            assert expected == timestamp
+
+        for k in expected_states_appearances.keys():
+            assert expected_states_appearances[k] == states_appearances[k]
+
+        expected_frequent_states = [(('1', 8,),), (('1', 10,),)]
+
+        assert len(expected_frequent_states) == len(frequent_states)
+        for frequent_state in expected_frequent_states:
+            assert frequent_state in frequent_states
+
+    def test_find_frequent_base_transitions_no_frequent_transitions(self):
+        df = pd.DataFrame(columns=['time', 'time_in_state', '1'])
+        times = [0] * 12
+        times_in_state = [2, 8, 1, 1, 2, 10, 5, 4, 1, 7, 17, 15]
+        reg_values = [0, 1, 2, 8, 11, 2, 0, 1, 8, 11, 0, 1]
+        window = 10
+        length = 12
+
+        df['time'] = times
+        df['time_in_state'] = times_in_state
+        df['1'] = reg_values
+        states_appearances, frequent_states, packets = data.PLCDependeciesAlgorithm.get_base_states(
+            df, ['1'], 25)
+        frequent_transitions, transitions_times, transitions_indices = data.PLCDependeciesAlgorithm.base_transitions(
+            frequent_states, states_appearances, df, window, length, 25)
+
+        assert len(frequent_transitions) == 0
+        assert len(transitions_times.keys()) == 1
+        assert len(transitions_indices.keys()) == 1
+        assert list(transitions_times.keys())[0] == ((('1', 0),), (('1', 1),),) == list(transitions_indices.keys())[0]
+
+    def test_find_frequent_base_transitions_found_frequent_transitions(self):
+        df = pd.DataFrame(columns=['time', 'time_in_state', '1'])
+        times = [0] * 12
+        times_in_state = [2, 8, 1, 1, 2, 10, 5, 4, 1, 7, 7, 15]
+        reg_values = [0, 1, 2, 8, 11, 2, 0, 1, 8, 11, 0, 1]
+        window = 10
+        length = 12
+
+        df['time'] = times
+        df['time_in_state'] = times_in_state
+        df['1'] = reg_values
+        states_appearances, frequent_states, packets = data.PLCDependeciesAlgorithm.get_base_states(
+            df, ['1'], 25)
+        frequent_transitions, transitions_times, transitions_indices = data.PLCDependeciesAlgorithm.base_transitions(
+            frequent_states, states_appearances, df, window, length, 25)
+
+        k = ((('1', 0),), (('1', 1),),)
+
+        assert len(frequent_transitions) == 1
+        assert len(transitions_times.keys()) == 1
+        assert len(transitions_indices.keys()) == 1
+        assert list(transitions_times.keys())[0] == ((('1', 0),), (('1', 1),),) == list(transitions_indices.keys())[0]
+        assert len(transitions_times[k]) == 3 and 2.0 in transitions_times[k] and 5.0 in transitions_times[k] and 7.0 in transitions_times[k]
+        assert len(transitions_indices[k]) == 3 and (0, 1) in transitions_indices[k] and (6, 7) in transitions_indices[k] and (10, 11) in transitions_indices[k]
 
 
 if __name__ == 'main':
