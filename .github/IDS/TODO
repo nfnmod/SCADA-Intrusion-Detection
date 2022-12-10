@@ -2,3 +2,4 @@
 # TODO: train and test the models.
 # TODO: update TIRPs anomaly detection to do it with LSTM to predict the TIRPs in the next window.
 # TODO: debug dependency algorithm.
+# TODO: avoid reprocessing for each train and test method, save binners and scalers.

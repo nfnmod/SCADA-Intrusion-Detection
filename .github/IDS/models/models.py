@@ -257,15 +257,22 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
+    early_stopping = tensorflow.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min', restore_best_weights=True)
+
     params_dict = dict()
-    params_dict['epochs'] = np.linspace(3, 15, num=13, dtype=np.int)
-    params_dict['batch_size'] = [32, 48, 64]
+    params_dict['epochs'] = [20, 30, 40]
+    params_dict['batch_size'] = [32, 64, 128]
+    params_dict['callbacks'] = [[early_stopping]]
 
     estimator = KerasRegressor(build_fn=model_creator)
     search = GridSearchCV(estimator=estimator, param_grid=params_dict, cv=kf, scoring='neg_mean_squared_error')
 
     print("fitting the model")
+    start = time.time()
     best_model = search.fit(X_train, y_train)
+    end = time.time()
+    with open(LSTM_train_log, mode='a') as train_log:
+        train_log.write(model_name + ': {} seconds'.format(end - start))
     best_params = best_model.best_params_
 
     model = model_creator(best_params['epochs'], best_params['batch_size'])
@@ -307,13 +314,13 @@ def grid_search_train(pkt_data, series_len, np_seed, model_name, train=0.8):
                     log.write('trained, time elapsed: {}\n'.format(end - start))
 
 
-def build_LSTM(epochs, batch_size):
+def build_LSTM(epochs, batch_size, callbacks):
     model = tensorflow.keras.Sequential()
     model.add(layers.LSTM(units=n_features, input_shape=(series_length, n_features)))
     model.add(layers.Dropout(0.2))
     model.add(layers.Dense(n_features, activation='relu'))
     model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error"],
-                  optimizer='adam', )
+                  optimizer='adam')
 
     return model
 

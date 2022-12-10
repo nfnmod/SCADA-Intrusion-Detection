@@ -32,6 +32,7 @@ KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test s
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
 LSTM_classifiers_classifications = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\LSTM_classifications'
 group_df_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\group'
+binners_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\binners'
 DFA_regs = ['30', '120', '15']
 
 excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
@@ -1569,9 +1570,13 @@ def train_LSTM(train_config):
             for method in methods:
                 method_folder = folders[method]
                 method_name = data_version['desc']
-
+                model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
+                binner_scaler_p = binners_base + '\\{}_{}'.format(method_folder, folder_name)
+                if not os.path.exists(binner_scaler_p):
+                    Path(binner_scaler_p).mkdir(exist_ok=True, parents=True)
+                binner_scaler_full_path = binner_scaler_p + '\\' + model_name
                 if data_version['reprocess']:
-                    lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True)
+                    lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True, binner_path=binner_scaler_full_path)
                 else:
                     lstm_input = processed.copy()
                     cols_not_to_bin = data_version['no_bin']
@@ -1579,10 +1584,9 @@ def train_LSTM(train_config):
                     # scale everything, bin by config file.
                     for col_name in lstm_input.columns:
                         if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                            data.bin_col(lstm_input, method, col_name, number_of_bins)
-                        lstm_input[col_name] = data.scale_col(lstm_input, col_name)
+                            data.bin_col(lstm_input, method, col_name, number_of_bins, path=binner_scaler_full_path)
+                        lstm_input[col_name] = data.scale_col(lstm_input, col_name, path=binner_scaler_full_path)
 
-                model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
                 dump_model = data.modeles_path + '\\{}_{}'.format(method_folder, folder_name)
                 dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
                 models.models.simple_LSTM(lstm_input, 20, 42, model_name, train=1.0, models_path=dump_model,
