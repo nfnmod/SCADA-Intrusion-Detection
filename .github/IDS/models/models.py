@@ -275,7 +275,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
         train_log.write(model_name + ': {} seconds'.format(end - start))
     best_params = best_model.best_params_
 
-    model = model_creator(best_params['epochs'], best_params['batch_size'])
+    model = model_creator(best_params['epochs'], best_params['batch_size'], best_params['callbacks'])
     model.fit(X_train, y_train)
     tensorflow.keras.models.save_model(model, dump_model + '\\' + model_name)
 
