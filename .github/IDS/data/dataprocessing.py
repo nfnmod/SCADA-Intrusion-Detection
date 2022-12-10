@@ -22,6 +22,8 @@ automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
 automaton_datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
+binners_base = '//sise//home//zaslavsm//SCADA//binners'
+scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
 plc = '132.72.249.42'
 to_bin = ['13', '26', '25', '24', '23', '22', '21', '20']
 most_used = ['13', '26', '25', '24', '23', '22', '21', '20']
@@ -34,7 +36,7 @@ def scale_col(df, name, path=None):
     np_col = df[name].to_numpy().reshape(-1, 1)
     scaler.fit(np_col)
     if path is not None:
-        with open(path + '_' + name, mode='wb') as scaler_path:
+        with open(scalers_base + '//{}_{}'.format(path, name), mode='wb') as scaler_path:
             pickle.dump(scaler, scaler_path)
     return scaler.transform(np_col)
 
@@ -517,7 +519,7 @@ def k_means_binning(df, col_name, n_bins, path=None):
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit(data)
     labeled_data = k_means.transform(data)
     if path is not None:
-        with open(path + '_' + col_name, mode='wb') as binner_path:
+        with open(binners_base + '//{}_{}'.format(path, col_name), mode='wb') as binner_path:
             pickle.dump(k_means, binner_path)
     return labeled_data
 
@@ -527,7 +529,7 @@ def equal_width_discretization(df, col_name, n_bins, path=None):
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit(data)
     labeled_data = k_means.transform(data)
     if path is not None:
-        with open(path + '_' + col_name, mode='wb') as binner_path:
+        with open(binners_base + '//{}_{}'.format(path, col_name), mode='wb') as binner_path:
             pickle.dump(k_means, binner_path)
     return labeled_data
 
@@ -537,7 +539,7 @@ def equal_frequency_discretization(df, col_name, n_bins, path=None):
     k_means = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit(data)
     labeled_data = k_means.transform(data)
     if path is not None:
-        with open(path + '_' + col_name, mode='wb') as binner_path:
+        with open(binners_base + '//{}_{}'.format(path, col_name), mode='wb') as binner_path:
             pickle.dump(k_means, binner_path)
     return labeled_data
 
@@ -1720,33 +1722,13 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    with open(datasets_path + "\\MB_TCP", mode='rb') as df_path:
+    with open(datasets_path + "\\MB_TCP_TRAIN", mode='rb') as df_path:
         df = pickle.load(df_path)
 
-    plc_df = df.loc[(df['src_ip'] == plc) | (df['dst_ip'] == plc)]
-    plc_df = plc_df.reset_index()
-    plc_df = plc_df.drop(axis=1, columns=['index'])
-    print(plc_df.index)
+    rs = df.loc[df['src_port'] == 502]
+    for i in range(len(rs)):
+        print(rs.iloc[i]['payload'])
 
-    train_len = round(len(plc_df) * 0.8)
-
-    train = plc_df.iloc[:train_len]
-    test = plc_df.iloc[train_len:]
-
-    print(train)
-
-    print('R in train')
-    print(len(train.loc[train['src_ip'] == plc]))
-    print('R in test')
-    print(len(test.loc[test['src_ip'] == plc]))
-
-    print('Q in train')
-    print(len(train.loc[train['dst_ip'] == plc]))
-    print('Q in test')
-    print(len(test.loc[test['dst_ip'] == plc]))
-
-    with open(datasets_path + '\\MB_TCP_TRAIN', mode='wb') as train_p:
-        pickle.dump(train, train_p)
-
-    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST', mode='wb') as test_p:
-        pickle.dump(test, test_p)
+    processed = process_data_v1(df, 8, equal_width_discretization, 5, make_entry_v1, True, None)
+    for reg in most_used:
+        print(processed[reg].unique())
