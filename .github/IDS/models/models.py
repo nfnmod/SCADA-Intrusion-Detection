@@ -276,7 +276,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
     best_params = best_model.best_params_
 
     model = model_creator(best_params['epochs'], best_params['batch_size'], best_params['callbacks'])
-    model.fit(X_train, y_train)
+    model.fit(X_train, y_train, best_params['callbacks'])
     tensorflow.keras.models.save_model(model, dump_model + '\\' + model_name)
 
     print('Best Score: %s' % best_model.best_score_)
