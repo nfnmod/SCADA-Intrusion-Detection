@@ -1,7 +1,6 @@
 import statistics
 
 import numpy as np
-from sklearn.model_selection import train_test_split
 
 import data
 
@@ -83,16 +82,12 @@ def find_same(transition, transitions):
 
 
 # The registers don't always get their values together.
-def make_automaton(registers, pkts, binner, bins):
+def make_automaton(registers, processed):
     states = []
     transitions = []
     transitions_times = []
     transition_id = 0
-    # this data version represents transitions. Each entry is a new state, we also save the time in the state
-    processed = data.process_data_v3(pkts, 5, binner, bins, False)
-    processed_train, processed_test = train_test_split(processed, test_size=0.2)
-    data.dump(data.automaton_datasets_path, "train", processed_train)
-    data.dump(data.automaton_datasets_path, "test", processed_test)
+
     for i in range(len(processed) - 1):
         # this saves a state and the time we were in the state.
         # the next packet is the next state.
@@ -145,8 +140,7 @@ def make_automaton(registers, pkts, binner, bins):
 # detect anomalies using the automaton: unknown state/transition or violation of time constrains
 # for single PLC, registers holds the PLC-state defining registers.
 # for multipe PLCs, registers holds a mapping from PLC to PLC-state defining registers.
-def detect(automaton, pkts, registers):
-    processed = data.process_data_v3(pkts, 5, None, None, False, None)
+def detect(automaton, processed, registers):
     decisions = []
     for i in range(len(processed) - 1):
         curr_pkt = processed[i]

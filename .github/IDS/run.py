@@ -125,31 +125,51 @@ def train_automaton(group=None):
     :return:
     """
     if group is not None:
-        pkts = data.load(data.datasets_path, "modbus_{}".format(group))
+        pkts = data.load(data.datasets_path, "MODBUS_TCP_TRAIN_{}".format(group))
     else:
-        pkts = data.load(data.datasets_path, "modbus")
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
-    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
-             data.equal_width_discretization: "equal_width"}
-    n_bins = [5, 6, 7, 8, 9, 10]
-    options = itertools.product(binners, n_bins)
-    for option in options:
-        bins = option[1]
-        binner = option[0]
+        pkts = data.load(data.datasets_path, "MODBUS_TCP_TRAIN")
 
-        with open(DFA_log, mode='a') as log:
-            log.write('Creating DFA')
+    bins = [5, 6, 7, 8, 9, 10]
+    binning_methods = {'k_means': data.k_means_binning, 'equal_frequency': data.equal_frequency_discretization,
+                       'equal_width': data.equal_width_discretization}
+    names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
+             'equal_width': 'EqualWidth'}
+    processed = data.process_data_v3(pkts, scale=False)
+    registers = processed.columns[2:]
 
-        start = time.time()
-        DFA = models.automaton.make_automaton(data.to_bin, pkts, binner, bins)
-        end = time.time()
+    scaler_path = scalers_base + '//DFA'
+    binner_path = binners_base + '//DFA'
+    if not os.path.exists(scaler_path):
+        Path(scaler_path).mkdir(parents=True, exist_ok=True)
+    if not os.path.exists(binner_path):
+        Path(binner_path).mkdir(parents=True, exist_ok=True)
 
-        with open(DFA_log, mode='a') as log:
-            log.write('Done, time elapsed:{}'.format(end - start))
-        if group is None:
-            data.dump(data.automaton_path, "DFA_{}_{}".format(names[binner], bins), DFA)
-        else:
-            data.dump(data.automaton_path, "{}\\DFA_{}_{}".format(group, names[binner], bins), DFA)
+    for b in bins:
+        for binning_method in binning_methods.keys():
+            train_data = processed.copy()
+            for col_name in processed.columns:
+
+                if col_name in registers:
+                    binner = binning_methods[binning_method]
+                    binner_full_path = 'DFA//{}_{}'.format(names[binning_method], b)
+                    if not os.path.exists(binner_full_path):
+                        Path(binner_full_path).mkdir(parents=True, exist_ok=True)
+                    train_data[col_name] = binner(train_data, col_name, b, binner_full_path)
+                scaler_full_path = 'DFA//column'
+                train_data[col_name] = data.scale_col(train_data, col_name, scaler_full_path)
+
+            with open(DFA_log, mode='a') as log:
+                log.write('Creating DFA\n')
+
+            start = time.time()
+            automaton = models.automaton.make_automaton(registers, processed)
+            end = time.time()
+
+            with open(DFA_log, mode='a') as log:
+                log.write('Done, time elapsed:{}\n'.format(end - start))
+
+            with open(data.automaton_path + '\\{}_{}'.format(names[binning_method], b), mode='wb') as dfa_path:
+                pickle.dump(automaton, dfa_path)
 
 
 def train_automatons(groups):
@@ -612,6 +632,8 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
     binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
     names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
              data.equal_width_discretization: "equal_width"}
+    folders_names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
+             'equal_width': 'EqualWidth'}
     n_bins = [5, 6, 7, 8, 9, 10]
 
     test_data = data.load(data.datasets_path, raw_test_data_df)
@@ -634,9 +656,23 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                             anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
                                                                         percentage,
                                                                         epsilon)
+                            test_df = data.process(anomalous_data, 'v3', None, None, False)
                             for binner in binners:
                                 for bins in n_bins:
-                                    test_df = data.process(anomalous_data, 'v3', binner, bins, False)
+                                    binned_test_df = test_df.copy()
+                                    for col_name in test_df.columns:
+                                        if 'time' not in col_name:
+                                            # load binner.
+                                            binner_path = binners_base + '//DFA//{}_{}_{}'.format(folders_names[names[binner]], bins, col_name)
+                                            with open(binner_path, mode='rb') as binner_p:
+                                                col_binner = pickle.load(binner_p)
+                                            binned_test_df[col_name] = col_binner(binned_test_df, col_name, bins)
+
+                                        # load scaler.
+                                        scaler_path = scalers_base + '//DFA//column_{}'.format(col_name)
+                                        with open(scaler_path, mode='rb') as scaler_p:
+                                            col_scaler = pickle.load(scaler_p)
+                                        binned_test_df[col_name] = col_scaler(binned_test_df, col_name)
 
                                     # we need to know which transitions include anomalies to create the test labels.
                                     # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
@@ -944,6 +980,9 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                 # b.
                                 for injection_length in injection_lengths:
                                     for step_over in step_overs:
+                                        anomaly_percentage = injection_length / (injection_length + step_over)
+                                        if anomaly_percentage > 0.2:
+                                            continue
                                         for percentage in percentages:
                                             for epsilon in epsilons:
                                                 p_suffix = '_{}_{}_{}_{}_{}'.format(
@@ -1148,6 +1187,9 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
             # now, get the metric scores for each injection x models configuration combination.
             for injection_length in injection_lengths:
                 for step_over in step_overs:
+                    anomaly_percentage = injection_length / (injection_length + step_over)
+                    if anomaly_percentage > 0.2:
+                        continue
                     for percentage in percentages:
                         for epsilon in epsilons:
                             for data_version in data_versions:
@@ -1219,6 +1261,9 @@ def test_DFA(injection_config, group=''):
         middle = '\\DFA_{}'.format(group)
     for injection_length in injection_lengths:
         for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > 0.2:
+                continue
             for percentage in percentages:
                 for epsilon in epsilons:
                     for binner in binners:
@@ -1245,7 +1290,8 @@ def test_DFA(injection_config, group=''):
                                       mode='rb') as dfa_path:
                                 DFA = pickle.load(dfa_path)
                             # the DFA classifies transitions.
-                            decisions = models.automaton.detect(DFA, test_df, DFA_regs)
+                            registers = test_df.columns[2::]
+                            decisions = models.automaton.detect(DFA, test_df, registers)
 
                             precision, recalls, thresholds = precision_recall_curve(
                                 y_true=test_labels,
@@ -1348,6 +1394,9 @@ def many_PLC_DFAs(groups_ids, injection_config):
         for binner in binners:
             for injection_length in injection_lengths:
                 for step_over in step_overs:
+                    anomaly_percentage = injection_length / (injection_length + step_over)
+                    if anomaly_percentage > 0.2:
+                        continue
                     for percentage in percentages:
                         for epsilon in epsilons:
                             # now calculate the scores.
@@ -1444,6 +1493,9 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                         input_base = data.datasets_path + '\\KL\\'
                                         for injection_length in injection_lengths:
                                             for step_over in step_overs:
+                                                anomaly_percentage = injection_length / (injection_length + step_over)
+                                                if anomaly_percentage > 0.2:
+                                                    continue
                                                 for percentage in percentages:
                                                     for injection_epsilon in epsilons:
                                                         desc = "\\{0}_{1}_{2}_{3}_{4}_{5}_{6}".format(binning_method,
@@ -1582,7 +1634,8 @@ def train_LSTM(train_config):
                 if not os.path.exists(scalers_p):
                     Path(scalers_p).mkdir(exist_ok=True, parents=True)
                 if data_version['reprocess']:
-                    lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True, binner_path=suffix)
+                    lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True,
+                                              binner_path=suffix)
                 else:
                     lstm_input = processed.copy()
                     cols_not_to_bin = data_version['no_bin']

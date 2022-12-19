@@ -475,6 +475,12 @@ class TestDataConversions(unittest.TestCase):
         flat_transitions, prev_times, prev_indices, longest, time_stamp = data.PLCDependeciesAlgorithm.find_frequent_transitions_sequences(
             df, window, 10)
 
+        print('sub suquences')
+        print(prev_indices)
+        for k, v in prev_indices.items():
+            print('sequence:{}'.format(k))
+            print('indices:{}'.format(v))
+
         for f_t in flat_transitions:
             print(f_t)
 

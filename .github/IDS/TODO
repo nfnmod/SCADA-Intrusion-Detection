@@ -1,4 +1,2 @@
 # TODO: update TIRPs anomaly detection to do it with LSTM to predict the TIRPs in the next window.
-
-# REMINDER: avoid reprocessing for each train and test method
-# REMINDER: save binners and scalers for each method.
+# TODO: check sequences lengths to determine the sliding window size (FSTM)

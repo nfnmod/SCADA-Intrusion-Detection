@@ -830,7 +830,7 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 # ---------------------------------------------------------------------------------------------------------------------------
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
-def process_data_v3(pkt_df, n, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None):
+def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
