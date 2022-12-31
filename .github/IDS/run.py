@@ -19,7 +19,7 @@ import models.TIRP as TIRP
 from data.injections import inject_to_raw_data
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, confusion_matrix
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
@@ -633,7 +633,7 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
     names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
              data.equal_width_discretization: "equal_width"}
     folders_names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
-             'equal_width': 'EqualWidth'}
+                     'equal_width': 'EqualWidth'}
     n_bins = [5, 6, 7, 8, 9, 10]
 
     test_data = data.load(data.datasets_path, raw_test_data_df)
@@ -663,7 +663,8 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                                     for col_name in test_df.columns:
                                         if 'time' not in col_name:
                                             # load binner.
-                                            binner_path = binners_base + '//DFA//{}_{}_{}'.format(folders_names[names[binner]], bins, col_name)
+                                            binner_path = binners_base + '//DFA//{}_{}_{}'.format(
+                                                folders_names[names[binner]], bins, col_name)
                                             with open(binner_path, mode='rb') as binner_p:
                                                 col_binner = pickle.load(binner_p)
                                             binned_test_df[col_name] = col_binner(binned_test_df, col_name, bins)
@@ -1801,3 +1802,39 @@ def test_LSTM(train_config, raw_test_data):
 
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM scores')
+
+
+def create_raw_test_sets(injections_config):
+    with open(injections_config, mode='r') as injections_conf:
+        injection_params = yaml.load(injections_conf, Loader=yaml.FullLoader)
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['percentage']
+    epsilons = injection_params['Epsilon']
+    lim = 0.2
+
+    with open(test_sets_base_folder + '//MB_TCP_TEST', mode='rb') as test_path:
+        test_data = pickle.load(test_path)
+
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                    percentage,
+                                                                    epsilon)
+                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}_{}'.format(injection_length, step_over,
+                                                                                           percentage, epsilon)
+                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}_{}'.format(injection_length,
+                                                                                                 step_over,
+                                                                                                 percentage, epsilon)
+                        with open(df_path, mode='wb') as df_p:
+                            pickle.dump(anomalous_data, df_p)
+
+                        with open(labels_path, mode='wb') as labels_p:
+                            pickle.dump(labels, labels_p)
