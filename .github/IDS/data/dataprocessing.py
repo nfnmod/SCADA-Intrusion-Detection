@@ -1722,13 +1722,15 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    with open(datasets_path + "\\MB_TCP_TRAIN", mode='rb') as df_path:
+    with open("C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST", mode='rb') as df_path:
         df = pickle.load(df_path)
 
-    rs = df.loc[df['src_port'] == 502]
-    for i in range(len(rs)):
-        print(rs.iloc[i]['payload'])
+    new_idx = df.reset_index()
+    new_idx = new_idx.drop('index', axis=1)
 
-    processed = process_data_v1(df, 8, equal_width_discretization, 5, make_entry_v1, True, None)
-    for reg in most_used:
-        print(processed[reg].unique())
+    with open("C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST", mode='wb') as df_path:
+        pickle.dump(new_idx, df_path)
+
+    print(new_idx.index)
+
+

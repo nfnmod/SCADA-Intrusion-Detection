@@ -134,13 +134,17 @@ def train_automaton(group=None):
                        'equal_width': data.equal_width_discretization}
     names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
              'equal_width': 'EqualWidth'}
+
     processed = data.process_data_v3(pkts, scale=False)
     registers = processed.columns[2:]
 
-    scaler_path = scalers_base + '//DFA'
+    # scaler_path = scalers_base + '//DFA'
+
     binner_path = binners_base + '//DFA'
-    if not os.path.exists(scaler_path):
-        Path(scaler_path).mkdir(parents=True, exist_ok=True)
+
+    # if not os.path.exists(scaler_path):
+    # Path(scaler_path).mkdir(parents=True, exist_ok=True)
+
     if not os.path.exists(binner_path):
         Path(binner_path).mkdir(parents=True, exist_ok=True)
 
@@ -148,21 +152,23 @@ def train_automaton(group=None):
         for binning_method in binning_methods.keys():
             train_data = processed.copy()
             for col_name in processed.columns:
-
                 if col_name in registers:
                     binner = binning_methods[binning_method]
                     binner_full_path = 'DFA//{}_{}'.format(names[binning_method], b)
                     if not os.path.exists(binner_full_path):
                         Path(binner_full_path).mkdir(parents=True, exist_ok=True)
                     train_data[col_name] = binner(train_data, col_name, b, binner_full_path)
-                scaler_full_path = 'DFA//column'
-                train_data[col_name] = data.scale_col(train_data, col_name, scaler_full_path)
+
+                # scaler_full_path = 'DFA//column'
+                # train_data[col_name] = data.scale_col(train_data, col_name, scaler_full_path)
 
             with open(DFA_log, mode='a') as log:
                 log.write('Creating DFA\n')
 
+            dfa_input = squeeze(processed)
+
             start = time.time()
-            automaton = models.automaton.make_automaton(registers, processed)
+            automaton = models.automaton.make_automaton(registers, dfa_input)
             end = time.time()
 
             with open(DFA_log, mode='a') as log:
@@ -624,7 +630,45 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
                                                 pickle.dump(v2_labels, labels_p)
 
 
-def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
+# for v_3.
+def squeeze(binned_test_df):
+    cols = binned_test_df.columns
+    num_regs = len(cols) - 2
+    squeezed = pd.DataFrame(columns=cols)
+
+    first_state = {c: binned_test_df.loc[0, c] for c in binned_test_df.columns}
+    state_df = pd.DataFrame.from_dict(data={'0': first_state}, orient='index', columns=cols)
+    squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+
+    for i in range(1, len(binned_test_df)):
+        state_dict = {c: binned_test_df.loc[i, c] for c in cols}
+        curr_regs = {c: state_dict[c] for c in cols if 'time' not in c}
+        prev_regs = {c: squeezed.loc[-1, c] for c in cols if 'time' not in c}
+
+        similarity = 0
+
+        for reg in curr_regs.keys():
+            curr_r = curr_regs[reg]
+            prev_r = prev_regs[reg]
+            if curr_r == prev_r:
+                similarity += 1
+
+        similarity /= num_regs
+
+        # after binning, the states are the same.
+        if similarity == 1:
+            squeezed.loc[-1, 'time_in_state'] += state_dict['time_in_state']
+        else:
+            # a state has changed (after binning)
+            state_df = pd.DataFrame.from_dict(data={'0': state_dict}, orient='index', columns=cols)
+            # works only if we don't add in the first processing. otherwise, we add twice.
+            squeezed.loc[-1, 'time'] += state_dict['time']
+            squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+
+    return squeezed
+
+
+def create_test_files_DFA(injection_config, group=''):
     """
      just grid over all the injection parameters and binning params.
     """
@@ -636,88 +680,99 @@ def create_test_files_DFA(raw_test_data_df, injection_config, group=''):
                      'equal_width': 'EqualWidth'}
     n_bins = [5, 6, 7, 8, 9, 10]
 
-    test_data = data.load(data.datasets_path, raw_test_data_df)
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['InjectionLength']
-        step_overs = injection_params['StepOver']
-        percentages = injection_params['Percentage']
-        epsilons = injection_params['Epsilon']
-        lim = 0.2
-        # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
-        for injection_length in injection_lengths:
-            for step_over in step_overs:
-                anomaly_percentage = injection_length / (injection_length + step_over)
-                if anomaly_percentage > lim:
-                    pass
-                else:
-                    for percentage in percentages:
-                        for epsilon in epsilons:
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                        percentage,
-                                                                        epsilon)
-                            test_df = data.process(anomalous_data, 'v3', None, None, False)
-                            for binner in binners:
-                                for bins in n_bins:
-                                    binned_test_df = test_df.copy()
-                                    for col_name in test_df.columns:
-                                        if 'time' not in col_name:
-                                            # load binner.
-                                            binner_path = binners_base + '//DFA//{}_{}_{}'.format(
-                                                folders_names[names[binner]], bins, col_name)
-                                            with open(binner_path, mode='rb') as binner_p:
-                                                col_binner = pickle.load(binner_p)
-                                            binned_test_df[col_name] = col_binner(binned_test_df, col_name, bins)
 
-                                        # load scaler.
-                                        scaler_path = scalers_base + '//DFA//column_{}'.format(col_name)
-                                        with open(scaler_path, mode='rb') as scaler_p:
-                                            col_scaler = pickle.load(scaler_p)
-                                        binned_test_df[col_name] = col_scaler(binned_test_df, col_name)
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
+    lim = 0.2
 
-                                    # we need to know which transitions include anomalies to create the test labels.
-                                    # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
-                                    # state as anomalous.
-                                    # labels of transitions.
-                                    transitions_labels = []
-                                    # time in state.
-                                    time_in_state = 0
-                                    # number of state
-                                    state_idx = 0
-                                    # labels of the packets in the state.
-                                    packet_labels_in_state = [labels[0]]
-                                    # arrival time of the last known packet in the state.
-                                    last_time = anomalous_data.loc[0, 'time']
-                                    for pkt_idx in range(1, len(anomalous_data)):
-                                        time_in_state += (
-                                                anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
-                                        if time_in_state == test_df.iloc[state_idx, 1]:
-                                            time_in_state = 0
-                                            state_idx += 1
-                                            transitions_labels.append(max(packet_labels_in_state))
-                                            packet_labels_in_state = []
-                                        else:
-                                            packet_labels_in_state.append(labels[pkt_idx])
-                                        last_time = anomalous_data.loc[pkt_idx, 'time']
-                                    if group != '':
-                                        middle = '\\DFA_{}'.format(group)
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        parent = test_sets_base_folder + '\\raw'
+                        data_path = parent + '\\data_{}_{}_{}_{}'.format(injection_length, step_over, percentage,
+                                                                         epsilon)
+                        labels_path = parent + '\\labels{}_{}_{}_{}'.format(injection_length, step_over, percentage,
+                                                                            epsilon)
+
+                        with open(data_path, mode='rb') as d_p:
+                            anomalous_data = pickle.load(d_p)
+                        with open(labels_path, mode='rb') as l_p:
+                            labels = pickle.load(l_p)
+
+                        test_df = data.process(anomalous_data, 'v3', None, None, False)
+                        for binner in binners:
+                            for bins in n_bins:
+                                binned_test_df = test_df.copy()
+                                for col_name in test_df.columns:
+                                    if 'time' not in col_name:
+                                        # load binner.
+                                        binner_path = binners_base + '//DFA//{}_{}_{}'.format(
+                                            folders_names[names[binner]], bins, col_name)
+                                        with open(binner_path, mode='rb') as binner_p:
+                                            col_binner = pickle.load(binner_p)
+                                        binned_test_df[col_name] = col_binner(binned_test_df, col_name, bins)
+
+                                dfa_in = squeeze(binned_test_df)
+                                # we need to know which transitions include anomalies to create the test labels.
+                                # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
+                                # state as anomalous.
+
+                                # labels of transitions.
+                                transitions_labels = []
+
+                                # time in state.
+                                time_in_state = 0
+
+                                # number of state
+                                state_idx = 0
+
+                                # labels of the packets in the state.
+                                packet_labels_in_state = [labels[0]]
+                                # arrival time of the last known packet in the state.
+                                last_time = anomalous_data.loc[0, 'time']
+                                for pkt_idx in range(1, len(anomalous_data)):
+                                    time_in_state += (
+                                            anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
+                                    if time_in_state >= dfa_in.iloc[state_idx, 1]:
+                                        time_in_state = 0
+                                        state_idx += 1
+                                        transitions_labels.append(max(packet_labels_in_state))
+                                        packet_labels_in_state = [labels[pkt_idx]]
                                     else:
-                                        middle = '\\DFA'
-                                    p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
-                                        names[binner], bins, injection_length,
-                                        step_over,
-                                        percentage, epsilon)
-                                    p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}_{}'.format(
-                                        names[binner], bins, injection_length,
-                                        step_over,
-                                        percentage, epsilon)
-                                    if not os.path.exists(test_sets_base_folder + middle):
-                                        Path(test_sets_base_folder + middle).mkdir(parents=True, exist_ok=True)
+                                        packet_labels_in_state.append(labels[pkt_idx])
+                                    last_time = anomalous_data.loc[pkt_idx, 'time']
+                                print(labels, len(test_df))
+                                if group != '':
+                                    middle = '\\DFA_{}'.format(group)
+                                else:
+                                    middle = '\\DFA'
 
-                                    with open(p_x_test, mode='wb') as test_path:
-                                        pickle.dump(test_df, test_path)
-                                    with open(p_labels, mode='wb') as p_labels:
-                                        pickle.dump(transitions_labels, p_labels)
+                                p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
+                                    names[binner], bins, injection_length,
+                                    step_over,
+                                    percentage, epsilon)
+
+                                p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}_{}'.format(
+                                    names[binner], bins, injection_length,
+                                    step_over,
+                                    percentage, epsilon)
+
+                                if not os.path.exists(test_sets_base_folder + middle):
+                                    Path(test_sets_base_folder + middle).mkdir(parents=True, exist_ok=True)
+
+                                with open(p_x_test, mode='wb') as test_path:
+                                    pickle.dump(dfa_in, test_path)
+                                with open(p_labels, mode='wb') as p_labels:
+                                    pickle.dump(transitions_labels, p_labels)
 
 
 def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
@@ -1251,11 +1306,13 @@ def test_DFA(injection_config, group=''):
 
     with open(injection_config, mode='r') as injections:
         injection_params = yaml.load(injections, Loader=yaml.FullLoader)
+
     injection_lengths = injection_params['InjectionLength']
     step_overs = injection_params['StepOver']
     percentages = injection_params['Percentage']
     epsilons = injection_params['Epsilon']
     results_df = pd.DataFrame(columns=excel_cols)
+
     if group is '':
         middle = '\\DFA'
     else:
