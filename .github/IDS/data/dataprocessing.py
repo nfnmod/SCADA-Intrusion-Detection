@@ -609,7 +609,7 @@ def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=
             time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
 
     if scale:
-        time_vals_df['time'] = scale_col(time_vals_df, 'time', binner_path)
+        time_vals_df['time'] = scale_col(time_vals_df, 'time')
 
     return time_vals_df
 
@@ -1042,7 +1042,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
         if scale:
             time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
 
-    if abstract:
+    if abstract and binner is not None:
         # now we calculate the time_in_state after the temporal abstraction of registers values by binning.
         for n in range(1, len(time_vals_df)):
             curr = time_vals_df.iloc[n]
@@ -1067,6 +1067,54 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
 
     return time_vals_df
 
+
+# for DFA, FSTM, .
+def squeeze(binned_df):
+    """
+    this is used for DFA. after we process data and bin the state transitions are changed.
+    calculate them after binning so we don't have to process all over again but only bin differently.
+    can be used for v3_2_abstract to avoid going over the data multiple times.
+    :param binned_df:  dataframe after binning
+    :return:
+    """
+    cols = binned_df.columns
+    num_regs = len(cols) - 2
+    squeezed = pd.DataFrame(columns=cols)
+
+    first_state = {c: binned_df.loc[0, c] for c in binned_df.columns}
+    state_df = pd.DataFrame.from_dict(data={'0': first_state}, orient='index', columns=cols)
+    state_df.loc[0, 'time_in_state'] = 0
+    squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+
+    for i in range(1, len(binned_df)):
+        state_dict = {c: binned_df.loc[i, c] for c in cols}
+        curr_regs = {c: state_dict[c] for c in cols if 'time' not in c}
+        prev_regs = {c: squeezed.loc[-1, c] for c in cols if 'time' not in c}
+
+        similarity = 0
+
+        for reg in curr_regs.keys():
+            curr_r = curr_regs[reg]
+            prev_r = prev_regs[reg]
+            if curr_r == prev_r:
+                similarity += 1
+
+        similarity /= num_regs
+
+        # after binning, the states are the same.
+        if similarity == 1:
+            squeezed.loc[-1, 'time_in_state'] += state_dict['time']
+        else:
+            # a state has changed (after binning)
+            state_df = pd.DataFrame.from_dict(data={'0': state_dict}, orient='index', columns=cols)
+            state_df.loc[0, 'time_in_state'] = 0
+
+            # stayed in state until arrival of packet.
+            squeezed.loc[-1, 'time_in_state'] += state_dict['time']
+
+            squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+
+    return squeezed
 
 # inter-arrival time,
 # time in state so far / value duration of each register,

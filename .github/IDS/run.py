@@ -15,7 +15,7 @@ from keras.losses import mean_squared_error
 import data
 import models
 import models.TIRP as TIRP
-
+from data import squeeze
 from data.injections import inject_to_raw_data
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -138,12 +138,7 @@ def train_automaton(group=None):
     processed = data.process_data_v3(pkts, scale=False)
     registers = processed.columns[2:]
 
-    # scaler_path = scalers_base + '//DFA'
-
     binner_path = binners_base + '//DFA'
-
-    # if not os.path.exists(scaler_path):
-    # Path(scaler_path).mkdir(parents=True, exist_ok=True)
 
     if not os.path.exists(binner_path):
         Path(binner_path).mkdir(parents=True, exist_ok=True)
@@ -158,9 +153,6 @@ def train_automaton(group=None):
                     if not os.path.exists(binner_full_path):
                         Path(binner_full_path).mkdir(parents=True, exist_ok=True)
                     train_data[col_name] = binner(train_data, col_name, b, binner_full_path)
-
-                # scaler_full_path = 'DFA//column'
-                # train_data[col_name] = data.scale_col(train_data, col_name, scaler_full_path)
 
             with open(DFA_log, mode='a') as log:
                 log.write('Creating DFA\n')
@@ -630,44 +622,6 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
                                                 pickle.dump(v2_labels, labels_p)
 
 
-# for v_3.
-def squeeze(binned_test_df):
-    cols = binned_test_df.columns
-    num_regs = len(cols) - 2
-    squeezed = pd.DataFrame(columns=cols)
-
-    first_state = {c: binned_test_df.loc[0, c] for c in binned_test_df.columns}
-    state_df = pd.DataFrame.from_dict(data={'0': first_state}, orient='index', columns=cols)
-    squeezed = pd.concat([squeezed, state_df], ignore_index=True)
-
-    for i in range(1, len(binned_test_df)):
-        state_dict = {c: binned_test_df.loc[i, c] for c in cols}
-        curr_regs = {c: state_dict[c] for c in cols if 'time' not in c}
-        prev_regs = {c: squeezed.loc[-1, c] for c in cols if 'time' not in c}
-
-        similarity = 0
-
-        for reg in curr_regs.keys():
-            curr_r = curr_regs[reg]
-            prev_r = prev_regs[reg]
-            if curr_r == prev_r:
-                similarity += 1
-
-        similarity /= num_regs
-
-        # after binning, the states are the same.
-        if similarity == 1:
-            squeezed.loc[-1, 'time_in_state'] += state_dict['time_in_state']
-        else:
-            # a state has changed (after binning)
-            state_df = pd.DataFrame.from_dict(data={'0': state_dict}, orient='index', columns=cols)
-            # works only if we don't add in the first processing. otherwise, we add twice.
-            squeezed.loc[-1, 'time'] += state_dict['time']
-            squeezed = pd.concat([squeezed, state_df], ignore_index=True)
-
-    return squeezed
-
-
 def create_test_files_DFA(injection_config, group=''):
     """
      just grid over all the injection parameters and binning params.
@@ -708,7 +662,7 @@ def create_test_files_DFA(injection_config, group=''):
                         with open(labels_path, mode='rb') as l_p:
                             labels = pickle.load(l_p)
 
-                        test_df = data.process(anomalous_data, 'v3', None, None, False)
+                        test_df = data.process(anomalous_data, 'v3_2_abstract', None, None, False)
                         for binner in binners:
                             for bins in n_bins:
                                 binned_test_df = test_df.copy()
@@ -742,7 +696,7 @@ def create_test_files_DFA(injection_config, group=''):
                                 for pkt_idx in range(1, len(anomalous_data)):
                                     time_in_state += (
                                             anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
-                                    if time_in_state >= dfa_in.iloc[state_idx, 1]:
+                                    if time_in_state == dfa_in.iloc[state_idx, 1]:
                                         time_in_state = 0
                                         state_idx += 1
                                         transitions_labels.append(max(packet_labels_in_state))
