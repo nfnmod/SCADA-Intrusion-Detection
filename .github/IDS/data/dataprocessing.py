@@ -1083,13 +1083,14 @@ def squeeze(binned_df):
 
     first_state = {c: binned_df.loc[0, c] for c in binned_df.columns}
     state_df = pd.DataFrame.from_dict(data={'0': first_state}, orient='index', columns=cols)
-    state_df.loc[0, 'time_in_state'] = 0
     squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+    squeezed.loc[0, 'time_in_state'] = 0
 
     for i in range(1, len(binned_df)):
+        size = len(squeezed)
         state_dict = {c: binned_df.loc[i, c] for c in cols}
         curr_regs = {c: state_dict[c] for c in cols if 'time' not in c}
-        prev_regs = {c: squeezed.loc[-1, c] for c in cols if 'time' not in c}
+        prev_regs = {c: squeezed.loc[size - 1, c] for c in cols if 'time' not in c}
 
         similarity = 0
 
@@ -1103,16 +1104,16 @@ def squeeze(binned_df):
 
         # after binning, the states are the same.
         if similarity == 1:
-            squeezed.loc[-1, 'time_in_state'] += state_dict['time']
+            squeezed.loc[size - 1, 'time_in_state'] += state_dict['time']
         else:
             # a state has changed (after binning)
             state_df = pd.DataFrame.from_dict(data={'0': state_dict}, orient='index', columns=cols)
-            state_df.loc[0, 'time_in_state'] = 0
 
             # stayed in state until arrival of packet.
-            squeezed.loc[-1, 'time_in_state'] += state_dict['time']
+            squeezed.loc[size - 1, 'time_in_state'] += state_dict['time']
 
             squeezed = pd.concat([squeezed, state_df], ignore_index=True)
+            squeezed.loc[len(squeezed) - 1, 'time_in_state'] = 0
 
     return squeezed
 
@@ -1770,15 +1771,25 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    with open("C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST", mode='rb') as df_path:
-        df = pickle.load(df_path)
+    df1 = pd.DataFrame([['a', 1], ['b', 2]],
+                   columns=['letter', 'number'])
 
-    new_idx = df.reset_index()
-    new_idx = new_idx.drop('index', axis=1)
+    df2 = pd.DataFrame([['c', 3], ['d', 4]],
+                       columns=['letter', 'number'])
 
-    with open("C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\MB_TCP_TEST", mode='wb') as df_path:
-        pickle.dump(new_idx, df_path)
+    data_dict = {'letter':'c', 'number': 3}
+    df3 = pd.DataFrame.from_dict(data={'0': data_dict}, orient='index', columns=['letter', 'number'])
+    #print(df3)
+    #df3.loc[0, 'number'] = 10
+    #print(df3)
 
-    print(new_idx.index)
+    #print('length is {}'.format(len(df3)))
+    #df1.at[0, 'number'] += 5
+    #print(len(df1))
+    df = pd.concat([df2, df3], ignore_index=True)
+    print(len(df))
+    df.loc[len(df) - 1, 'number'] += 9
+    print(len(df))
+
 
 

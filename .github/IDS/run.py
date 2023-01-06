@@ -135,7 +135,7 @@ def train_automaton(group=None):
     names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
              'equal_width': 'EqualWidth'}
 
-    processed = data.process_data_v3(pkts, scale=False)
+    processed = data.process(pkts, 'v3_2_abstract', None, None, False)
     registers = processed.columns[2:]
 
     binner_path = binners_base + '//DFA'
@@ -151,13 +151,13 @@ def train_automaton(group=None):
                     binner = binning_methods[binning_method]
                     binner_full_path = 'DFA//{}_{}'.format(names[binning_method], b)
                     if not os.path.exists(binner_full_path):
-                        Path(binner_full_path).mkdir(parents=True, exist_ok=True)
+                        Path(binners_base + '//' + binner_full_path).mkdir(parents=True, exist_ok=True)
                     train_data[col_name] = binner(train_data, col_name, b, binner_full_path)
 
             with open(DFA_log, mode='a') as log:
                 log.write('Creating DFA\n')
 
-            dfa_input = squeeze(processed)
+            dfa_input = squeeze(train_data)
 
             start = time.time()
             automaton = models.automaton.make_automaton(registers, dfa_input)
@@ -690,10 +690,10 @@ def create_test_files_DFA(injection_config, group=''):
                                 state_idx = 0
 
                                 # labels of the packets in the state.
-                                packet_labels_in_state = [labels[0]]
+                                packet_labels_in_state = [labels[1]]
                                 # arrival time of the last known packet in the state.
-                                last_time = anomalous_data.loc[0, 'time']
-                                for pkt_idx in range(1, len(anomalous_data)):
+                                last_time = anomalous_data.loc[1, 'time']
+                                for pkt_idx in range(2, len(anomalous_data)):
                                     time_in_state += (
                                             anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
                                     if time_in_state == dfa_in.iloc[state_idx, 1]:
@@ -704,7 +704,6 @@ def create_test_files_DFA(injection_config, group=''):
                                     else:
                                         packet_labels_in_state.append(labels[pkt_idx])
                                     last_time = anomalous_data.loc[pkt_idx, 'time']
-                                print(labels, len(test_df))
                                 if group != '':
                                     middle = '\\DFA_{}'.format(group)
                                 else:
