@@ -11,22 +11,23 @@ import pandas as pd
 import tensorflow
 import yaml
 from keras.losses import mean_squared_error
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score
+from sklearn.model_selection import train_test_split
+from sklearn.svm import OneClassSVM
 
 import data
 import models
 import models.TIRP as TIRP
 from data import squeeze
 from data.injections import inject_to_raw_data
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, confusion_matrix
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
 HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
 logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 test_sets_base_folder = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets'
-KL_based_RF_log = logs + 'KarmaLego based RF.txt'
+KL_based_OCSVM_log = logs + 'KarmaLego based OCSVM.txt'
+KL_LSTM_log = logs + 'KL-LSTM.txt'
 DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
@@ -35,6 +36,9 @@ group_df_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\dataset
 binners_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\binners'
 scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
 DFA_regs = ['30', '120', '15']
+default_supp = 15
+KL_OCSVM_datasets = models.SCADA_base + '\\KL_OCSVM datasets'
+KL_OCSVM_base = models.SCADA_base + '\\KL_OCSVM'
 
 excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
               'criterion', 'max features',
@@ -241,99 +245,220 @@ def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=Tru
 
 
 def make_input_for_KL(TIRP_config_file_path):
-    pkt_df = data.load(data.datasets_path, "modbus")
+    pkt_df = data.load(data.datasets_path, "MB_TCP_TRAIN")
     IP = data.plc
     # consider only response packets from the PLC.
     plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
-    stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
     with open(TIRP_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
-        discovery_params = params['TIRP_discovery_params']
-        binning = discovery_params['binning']
-        binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
-                           'EqualWidth': TIRP.equal_width_discretization}
-        number_of_bins = discovery_params['number_of_bins']
-        windows = discovery_params['windows_sizes']
-        bins_window_options = itertools.product(number_of_bins, windows)
-        options = itertools.product(binning, bins_window_options)
-        for option in options:
-            b = binning_methods[option[0]]
-            k = option[1][0]
-            w = option[1][1]
-            TIRP.make_input(plc_df, b, k, w, stats_dict=stats_dict, consider_last=True)
+
+    discovery_params = params['TIRP_discovery_params']
+    binning = discovery_params['binning']
+    binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
+                       'EqualWidth': TIRP.equal_width_discretization}
+    number_of_bins = discovery_params['number_of_bins']
+    windows = discovery_params['windows_sizes']
+    bins_window_options = itertools.product(number_of_bins, windows)
+    options = itertools.product(binning, bins_window_options)
+
+    for option in options:
+        b = binning_methods[option[0]]
+        k = option[1][0]
+        w = option[1][1]
+        TIRP.make_input(plc_df, b, k, w, regs_to_use=data.most_used, consider_last=True)
 
 
-def train_RF_from_KL(KL_config_file_path):
+def filter_TIRPs(KL_config_file_path):
     """
-     go over all pairs of all_TIRPs_path, window_TIRPs_folder:
-        for each binning, bins, window:
-             folder = KL_base + "whole_out\\all_{binning}_{bins}_{window} " (WHOLE TIRPS FOLDER)
-             folder2 = KL_base + "{binning}_{bins}_{window}_out" (WINDOWS FOLDERS)
-             for epsilon, max gap, vertical support:
-                path = folder + \\ epsilon_max_gap_support_hs.txt (output for the TIRPs discovery phase by KL with the parameters)
-                path2 = folder2 + "epsilon_max_gap_support_hs" (outputs of KL on sliding windows
-                                                                                        with the parameters)
-                run parse_output(path, path2)
-                train RF classifier with the df returned
-                save rf
+    we discover all the TIRPs with a very low support threshold and then filter out the ones having higher support
+    to avoid running KarmaLego many times.
+    :param KL_config_file_path: KL params
+    :return:
     """
+    # 1. get to the file containing the mined TIRPs with very low support.
     with open(KL_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
-        KL_params = params['KarmaLegoParams']
-        binning = KL_params['BinningMethods']
-        bins = KL_params['Bins']
-        windows = KL_params['Windows']
-        epsilons = KL_params['Epsilons']
-        max_gaps = KL_params['MaxGaps']
-        min_ver_supps = KL_params['MinVerSups']
-        binning_times_bins = itertools.product(binning, bins)
-        parent_folders = itertools.product(windows, binning_times_bins)
-        for window_binning_bins in parent_folders:
-            window = window_binning_bins[0]
-            binning = window_binning_bins[1][0]
-            bins = window_binning_bins[1][1]
-            windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning, bins, window)
-            max_gaps_times_supports = itertools.product(max_gaps, min_ver_supps)
-            KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
-            for eps_gap_supp in KL_hyperparams:
-                epsilon = eps_gap_supp[0]
-                max_gap = eps_gap_supp[1][0]
-                ver_supp = eps_gap_supp[1][1]
-                path_suffix = "\\eps_{0}_minVS_{1}_maxGap_{2}_HS_true".format(epsilon, ver_supp, max_gap)
-                windows_outputs_folder_path = windows_folders_folder + path_suffix
-                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window, epsilon, ver_supp, max_gap)
-                TIRP_df = TIRP.output.parse_output(windows_outputs_folder_path, train=True, tirps_path=TIRP_path)
-                windows_features = TIRP_df[:, :-1]
-                windows_labels = TIRP_df[:, -1]
-                X_train, X_test, y_train, y_test = train_test_split(windows_features, windows_labels, test_size=0.2,
-                                                                    random_state=42)
-                RF_params = params['RF']
-                parameters_combinations = itertools.product(RF_params['criterion'], RF_params['max_features'])
-                parameters_combinations = itertools.product(RF_params['n_estimators'], parameters_combinations)
-                for combination in parameters_combinations:
-                    estimators = combination[0]
-                    criterion = combination[1][0]
-                    max_features = combination[1][1]
-                    model = RandomForestClassifier(n_estimators=estimators, criterion=criterion,
-                                                   max_features=max_features)
-                    with open(KL_based_RF_log, mode='a') as log:
-                        log.write('Training KL based RF with:\n')
-                        log.write('window size: {} binning: {} bins: {}\n'.format(window, binning, bins))
-                        log.write('eps: {}, max_gap: {}, min_ver_supp: {}\n'.format(epsilon, max_gap, ver_supp))
-                        log.write('estimators: {}, criterion: {} ,max_features: {}\n'.format(estimators, criterion,
-                                                                                             max_features))
-                        start = time.time()
-                        model.fit(X_train, y_train)
-                        end = time.time()
-                        models_base_path = KL_RF_base
-                        TIRP_level = "\\{}_bins_{}_window{}".format(binning, bins, window)
-                        KL_level = path_suffix
-                        models_folder = models_base_path + TIRP_level + KL_level
-                        tensorflow.keras.models.save_model(model,
-                                                           models_folder + '\\' + 'estimators_{}_'.format(
-                                                               estimators) + 'criterion{}_'.format(
-                                                               criterion) + 'features_{}.sav'.format(max_features))
-                        log.write('Done, time elapsed:{}\n'.format(end - start))
+
+    KL_params = params['KarmaLegoParams']
+    binning = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_horizontal_supps = KL_params['MinHorizontalSups']
+
+    binning_times_bins = itertools.product(binning, bins)
+    parent_folders = itertools.product(windows, binning_times_bins)
+
+    for window_binning_bins in parent_folders:
+        # parameters of the events making.
+        window = window_binning_bins[0]
+        binning = window_binning_bins[1][0]
+        bins = window_binning_bins[1][1]
+        windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning, bins, window)
+        max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
+        KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+
+        # parameters of KL.
+        for eps_gap_supp in KL_hyperparams:
+            epsilon = eps_gap_supp[0]
+            max_gap = eps_gap_supp[1][0]
+            horizontal_supp = eps_gap_supp[1][1]
+
+            # we will save the filtered TIRPs here.
+            dest_path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, horizontal_supp, max_gap)
+            # path to read the whole set of TIRPs from.
+            src_path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, default_supp, max_gap)
+
+            windows_outputs_destination_folder_path = windows_folders_folder + dest_path_suffix
+            windows_outputs_src_folder_path = windows_folders_folder + src_path_suffix
+
+            if not os.path.exists(windows_outputs_destination_folder_path):
+                Path(windows_outputs_destination_folder_path).mkdir(parents=True)
+
+            # iterate over the TIRPs in the windows files in the src folder.
+            # read every TIRP line in the file and check for the HS. if it's high enough write it to the destination file.
+
+            for TIRPs_in_window in os.listdir(windows_outputs_src_folder_path):
+                window_file = windows_outputs_src_folder_path + '\\' + TIRPs_in_window
+                dst_window_file = windows_outputs_destination_folder_path + '\\' + TIRPs_in_window
+                for TIRP_line in window_file:
+                    # parse into TIRP object
+                    tirp = TIRP.parse_line(TIRP_line)
+                    # filter by horizontal support.
+                    if TIRP.get_number_of_instances(tirp.instances) >= horizontal_supp:
+                        if not os.path.exists(dst_window_file):
+                            Path(dst_window_file).mkdir(parents=True)
+                        # write TIRP.
+                        with open(dst_window_file, mode='a') as dst_p:
+                            dst_p.write(TIRP_line + '\n')
+
+
+def train_LSTMs_from_KL(KL_config_file_path):
+    # go over all KL configurations:
+    with open(KL_config_file_path, mode='r') as train_config:
+        params = yaml.load(train_config, Loader=yaml.FullLoader)
+
+    KL_params = params['KarmaLegoParams']
+    binning = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_horizontal_supps = KL_params['MinVerSups']
+    look_back = [20, 30]
+
+    for binning_method in binning:
+        for number_of_bins in bins:
+            for window_size in windows:
+
+                windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning_method, number_of_bins,
+                                                                                     window_size)
+
+                for epsilon in epsilons:
+                    for max_gap in max_gaps:
+                        for min_horizontal_supp in min_horizontal_supps:
+
+                            path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, min_horizontal_supp, max_gap)
+                            windows_outputs_folder_path = windows_folders_folder + path_suffix
+                            TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window_size, epsilon,
+                                                                                  min_horizontal_supp, max_gap)
+
+                            # for each configuration: call parse_output.
+                            TIRP_df = TIRP.output.parse_output(windows_outputs_folder_path, train=True,
+                                                               tirps_path=TIRP_path)
+                            # train LSTM.
+                            for series_len in look_back:
+                                model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
+                                                                           epsilon, max_gap, min_horizontal_supp,
+                                                                           series_len)
+                                train_data_path = KL_base
+                                models_path = data.modeles_path + '\\KL_LSTM'
+                                with open(KL_LSTM_log, mode='a') as log:
+                                    log.write('Training: {}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
+                                                                                      window_size, epsilon, max_gap,
+                                                                                      min_horizontal_supp, series_len))
+
+                                start = time.time()
+                                models.simple_LSTM(TIRP_df, series_len, 42, model_name, train=1,
+                                                   models_path=models_path, data_path=train_data_path)
+                                end = time.time()
+                                with open(KL_LSTM_log, mode='a') as log:
+                                    log.write("trained, time elapsed: {}".format(end - start))
+
+
+def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
+    # go over all KL-LSTM configurations:
+    # for each configuration: train RF, all the labels are 0.
+    with open(KL_config_file_path, mode='r') as train_config:
+        params = yaml.load(train_config, Loader=yaml.FullLoader)
+
+    KL_params = params['KarmaLegoParams']
+    binning = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_horizontal_supps = KL_params['MinVerSups']
+    look_back = [20, 30]
+    OCSVM_params = params['OCSVM']
+    nus = OCSVM_params['nu']
+    kernels = OCSVM_params['kernel']
+
+    for binning_method in binning:
+        for number_of_bins in bins:
+            for window_size in windows:
+                for epsilon in epsilons:
+                    for max_gap in max_gaps:
+                        for min_horizontal_supp in min_horizontal_supps:
+                            # get LSTM and LSTM data.
+                            for series_len in look_back:
+                                model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
+                                                                           epsilon, max_gap, min_horizontal_supp,
+                                                                           series_len)
+                                train_data_folder_path = KL_base
+                                models_path = data.modeles_path + '\\KL_LSTM'
+                                LSTM = keras.models.load_model(models_path + '\\' + model_name)
+
+                                with open(train_data_folder_path + '\\X_train_{}'.format(model_name),
+                                          mode='rb') as data_p:
+                                    X_train = pickle.load(data_p)
+
+                                predictions = LSTM.predict(X_train)
+                                predictions_path = KL_OCSVM_datasets + '\\X_train_{}_{}_{}_{}_{}_{}_{}'.format(
+                                    binning_method, number_of_bins, window_size, epsilon, max_gap, min_horizontal_supp,
+                                    series_len)
+                                with open(predictions_path, mode='wb') as pred_f:
+                                    pickle.dump(predictions, pred_f)
+
+                                # all packets are considered benign. everything is labeled 0.
+                                # train OCSVM to label predictions.
+                                for kernel in kernels:
+                                    for nu in nus:
+                                        with open(KL_based_OCSVM_log, mode='a') as log:
+                                            log.write('training:\n{}_{}_{}_{}_{}_{}_{}_{}_{}\n'.format(binning_method,
+                                                                                                       number_of_bins,
+                                                                                                       window_size,
+                                                                                                       epsilon, max_gap,
+                                                                                                       min_horizontal_supp,
+                                                                                                       series_len,
+                                                                                                       kernel, nu))
+                                        ocsvm = OneClassSVM(kernel=kernel, nu=nu)
+                                        start = time.time()
+                                        ocsvm.fit(predictions)
+                                        end = time.time()
+                                        with open(KL_based_OCSVM_log, mode='a') as log:
+                                            log.write('Trained, time elapsed: {}'.format(end - start))
+                                        # save model.
+                                        model_path = KL_OCSVM_base + '{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning_method,
+                                                                                                         number_of_bins,
+                                                                                                         window_size,
+                                                                                                         epsilon,
+                                                                                                         max_gap,
+                                                                                                         min_horizontal_supp,
+                                                                                                         series_len,
+                                                                                                         kernel, nu)
+                                        keras.models.save_model(ocsvm, model_path)
 
 
 # process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.

@@ -18,6 +18,7 @@ from .dataprocessing import process
 from .dataprocessing import scale_col
 from .dataprocessing import bin_col
 from .dataprocessing import squeeze
+from .dataprocessing import most_used
 from .PLCDependeciesAlgorithm import find_frequent_transitions_sequences
 from .PLCDependeciesAlgorithm import extract_features_v1
 from .PLCDependeciesAlgorithm import extract_features_v2

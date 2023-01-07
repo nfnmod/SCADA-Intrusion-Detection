@@ -1770,26 +1770,5 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
         results_df.to_excel(writer, sheet_name=sheet_name)
 
 
-if __name__ == '__main__':
-    df1 = pd.DataFrame([['a', 1], ['b', 2]],
-                   columns=['letter', 'number'])
-
-    df2 = pd.DataFrame([['c', 3], ['d', 4]],
-                       columns=['letter', 'number'])
-
-    data_dict = {'letter':'c', 'number': 3}
-    df3 = pd.DataFrame.from_dict(data={'0': data_dict}, orient='index', columns=['letter', 'number'])
-    #print(df3)
-    #df3.loc[0, 'number'] = 10
-    #print(df3)
-
-    #print('length is {}'.format(len(df3)))
-    #df1.at[0, 'number'] += 5
-    #print(len(df1))
-    df = pd.concat([df2, df3], ignore_index=True)
-    print(len(df))
-    df.loc[len(df) - 1, 'number'] += 9
-    print(len(df))
-
 
 

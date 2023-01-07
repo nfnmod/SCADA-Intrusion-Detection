@@ -252,8 +252,6 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     data.dump(dump_df, "X_train_{}".format(model_name), X_train)
     data.dump(dump_df, "y_train_{}".format(model_name), y_train)
-    # data.dump(dump_df, "X_test_{}".format(model_name), X_test)
-    # data.dump(dump_df, "y_test_{}".format(model_name), y_test)
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 

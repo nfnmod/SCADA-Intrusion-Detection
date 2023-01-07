@@ -1,7 +1,6 @@
-import csv
 import datetime
-from datetime import datetime
 import unittest
+from datetime import datetime
 
 import numpy as np
 import pandas as pd

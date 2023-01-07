@@ -219,6 +219,4 @@ def parse_output(window_TIRPs_folder, tirps_path, train=True):
         window_df = pd.DataFrame.from_dict(columns=features, data={'0': window_features}, orient='index')
         windows_TIRPs_df = pd.concat((windows_TIRPs_df, window_df), axis=0, ignore_index=True)
 
-    # 4
-    windows_TIRPs_df['anomaly'] = 0  # label everything as benign activity.
     return windows_TIRPs_df

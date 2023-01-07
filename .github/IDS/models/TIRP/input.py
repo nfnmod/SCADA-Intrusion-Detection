@@ -41,7 +41,7 @@ def equal_frequency_discretization(values, n_bins):
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # the function will leave in the payload only the registers which change their values
-def process_payload(df, stats_dict):
+def process_payload(df, regs_to_use):
     new_payloads = []
     for i in range(len(df)):
         pkt = df.iloc[i]
@@ -49,17 +49,10 @@ def process_payload(df, stats_dict):
         new_payload = {}
         if src == data.plc_port:
             payload = pkt['payload']
-            plc_ip = pkt['src_ip']
-            regs_vals_stds = stats_dict[plc_ip]
             new_payload = {}
             for reg in payload.keys():
-                reg_stats = regs_vals_stds.get(reg, None)
-                if reg_stats is not None:
-                    num_vals = reg_stats[0]
-                    std = reg_stats[1]  # maybe use in the future.
-                    # pick only the registers which have changing values.
-                    if num_vals > 1:
-                        new_payload[reg] = payload[reg]
+                if reg in regs_to_use:
+                    new_payload[reg] = payload[reg]
         new_payloads.append(new_payload)
 
     # done processing this payload, now switch the original and the new one.
@@ -111,7 +104,7 @@ def get_pkt_entities(pkt):
 
 
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True, bin=True, ready_symbols=None,
+def define_events_in_sliding_windows(df, b, k, w, regs_to_use, consider_last=True, bin=True, ready_symbols=None,
                                      ready_entites=None):
     """
 
@@ -119,7 +112,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     :param ready_symbols: when testing, we get the symbols already discovered in the data set to ensure all the symbols
                           which can be found in the test data set are already defined.
     :param bin: bin or not (used for testing)
-    :param stats_dict:
+    :param regs_to_use: registers to consider
     :param df:
     :param b: binning method.
     :param k: number of bins.
@@ -128,7 +121,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
     :return:
     """
     if ready_symbols == dict():
-        df = process_payload(df, stats_dict)
+        df = process_payload(df, regs_to_use)
         entities = define_entities(df)
     else:
         entities = ready_entites
@@ -156,6 +149,7 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
             prev_entities += list(get_pkt_entities(window.iloc[-1]))
             window_entities = set(prev_entities)
         entities_events = {e: [] for e in window_entities}
+
         for j in range(w):
             pkt = window.iloc[j]
             # we want to look for entities in the packet.
@@ -187,9 +181,10 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                     times.append(round((w_pkt['time'] - start_time).total_seconds()))
                         # mark as checked.
                         checked_entities.append(entity)
+                        # bin using all options to avoid reprocessing
+
                         if bin:
                             values = b(values, k)  # bin.
-                            # times = equal_width_discretization(times, types.int32.maxval)
                         n = 0
                         if len(values) > 0:
                             # all but last value-time pair.
@@ -288,13 +283,14 @@ def define_events_in_sliding_windows(df, b, k, w, stats_dict, consider_last=True
                                         symbols[sym_event] = symbol_counter
                                         symbol_counter += 1
                                     entities_events[entity].append((times[0], finish_time, symbols[sym_event],))
+
         # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
         converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
         sw_events[i] = converted_events
     return sw_events, symbols, entities
 
 
-def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, ready_symbols=None,
+def make_input(pkt_df, b, k, w, regs_to_use, consider_last=True, test_path=None, ready_symbols=None,
                ready_entities=None):
     if ready_symbols is None:
         ready_symbols = dict()
@@ -302,7 +298,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, stats_dict, consider_last,
+    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, regs_to_use, consider_last,
                                                                     ready_symbols=ready_symbols,
                                                                     ready_entites=ready_entities)
     base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
@@ -347,6 +343,7 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
                         symbol_number = event[2]
                         events_row += ['{},{},{};'.format(start, finish, symbol_number)]
                     writer.writerow(events_row)
+
     if test_path is None:
         # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
         # when testing and discovering.
@@ -356,8 +353,10 @@ def make_input(pkt_df, b, k, w, stats_dict, consider_last=True, test_path=None, 
             Path(KL_entities).mkdir(exist_ok=True, parents=True)
         if not os.path.exists(KL_events):
             Path(KL_events).mkdir(exist_ok=True, parents=True)
+
         suffix = '\\{}_{}_{}'.format(binning[b], k, w)
         path_sym = KL_symbols + suffix
+
         with open(path_sym, mode='wb') as symbols_path:
             pickle.dump(symbols, symbols_path)
         path_ent = KL_entities + suffix
