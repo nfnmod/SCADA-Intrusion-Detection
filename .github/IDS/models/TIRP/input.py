@@ -306,6 +306,7 @@ def make_input(pkt_df, b, k, w, regs_to_use, consider_last=True, test_path=None,
         base_path = test_path
     if not os.path.exists(base_path):
         Path(base_path).mkdir(parents=True, exist_ok=True)
+
     # keys are the window number.
     entity_index = 0
     entity_to_idx = {}
@@ -359,9 +360,11 @@ def make_input(pkt_df, b, k, w, regs_to_use, consider_last=True, test_path=None,
 
         with open(path_sym, mode='wb') as symbols_path:
             pickle.dump(symbols, symbols_path)
+
         path_ent = KL_entities + suffix
         with open(path_ent, mode='wb') as entities_path:
             pickle.dump(entities, entities_path)
+
         path_events = KL_events + suffix
         with open(path_events, mode='wb') as events_p:
             pickle.dump(sw_events, events_p)

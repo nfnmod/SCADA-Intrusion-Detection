@@ -39,6 +39,7 @@ DFA_regs = ['30', '120', '15']
 default_supp = 15
 KL_OCSVM_datasets = models.SCADA_base + '\\KL_OCSVM datasets'
 KL_OCSVM_base = models.SCADA_base + '\\KL_OCSVM'
+KL_test_sets_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 
 excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
               'criterion', 'max features',
@@ -60,6 +61,7 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal V
                     'f1'}
 
 best_cols = DFA_cols.copy()
+lim = 0.2
 
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
@@ -295,7 +297,9 @@ def filter_TIRPs(KL_config_file_path):
         window = window_binning_bins[0]
         binning = window_binning_bins[1][0]
         bins = window_binning_bins[1][1]
+
         windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning, bins, window)
+
         max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
         KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
 
@@ -316,22 +320,26 @@ def filter_TIRPs(KL_config_file_path):
             if not os.path.exists(windows_outputs_destination_folder_path):
                 Path(windows_outputs_destination_folder_path).mkdir(parents=True)
 
-            # iterate over the TIRPs in the windows files in the src folder.
-            # read every TIRP line in the file and check for the HS. if it's high enough write it to the destination file.
+            # call helper function to finish.
+            filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp)
 
-            for TIRPs_in_window in os.listdir(windows_outputs_src_folder_path):
-                window_file = windows_outputs_src_folder_path + '\\' + TIRPs_in_window
-                dst_window_file = windows_outputs_destination_folder_path + '\\' + TIRPs_in_window
-                for TIRP_line in window_file:
-                    # parse into TIRP object
-                    tirp = TIRP.parse_line(TIRP_line)
-                    # filter by horizontal support.
-                    if TIRP.get_number_of_instances(tirp.instances) >= horizontal_supp:
-                        if not os.path.exists(dst_window_file):
-                            Path(dst_window_file).mkdir(parents=True)
-                        # write TIRP.
-                        with open(dst_window_file, mode='a') as dst_p:
-                            dst_p.write(TIRP_line + '\n')
+
+def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp):
+    # iterate over the TIRPs in the windows files in the src folder.
+    # read every TIRP line in the file and check for the HS. if it's high enough write it to the destination file.
+    for TIRPs_in_window in os.listdir(windows_outputs_src_folder_path):
+        window_file = windows_outputs_src_folder_path + '\\' + TIRPs_in_window
+        dst_window_file = windows_outputs_destination_folder_path + '\\' + TIRPs_in_window
+        for TIRP_line in window_file:
+            # parse into TIRP object
+            tirp = TIRP.parse_line(TIRP_line)
+            # filter by horizontal support.
+            if TIRP.get_number_of_instances(tirp.instances) >= horizontal_supp:
+                if not os.path.exists(dst_window_file):
+                    Path(dst_window_file).mkdir(parents=True)
+                # write TIRP.
+                with open(dst_window_file, mode='a') as dst_p:
+                    dst_p.write(TIRP_line + '\n')
 
 
 def train_LSTMs_from_KL(KL_config_file_path):
@@ -537,7 +545,7 @@ Use configuration file to create them.
 """
 
 
-def create_test_files_LSTM_RF_and_OCSVM_and_HTM(raw_test_data_df, data_versions_config, injection_config, group_id=''):
+def create_test_files_HTM(raw_test_data_df, data_versions_config, injection_config, group_id=''):
     """
     grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
     when doing this for many PLCs, need to do this for every group separately.
@@ -858,171 +866,315 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
     make test data sets for KL.
     for each input creation option: create TIRP with all possible injection options.
     """
-    pkt_df = data.load(data.datasets_path, "modbus")
-    IP = data.plc
-    # consider only response packets from the PLC.
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
-    stats_dict = data.get_plcs_values_statistics(plc_df, 5, to_df=False)
-
     name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
                    'KMeans': TIRP.k_means_binning}
     func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
                    TIRP.equal_width_discretization: 'equal_width'}
+
+    raw_test_data = data.load(data.datasets_path, raw_test_data_df)
+
     # first, grid over injection params.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['InjectionLength']
-        step_overs = injection_params['StepOver']
-        percentages = injection_params['Percentage']
-        epsilons = injection_params['Epsilon']
-        with open(input_creation_config, mode='r') as TIRP_creation_config:
-            TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
-            binning = TIRP_params['binning']
-            bins = TIRP_params['number_of_bins']
-            window_params = TIRP_params['window_sizes']
-            window_min = window_params['start']
-            window_max = window_params['end']
-            window_step = window_params['step']
-            window_sizes = range(window_min, window_max, window_step)
-            lim = 0.2
-            for injection_length in injection_lengths:
-                for step_over in step_overs:
-                    anomaly_percentage = injection_length / (injection_length + step_over)
-                    if anomaly_percentage > lim:
-                        pass
-                    else:
-                        for percentage in percentages:
-                            for epsilon in epsilons:
-                                # inject in each possible way.
-                                # labels will be used for creation of expected labels for the RF.
-                                test_data = data.load(data.datasets_path, raw_test_data_df)
-                                anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                            percentage,
-                                                                            epsilon)
-                                for method in binning:
-                                    for number_of_bins in bins:
-                                        for window_size in window_sizes:
-                                            # discover TIRPs in separate windows.
-                                            test_path_sliding_windows = test_sets_base_folder + '\\KL\\TIRP\\{}_{}_{_{}_{}_{}_{}'.format(
-                                                method, number_of_bins, window_size, injection_length, step_over,
-                                                percentage, epsilon)
 
-                                            # make sure dirs exists.
-                                            dir_path = test_sets_base_folder + '\\KL\\TIRP'
-                                            if not os.path.exists(dir_path):
-                                                Path(dir_path).mkdir(parents=True, exist_ok=True)
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    epsilons = injection_params['Epsilon']
 
-                                            # discover TIRPs.
-                                            # pass symbols and entities that were previously found.
-                                            suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]],
-                                                                         number_of_bins, window_size)
-                                            symbols_path = TIRP.input.KL_symbols + suffix
-                                            entities_path = TIRP.input.KL_entities + suffix
-                                            with open(symbols_path, mode='rb') as syms_path:
-                                                ready_symbols = pickle.load(syms_path)
-                                            with open(entities_path, mode='rb') as ent_path:
-                                                ready_entities = pickle.load(ent_path)
-                                            TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
-                                                            window_size, consider_last=True, stats_dict=stats_dict,
-                                                            test_path=test_path_sliding_windows,
-                                                            ready_symbols=ready_symbols, ready_entities=ready_entities)
+    with open(input_creation_config, mode='r') as TIRP_creation_config:
+        TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
 
-                                            # create the labels for the RF classifier.
-                                            # for each window: [start, end]
-                                            test_labels_RF = []
-                                            for i in range(len(anomalous_data) - window_size + 1):
-                                                # get the labels for the windows' packets.
-                                                window_labels = labels[i, i + window_size]
-                                                # the label is 0 for a benign packet and 1 for an anomalous packets.
-                                                # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
-                                                window_label = max(window_labels)
-                                                # add label.
-                                                test_labels_RF.append(window_label)
-                                            path = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
-                                                method,
-                                                number_of_bins,
-                                                window_size,
-                                                injection_length,
-                                                step_over,
-                                                percentage,
-                                                epsilon)
+    binning = TIRP_params['binning']
+    bins = TIRP_params['number_of_bins']
+    window_params = TIRP_params['window_sizes']
+    window_min = window_params['start']
+    window_max = window_params['end']
+    window_step = window_params['step']
+    window_sizes = range(window_min, window_max, window_step)
+    lim = 0.2
 
-                                            dir_path = test_sets_base_folder + '\\KL\\RF\\test_labels'
-                                            if not os.path.exists(dir_path):
-                                                Path(dir_path).mkdir(parents=True, exist_ok=True)
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        # inject in each possible way.
+                        # labels will be used for creation of expected labels for the RF.
+                        test_data = raw_test_data.copy()
+                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                    percentage,
+                                                                    epsilon)
+                        for method in binning:
+                            for number_of_bins in bins:
+                                for window_size in window_sizes:
+                                    # discover events in separate windows.
+                                    test_path_sliding_windows = test_sets_base_folder + '\\KL\\test_events\\{}_{}_{_{}_{}_{}_{}'.format(
+                                        method, number_of_bins, window_size, injection_length, step_over,
+                                        percentage, epsilon)
 
-                                            with open(path, mode='wb') as labels_path:
-                                                pickle.dump(test_labels_RF, labels_path)
+                                    # make sure dirs exists.
+                                    dir_path = test_sets_base_folder + '\\KL\\test_events'
+                                    if not os.path.exists(dir_path):
+                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                    # discover TIRPs.
+                                    # pass symbols and entities that were previously found.
+                                    suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]],
+                                                                 number_of_bins, window_size)
+
+                                    symbols_path = TIRP.input.KL_symbols + suffix
+                                    entities_path = TIRP.input.KL_entities + suffix
+
+                                    with open(symbols_path, mode='rb') as syms_path:
+                                        ready_symbols = pickle.load(syms_path)
+                                    with open(entities_path, mode='rb') as ent_path:
+                                        ready_entities = pickle.load(ent_path)
+
+                                    TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
+                                                    window_size, consider_last=True, regs_to_use=data.most_used,
+                                                    test_path=test_path_sliding_windows,
+                                                    ready_symbols=ready_symbols, ready_entities=ready_entities)
+
+                                    # create the labels for the RF classifier.
+                                    # for each window: [start, end]
+                                    test_labels_RF = []
+                                    for i in range(len(anomalous_data) - window_size + 1):
+                                        # get the labels for the windows' packets.
+                                        window_labels = labels[i, i + window_size]
+
+                                        # the label is 0 for a benign packet and 1 for an anomalous packets.
+                                        # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
+                                        window_label = max(window_labels)
+
+                                        # add label.
+                                        test_labels_RF.append(window_label)
+
+                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
+                                        method,
+                                        number_of_bins,
+                                        window_size,
+                                        injection_length,
+                                        step_over,
+                                        percentage,
+                                        epsilon)
+
+                                    dir_path = test_sets_base_folder + '\\KL\\test_labels'
+                                    if not os.path.exists(dir_path):
+                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                    with open(path, mode='wb') as labels_path:
+                                        pickle.dump(test_labels_RF, labels_path)
 
 
-def create_test_df_for_KL_based_RF(KL_config_path, injections_config_path):
+# 1. after running KL on the test_events, filter TIRPs by support.
+def filter_TIRPs_test_files(KL_config_file_path, injection_config):
+    """
+    we discover all the TIRPs with a very low support threshold and then filter out the ones having higher support
+    to avoid running KarmaLego many times.
+    :param injection_config: injections parameters.
+    :param KL_config_file_path: KL params
+    :return:
+    """
+    # 1. get to the file containing the mined TIRPs with very low support.
+    with open(KL_config_file_path, mode='r') as train_config:
+        params = yaml.load(train_config, Loader=yaml.FullLoader)
+
+    with open(injection_config, mode='r') as injection_conf:
+        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
+
+    KL_params = params['KarmaLegoParams']
+    binning = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_horizontal_supps = KL_params['MinHorizontalSups']
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    injection_epsilons = injection_params['Epsilon']
+
+    binning_times_bins = itertools.product(binning, bins)
+    parent_folders = itertools.product(windows, binning_times_bins)
+
+    lim = 0.2
+
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            rate = injection_length / (injection_length + step_over)
+            if rate > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for injection_epsilon in injection_epsilons:
+                        for window_binning_bins in parent_folders:
+                            # parameters of the events making.
+                            window = window_binning_bins[0]
+                            binning = window_binning_bins[1][0]
+                            bins = window_binning_bins[1][1]
+                            # \\{0}_{1}_{2}_{3}_{4}_{5}_{6}", method, num_bins, windowSize, length, step, percentage, epsilon);
+                            windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning, bins,
+                                                                                                       window,
+                                                                                                       injection_length,
+                                                                                                       step_over,
+                                                                                                       percentage,
+                                                                                                       injection_epsilon)
+
+                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
+                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+
+                            # parameters of KL.
+                            for eps_gap_supp in KL_hyperparams:
+                                epsilon = eps_gap_supp[0]
+                                max_gap = eps_gap_supp[1][0]
+                                horizontal_supp = eps_gap_supp[1][1]
+
+                                # we will save the filtered TIRPs here.
+                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
+                                # path to read the whole set of TIRPs from.
+                                src_path_suffix = "\\{}_{}_{}".format(epsilon, default_supp, max_gap)
+
+                                windows_outputs_destination_folder_path = windows_folders_folder + dest_path_suffix
+                                windows_outputs_src_folder_path = windows_folders_folder + src_path_suffix
+
+                                if not os.path.exists(windows_outputs_destination_folder_path):
+                                    Path(windows_outputs_destination_folder_path).mkdir(parents=True)
+
+                                # call helper function to finish.
+                                filter_and_write(windows_outputs_src_folder_path,
+                                                 windows_outputs_destination_folder_path, horizontal_supp)
+
+
+# 2. after filtering, make dfs for the LSTM.
+def create_test_sets_KLSTM(KL_config_path, injections_config_path):
+    # 1. go over kl params
+    binning_methods, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_path)
+
+    # 2. go over injection paras
+    injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injections_config_path)
+
+    # used for file accessing
+    binning_times_bins = itertools.product(binning_methods, bins)
+    parent_folders = itertools.product(windows, binning_times_bins)
+
+    # 3. find the tirps folder.
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            rate = injection_length / (injection_length + step_over)
+            if rate > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for injection_epsilon in injection_epsilons:
+                        for window_binning_bins in parent_folders:
+                            # parameters of the events making.
+                            window = window_binning_bins[0]
+                            binning = window_binning_bins[1][0]
+                            bins = window_binning_bins[1][1]
+
+                            windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning, bins,
+                                                                                                       window,
+                                                                                                       injection_length,
+                                                                                                       step_over,
+                                                                                                       percentage,
+                                                                                                       injection_epsilon)
+
+                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
+                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+
+                            # parameters of KL.
+                            for eps_gap_supp in KL_hyperparams:
+                                epsilon = eps_gap_supp[0]
+                                max_gap = eps_gap_supp[1][0]
+                                horizontal_supp = eps_gap_supp[1][1]
+
+                                # we will save the filtered TIRPs here.
+                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
+
+                                windows_outputs_destination_folder_path = windows_folders_folder + dest_path_suffix
+
+                                # need to get the file of the TIRPs in the matching train set. pass it as tirps path.
+                                # need to get the folder of the test TIRPs and pass it as the folder.
+                                # call parse outout and save.
+
+
+# 3. after having DFs for the LSTMs, make dfs for OCSVMs
+def create_test_df_for_KL_based_LSTM(KL_config_path, injections_config_path):
     # call parse_output with the respective folders and save the dataset (without the anomaly column).
     with open(KL_config_path, mode='r') as KL_params_path:
         KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
-        binning_methods = KL_params['BinningMethods']
-        bins = KL_params['Bins']
-        windows = KL_params['Windows']
-        epsilons = KL_params['Epsilons']
-        max_gaps = KL_params['MaxGaps']
-        min_ver_sups = KL_params['MinVerSups']
-        # go over all whole_tirp files (defining the binning, number of bins and window size)
-        for binning_method in binning_methods:
-            for b in bins:
-                for window in windows:
-                    # iterate over all KL params, get the TIRPs file path.
-                    for epsilon in epsilons:
-                        for max_gap in max_gaps:
-                            for min_ver_sup in min_ver_sups:
-                                with open(injections_config_path, mode='r') as injection_config:
-                                    injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
-                                    injection_lengths = injection_params['InjectionLength']
-                                    step_overs = injection_params['StepOver']
-                                    percentages = injection_params['Percentage']
-                                    injection_epsilons = injection_params['Epsilon']
-                                    # go over all injection params and find the TIRPs found in the test data which was made anomalous by injecting
-                                    # anomalies using the injection params.
-                                    for injection_length in injection_lengths:
-                                        for step_over in step_overs:
-                                            anomaly_percentage = injection_length / (injection_length + step_over)
-                                            if anomaly_percentage > 0.2:
-                                                pass
-                                            else:
-                                                for percentage in percentages:
-                                                    for injection_epsilon in injection_epsilons:
-                                                        output_base = test_sets_base_folder + '\\KL\\KL out'
-                                                        desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
-                                                            binning_method, b, window, injection_length, step_over,
-                                                            percentage, injection_epsilon, epsilon, min_ver_sup,
-                                                            max_gap)
-                                                        out_dir = output_base + desc
-                                                        # call parse_output, get the tirps in the train set for the indexing.
-                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
-                                                            binning_method,
-                                                            bins,
-                                                            window,
-                                                            epsilon,
-                                                            min_ver_sup,
-                                                            max_gap)
-                                                        windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path,
-                                                                                                    train=False)
-                                                        # the true labels were saved earlier.
-                                                        windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
-                                                            columns=['anomaly'])
-                                                        path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
-                                                            binning_method,
-                                                            b,
-                                                            window,
-                                                            injection_length,
-                                                            step_over,
-                                                            percentage,
-                                                            injection_epsilon,
-                                                            epsilon, min_ver_sup, max_gap)
-                                                        dir_path = test_sets_base_folder + '\\KL\\RF\\test_samples'
-                                                        if not os.path.exists(dir_path):
-                                                            Path(dir_path).mkdir(parents=True, exist_ok=True)
 
-                                                        with open(path, mode='wb') as samples_path:
-                                                            pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
+    binning_methods = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_ver_sups = KL_params['MinVerSups']
+
+    # go over all whole_tirp files (defining the binning, number of bins and window size)
+    for binning_method in binning_methods:
+        for b in bins:
+            for window in windows:
+                # iterate over all KL params, get the TIRPs file path.
+                for epsilon in epsilons:
+                    for max_gap in max_gaps:
+                        for min_ver_sup in min_ver_sups:
+                            with open(injections_config_path, mode='r') as injection_config:
+                                injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
+
+                            injection_lengths = injection_params['InjectionLength']
+                            step_overs = injection_params['StepOver']
+                            percentages = injection_params['Percentage']
+                            injection_epsilons = injection_params['Epsilon']
+                            # go over all injection params and find the TIRPs found in the test data which was made anomalous by injecting
+                            # anomalies using the injection params.
+                            for injection_length in injection_lengths:
+                                for step_over in step_overs:
+                                    anomaly_percentage = injection_length / (injection_length + step_over)
+                                    if anomaly_percentage > 0.2:
+                                        pass
+                                    else:
+                                        for percentage in percentages:
+                                            for injection_epsilon in injection_epsilons:
+                                                output_base = test_sets_base_folder + '\\KL\\KL out'
+                                                desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
+                                                    binning_method, b, window, injection_length, step_over,
+                                                    percentage, injection_epsilon, epsilon, min_ver_sup,
+                                                    max_gap)
+                                                out_dir = output_base + desc
+                                                # call parse_output, get the tirps in the train set for the indexing.
+                                                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
+                                                    binning_method,
+                                                    bins,
+                                                    window,
+                                                    epsilon,
+                                                    min_ver_sup,
+                                                    max_gap)
+                                                windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path,
+                                                                                            train=False)
+                                                # the true labels were saved earlier.
+                                                windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
+                                                    columns=['anomaly'])
+                                                path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
+                                                    binning_method,
+                                                    b,
+                                                    window,
+                                                    injection_length,
+                                                    step_over,
+                                                    percentage,
+                                                    injection_epsilon,
+                                                    epsilon, min_ver_sup, max_gap)
+                                                dir_path = test_sets_base_folder + '\\KL\\RF\\test_samples'
+                                                if not os.path.exists(dir_path):
+                                                    Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                                with open(path, mode='wb') as samples_path:
+                                                    pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
 
 
 def make_best(results_df):
@@ -1973,3 +2125,28 @@ def create_raw_test_sets(injections_config):
 
                         with open(labels_path, mode='wb') as labels_p:
                             pickle.dump(labels, labels_p)
+
+
+# functions to get parameters from files. refactored.
+def get_KL_params(KL_config_path):
+    with open(KL_config_path, mode='r') as KL_params_path:
+        KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
+
+    binning_methods = KL_params['BinningMethods']
+    bins = KL_params['Bins']
+    windows = KL_params['Windows']
+    epsilons = KL_params['Epsilons']
+    max_gaps = KL_params['MaxGaps']
+    min_ver_sups = KL_params['MinVerSups']
+    return binning_methods, bins, windows, epsilons, max_gaps, min_ver_sups
+
+
+def get_injection_params(injections_config_path):
+    with open(injections_config_path, mode='r') as injection_config:
+        injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
+
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['Percentage']
+    injection_epsilons = injection_params['Epsilon']
+    return injection_lengths, step_overs, percentages, injection_epsilons
