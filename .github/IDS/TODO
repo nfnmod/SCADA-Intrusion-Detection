@@ -2,4 +2,4 @@
 # TODO: unsupervised KL- make test sets, tests.
 
 # NOTE: ask about usage of RF as it's a one class problem, learning from diff from prediction is bad as the diff will be approximately 0.
-# NOTE: ask about values for the HS parameter, number of configurations for injections.
+# NOTE: ask about values for the HS parameter, number of configurations for injections, # registers for dfa and fstm.

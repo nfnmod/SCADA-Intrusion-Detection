@@ -380,7 +380,7 @@ def train_LSTMs_from_KL(KL_config_file_path):
                                 model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
                                                                            epsilon, max_gap, min_horizontal_supp,
                                                                            series_len)
-                                train_data_path = KL_base
+                                train_data_path = KL_base + 'KL_LSTM'
                                 models_path = data.modeles_path + '\\KL_LSTM'
                                 with open(KL_LSTM_log, mode='a') as log:
                                     log.write('Training: {}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
@@ -939,9 +939,9 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                                     test_path=test_path_sliding_windows,
                                                     ready_symbols=ready_symbols, ready_entities=ready_entities)
 
-                                    # create the labels for the RF classifier.
+                                    # create the labels for the OCSVM classifier.
                                     # for each window: [start, end]
-                                    test_labels_RF = []
+                                    test_labels_OCSVM = []
                                     for i in range(len(anomalous_data) - window_size + 1):
                                         # get the labels for the windows' packets.
                                         window_labels = labels[i, i + window_size]
@@ -951,7 +951,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         window_label = max(window_labels)
 
                                         # add label.
-                                        test_labels_RF.append(window_label)
+                                        test_labels_OCSVM.append(window_label)
 
                                     path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
                                         method,
@@ -967,7 +967,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
                                     with open(path, mode='wb') as labels_path:
-                                        pickle.dump(test_labels_RF, labels_path)
+                                        pickle.dump(test_labels_OCSVM, labels_path)
 
 
 # 1. after running KL on the test_events, filter TIRPs by support.
@@ -1077,12 +1077,13 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                             binning = window_binning_bins[1][0]
                             bins = window_binning_bins[1][1]
 
-                            windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning, bins,
-                                                                                                       window,
-                                                                                                       injection_length,
-                                                                                                       step_over,
-                                                                                                       percentage,
-                                                                                                       injection_epsilon)
+                            test_windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning,
+                                                                                                            bins,
+                                                                                                            window,
+                                                                                                            injection_length,
+                                                                                                            step_over,
+                                                                                                            percentage,
+                                                                                                            injection_epsilon)
 
                             max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
                             KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
@@ -1094,87 +1095,37 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                 horizontal_supp = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
+                                test_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
 
-                                windows_outputs_destination_folder_path = windows_folders_folder + dest_path_suffix
+                                # folder of tirps text files.
+                                test_windows_outputs_folder_path = test_windows_folders_folder + test_path_suffix
 
                                 # need to get the file of the TIRPs in the matching train set. pass it as tirps path.
-                                # need to get the folder of the test TIRPs and pass it as the folder.
+
+                                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window,
+                                                                                      epsilon,
+                                                                                      horizontal_supp, max_gap)
                                 # call parse outout and save.
+                                test_df = TIRP.output.parse_output(test_windows_outputs_folder_path, tirps_path=TIRP_path, train=False)
+
+                                # save df.
+                                test_df_path_dir = test_sets_base_folder + '\\KL\\KL_LSTM'
+
+                                if not os.path.exists(test_df_path_dir):
+                                    Path(test_df_path_dir).mkdir(parents=True, exist_ok=True)
+
+                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning, bins, window, horizontal_supp, epsilon, max_gap, injection_length, step_over, percentage, injection_epsilon)
+
+                                with open(test_df_path, mode='wb') as test_f:
+                                    pickle.dump(test_df, test_f)
 
 
 # 3. after having DFs for the LSTMs, make dfs for OCSVMs
-def create_test_df_for_KL_based_LSTM(KL_config_path, injections_config_path):
-    # call parse_output with the respective folders and save the dataset (without the anomaly column).
-    with open(KL_config_path, mode='r') as KL_params_path:
-        KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
-
-    binning_methods = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    min_ver_sups = KL_params['MinVerSups']
-
-    # go over all whole_tirp files (defining the binning, number of bins and window size)
-    for binning_method in binning_methods:
-        for b in bins:
-            for window in windows:
-                # iterate over all KL params, get the TIRPs file path.
-                for epsilon in epsilons:
-                    for max_gap in max_gaps:
-                        for min_ver_sup in min_ver_sups:
-                            with open(injections_config_path, mode='r') as injection_config:
-                                injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
-
-                            injection_lengths = injection_params['InjectionLength']
-                            step_overs = injection_params['StepOver']
-                            percentages = injection_params['Percentage']
-                            injection_epsilons = injection_params['Epsilon']
-                            # go over all injection params and find the TIRPs found in the test data which was made anomalous by injecting
-                            # anomalies using the injection params.
-                            for injection_length in injection_lengths:
-                                for step_over in step_overs:
-                                    anomaly_percentage = injection_length / (injection_length + step_over)
-                                    if anomaly_percentage > 0.2:
-                                        pass
-                                    else:
-                                        for percentage in percentages:
-                                            for injection_epsilon in injection_epsilons:
-                                                output_base = test_sets_base_folder + '\\KL\\KL out'
-                                                desc = '\\{}_{}_{}_{}_{}_{}_{}\\{}_{}_{}_true'.format(
-                                                    binning_method, b, window, injection_length, step_over,
-                                                    percentage, injection_epsilon, epsilon, min_ver_sup,
-                                                    max_gap)
-                                                out_dir = output_base + desc
-                                                # call parse_output, get the tirps in the train set for the indexing.
-                                                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
-                                                    binning_method,
-                                                    bins,
-                                                    window,
-                                                    epsilon,
-                                                    min_ver_sup,
-                                                    max_gap)
-                                                windows_TIRPs_df = TIRP.output.parse_output(out_dir, TIRP_path,
-                                                                                            train=False)
-                                                # the true labels were saved earlier.
-                                                windows_TIRPs_df_unlabeled = windows_TIRPs_df.drop(
-                                                    columns=['anomaly'])
-                                                path = test_sets_base_folder + '\\KL\\RF\\test_samples\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}_true'.format(
-                                                    binning_method,
-                                                    b,
-                                                    window,
-                                                    injection_length,
-                                                    step_over,
-                                                    percentage,
-                                                    injection_epsilon,
-                                                    epsilon, min_ver_sup, max_gap)
-                                                dir_path = test_sets_base_folder + '\\KL\\RF\\test_samples'
-                                                if not os.path.exists(dir_path):
-                                                    Path(dir_path).mkdir(parents=True, exist_ok=True)
-
-                                                with open(path, mode='wb') as samples_path:
-                                                    pickle.dump(windows_TIRPs_df_unlabeled, samples_path)
+def create_test_df_for_KL_based_OCSVM(KL_config_path, injections_config_path):
+    # the labels already exist, we saved them when creating test sets for KL.
+    # when testing KLSTMs, save the predictions of the lstm as they will be used as the test set for the ocsvm.
+    # no need to do anything here. kept as a reminder.
+    return None
 
 
 def make_best(results_df):
