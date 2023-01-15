@@ -47,17 +47,17 @@ excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-              'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
-           'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
-              'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
 
-DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'injection epsilon', 'percentage', 'precision',
+DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-                    'injection length', 'step over', 'injection epsilon', 'percentage', 'precision', 'recall', 'auc',
+                    'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1'}
 
 best_cols = DFA_cols.copy()
@@ -1106,7 +1106,8 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                                                                       epsilon,
                                                                                       horizontal_supp, max_gap)
                                 # call parse outout and save.
-                                test_df = TIRP.output.parse_output(test_windows_outputs_folder_path, tirps_path=TIRP_path, train=False)
+                                test_df = TIRP.output.parse_output(test_windows_outputs_folder_path,
+                                                                   tirps_path=TIRP_path, train=False)
 
                                 # save df.
                                 test_df_path_dir = test_sets_base_folder + '\\KL\\KL_LSTM'
@@ -1114,7 +1115,15 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                 if not os.path.exists(test_df_path_dir):
                                     Path(test_df_path_dir).mkdir(parents=True, exist_ok=True)
 
-                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning, bins, window, horizontal_supp, epsilon, max_gap, injection_length, step_over, percentage, injection_epsilon)
+                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
+                                                                                                           bins, window,
+                                                                                                           horizontal_supp,
+                                                                                                           epsilon,
+                                                                                                           max_gap,
+                                                                                                           injection_length,
+                                                                                                           step_over,
+                                                                                                           percentage,
+                                                                                                           injection_epsilon)
 
                                 with open(test_df_path, mode='wb') as test_f:
                                     pickle.dump(test_df, test_f)
@@ -1132,10 +1141,10 @@ def make_best(results_df):
     # df for best scores without hyper-parameters being taken into consideration.
     best_df = pd.DataFrame(
         columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'injection length',
-                 'step over', 'percentage', 'injection epsilon'])
+                 'step over', 'percentage'])
     # group by the non-hyper-parameters and get the best results.
     grouped_results = results_df.groupby(by=['data version', 'binning', '# bins', 'injection length',
-                                             'step over', 'percentage', 'injection epsilon'])
+                                             'step over', 'percentage'])
 
     for group_name, group in grouped_results:
         best_precision = max(group['precision'])
@@ -1146,7 +1155,7 @@ def make_best(results_df):
         best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
                        'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
                        'injection length': group_name[3],
-                       'step over': group_name[4], 'percentage': group_name[5], 'injection epsilon': group_name[6]}
+                       'step over': group_name[4], 'percentage': group_name[5]}
         temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
         best_df = pd.concat([best_df, temp_df])
     return best_df
@@ -1279,7 +1288,6 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                                           'f1': f1,
                                                           'injection length': injection_length,
                                                           'step over': step_over,
-                                                          'injection epsilon': epsilon,
                                                           'percentage': percentage}
                                                 # describe: data version, binning, number of bins, RF params
                                                 if not os.path.exists(p_dir):
@@ -1443,9 +1451,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                                                 '# bins'] == bins \
                                                    and group_best['binning'] == binning_method and group_best[
                                                        'injection length'] == injection_length and group_best[
-                                                       'step over'] == step_over and \
-                                                   group_best['percentage'] == percentage and group_best[
-                                                       'injection epsilon'] == epsilon
+                                                       'step over'] == step_over
 
                                             # get the relevant entry in the df.
                                             matching = group_best.loc[mask]
@@ -1467,8 +1473,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                                                      'precision': method_precision, 'recall': method_recall,
                                                      'auc': method_auc, 'f1': method_f1,
                                                      'injection length': injection_length,
-                                                     'step over': step_over, 'percentage': percentage,
-                                                     'injection epsilon': epsilon}
+                                                     'step over': step_over, 'percentage': percentage}
                                         entry_df = pd.DataFrame.from_dict(columns=best_df.columns,
                                                                           data={'0': new_entry}, orient='index')
                                         best_df = pd.concat([best_df, entry_df], ignore_index=True)
@@ -1544,7 +1549,6 @@ def test_DFA(injection_config, group=''):
                                       '# bins': bins,
                                       'injection length': injection_length,
                                       'step over': step_over,
-                                      'injection epsilon': epsilon,
                                       'percentage': percentage,
                                       'precision': precision,
                                       'recall': recall,
@@ -1649,9 +1653,7 @@ def many_PLC_DFAs(groups_ids, injection_config):
                                            '# bins'] == number_of_bins \
                                        and group_best['binning'] == names[binner] and group_best[
                                            'injection length'] == injection_length and group_best[
-                                           'step over'] == step_over and \
-                                       group_best['percentage'] == percentage and group_best[
-                                           'injection epsilon'] == epsilon
+                                           'step over'] == step_over
 
                                 # get the relevant entry in the df.
                                 matching = group_best.loc[mask]
@@ -1673,8 +1675,7 @@ def many_PLC_DFAs(groups_ids, injection_config):
                                          'precision': method_precision, 'recall': method_recall,
                                          'auc': method_auc, 'f1': method_f1,
                                          'injection length': injection_length,
-                                         'step over': step_over, 'percentage': percentage,
-                                         'injection epsilon': epsilon}
+                                         'step over': step_over, 'percentage': percentage}
                             entry_df = pd.DataFrame.from_dict(columns=best_df.columns,
                                                               data={'0': new_entry}, orient='index')
                             best_df = pd.concat([best_df, entry_df], ignore_index=True)
@@ -1795,7 +1796,6 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
                                                                   'max gap': max_gap,
                                                                   'injection length': injection_length,
                                                                   'step over': step_over,
-                                                                  'injection epsilon': injection_epsilon,
                                                                   'percentage': percentage,
                                                                   'precision': precision,
                                                                   'recall': recall,
@@ -2066,11 +2066,11 @@ def create_raw_test_sets(injections_config):
                         anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
                                                                     percentage,
                                                                     epsilon)
-                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}_{}'.format(injection_length, step_over,
-                                                                                           percentage, epsilon)
-                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}_{}'.format(injection_length,
-                                                                                                 step_over,
-                                                                                                 percentage, epsilon)
+                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
+                                                                                        percentage)
+                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
+                                                                                              step_over,
+                                                                                              percentage)
                         with open(df_path, mode='wb') as df_p:
                             pickle.dump(anomalous_data, df_p)
 

@@ -1,5 +1,21 @@
-# TODO: make_input for KL- bin using all possible combinations in make_input to avoid reprocessing of data.
-# TODO: unsupervised KL- make test sets, tests.
+# TODO: filter TIRPs by percentiles instead of HS value.
+# TODO: find out about One Class RF, use it instead of OCSVM.
+# TODO: unsupervised KL- tests, create test sets when testing.
+# TODO: add KL based classifiers which learn on the difference from the prediction.
+# TODO: modify test functions, export different columns and add TP, TF, FP, FN metrics.
 
-# NOTE: ask about usage of RF as it's a one class problem, learning from diff from prediction is bad as the diff will be approximately 0.
-# NOTE: ask about values for the HS parameter, number of configurations for injections, # registers for dfa and fstm.
+# EXPERIMENTS:
+1. train LSTM.
+2. test LSTM.
+3. train DFA.
+4. test DFA.
+5. train LSTM based classifiers.
+6. test LSTM based classifiers.
+7. define events then run KL.
+8. train KLSTM.
+9. test KLSTM.
+10. train KLSTM based classifiers.
+11. test KLSTM based classifiers.
+12. train HTM
+13. train HTM based classifiers.
+14. test HTM based classifiers.
