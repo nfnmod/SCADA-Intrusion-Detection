@@ -11,7 +11,7 @@ import pandas as pd
 import tensorflow
 import yaml
 from keras.losses import mean_squared_error
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.svm import OneClassSVM
 
@@ -47,18 +47,21 @@ excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp',
+              'tn', 'fn'}
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
-           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn',
+           'fn'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp',
+              'tn', 'fn'}
 
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
-            'recall', 'auc', 'f1'}
+            'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn', 'fn'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
-                    'f1'}
+                    'f1', 'prc', 'tp', 'fp', 'tn', 'fn'}
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -787,8 +790,8 @@ def create_test_files_DFA(injection_config, group=''):
                         parent = test_sets_base_folder + '\\raw'
                         data_path = parent + '\\data_{}_{}_{}_{}'.format(injection_length, step_over, percentage,
                                                                          epsilon)
-                        labels_path = parent + '\\labels{}_{}_{}_{}'.format(injection_length, step_over, percentage,
-                                                                            epsilon)
+                        labels_path = parent + '\\labels_{}_{}_{}_{}'.format(injection_length, step_over, percentage,
+                                                                             epsilon)
 
                         with open(data_path, mode='rb') as d_p:
                             anomalous_data = pickle.load(d_p)
@@ -1140,7 +1143,8 @@ def create_test_df_for_KL_based_OCSVM(KL_config_path, injections_config_path):
 def make_best(results_df):
     # df for best scores without hyper-parameters being taken into consideration.
     best_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'injection length',
+        columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn', 'fn',
+                 'injection length',
                  'step over', 'percentage'])
     # group by the non-hyper-parameters and get the best results.
     grouped_results = results_df.groupby(by=['data version', 'binning', '# bins', 'injection length',
@@ -1151,9 +1155,12 @@ def make_best(results_df):
         best_recall = max(group['recall'])
         best_auc = max(group['auc'])
         best_f1 = max(group['f1'])
+        best_prc = max(group['prc'])
+        best_tp, best_tn, best_fp, best_fn = max(group['tp']), max(group['tn']), min(group['fp']), min(group['fn'])
 
         best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
                        'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
+                       'prc': best_prc, 'tp': best_tp, 'tn': best_tn, 'fp': best_fp, 'fn': best_fn,
                        'injection length': group_name[3],
                        'step over': group_name[4], 'percentage': group_name[5]}
         temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
@@ -1488,6 +1495,8 @@ def test_DFA(injection_config, group=''):
     binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
     names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
              data.equal_width_discretization: "equal_width"}
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
     n_bins = [5, 6, 7, 8, 9, 10]
 
     with open(injection_config, mode='r') as injections:
@@ -1512,38 +1521,33 @@ def test_DFA(injection_config, group=''):
                 for epsilon in epsilons:
                     for binner in binners:
                         for bins in n_bins:
-                            p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
+                            p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}_{}_{}_{}'.format(
                                 names[binner],
                                 bins,
                                 injection_length,
                                 step_over,
-                                percentage,
-                                epsilon)
-                            p_labels = test_sets_base_folder + middle + '\\labels{}_{}_{}_{}_{}_{}'.format(
+                                percentage)
+                            p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
                                 names[binner],
                                 bins,
                                 injection_length,
                                 step_over,
-                                percentage,
-                                epsilon)
+                                percentage)
+
                             with open(p_x_test, mode='rb') as test_data_path:
                                 test_df = pickle.load(test_data_path)
                             with open(p_labels, mode='rb') as labels_path:
                                 test_labels = pickle.load(labels_path)
-                            with open(data.automaton_path + middle + "\\DFA_{}_{}".format(names[binner], bins),
+                            with open(data.automaton_path + middle + "\\DFA_{}_{}".format(folders[names[binner]], bins),
                                       mode='rb') as dfa_path:
                                 DFA = pickle.load(dfa_path)
+
                             # the DFA classifies transitions.
                             registers = test_df.columns[2::]
                             decisions = models.automaton.detect(DFA, test_df, registers)
 
-                            precision, recalls, thresholds = precision_recall_curve(
-                                y_true=test_labels,
-                                probas_pred=decisions)
-                            precision = precision[0]
-                            recall = recalls[0]
-                            auc_score = roc_auc_score(y_true=test_labels, y_score=decisions)
-                            f1 = f1_score(y_true=test_labels, y_pred=decisions)
+                            precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                                y_true=test_labels, y_pred=decisions)
 
                             result = {'binning': names[binner],
                                       '# bins': bins,
@@ -1553,7 +1557,13 @@ def test_DFA(injection_config, group=''):
                                       'precision': precision,
                                       'recall': recall,
                                       'auc': auc_score,
-                                      'f1': f1}
+                                      'f1': f1,
+                                      'prc': prc_auc_score,
+                                      'tn': tn,
+                                      'fp': fp,
+                                      'fn': fn,
+                                      'tp': tp}
+
                             for col_name in excel_cols.difference(DFA_cols):
                                 result[col_name] = '-'
                             results_df = pd.concat(
@@ -1563,26 +1573,28 @@ def test_DFA(injection_config, group=''):
                             with open(test_DFA_log, mode='a') as test_log:
                                 test_log.write('recorded DFA results for injection with parameters:\n')
                                 test_log.write('binning: {}, # bins: {}'.format(names[binner], bins))
-                                test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(injection_length, step_over,
-                                                                                            percentage, epsilon))
+                                test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
+                                                                                   percentage))
                                 test_log.write(
-                                    'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(result['precision'],
-                                                                                                  result['recall'],
-                                                                                                  result['auc scores'],
-                                                                                                  result['f1']))
+                                    'scores: precision: {}, recall: {}, auc: {}, f1: {}, prc:{}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
+                                        result['precision'],
+                                        result['recall'],
+                                        result['auc score'],
+                                        result['f1'], result['prc'], result['tn'], result['fn'], result['tp'],
+                                        result['fp']))
 
     # write to excel.
     best_df = make_best(results_df)
     if group == '':
-        name = 'DFA'
+        algo = 'DFA'
         performance = ''
     else:
-        name = 'DFA_{}'.format(group)
+        algo = 'DFA_{}'.format(group)
         performance = 'for group {}'.format(group)
     with pd.ExcelWriter(xl_path) as writer:
-        results_df['name'] = name
+        results_df['algorithm'] = algo
         results_df.to_excel(excel_writer=writer, sheet_name='DFA ' + performance)
-        best_df['name'] = name
+        best_df['algorithm'] = algo
         best_df.to_excel(excel_writer=writer, sheet_name='DFA best ' + performance)
 
 
@@ -2101,3 +2113,17 @@ def get_injection_params(injections_config_path):
     percentages = injection_params['Percentage']
     injection_epsilons = injection_params['Epsilon']
     return injection_lengths, step_overs, percentages, injection_epsilons
+
+
+def get_metrics(y_true, y_pred):
+    precisions, recalls, thresholds = precision_recall_curve(
+        y_true=y_true,
+        probas_pred=y_pred)
+    precision = precisions[0]
+    recall = recalls[0]
+    auc_score = roc_auc_score(y_true=y_true, y_score=y_pred)
+    f1 = f1_score(y_true=y_true, y_pred=y_pred)
+    prc_auc_score = auc(recalls, precisions)
+    tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
+
+    return precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp
