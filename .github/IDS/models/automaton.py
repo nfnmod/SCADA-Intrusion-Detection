@@ -143,8 +143,8 @@ def make_automaton(registers, processed):
 def detect(automaton, processed, registers):
     decisions = []
     for i in range(len(processed) - 1):
-        curr_pkt = processed[i]
-        switched_state_pkt = processed[i + 1]
+        curr_pkt = processed.iloc[i]
+        switched_state_pkt = processed.iloc[i + 1]
         state_duration = curr_pkt['time_in_state']
         # the starting state
         state = dict()
