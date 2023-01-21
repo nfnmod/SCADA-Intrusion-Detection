@@ -1,14 +1,11 @@
 # TODO: filter TIRPs by percentiles instead of HS value.
-# TODO: find out about One Class RF, use it instead of OCSVM.
+# TODO: switch to Isolation Forests.
 # TODO: unsupervised KL- tests, create test sets when testing.
 # TODO: add KL based classifiers which learn on the difference from the prediction.
-# TODO: modify test functions, export different columns and add TP, TF, FP, FN metrics.
 
 # EXPERIMENTS:
 1. train LSTM.
 2. test LSTM.
-3. train DFA.
-4. test DFA.
 5. train LSTM based classifiers.
 6. test LSTM based classifiers.
 7. define events then run KL.

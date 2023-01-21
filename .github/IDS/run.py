@@ -1544,7 +1544,12 @@ def test_DFA(injection_config, group=''):
 
                             # the DFA classifies transitions.
                             registers = test_df.columns[2::]
+                            start = time.time()
                             decisions = models.automaton.detect(DFA, test_df, registers)
+                            end = time.time()
+
+                            elapsed = end - start
+                            avg_elapsed = elapsed / len(test_labels)
 
                             precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
                                 y_true=test_labels, y_pred=decisions)
@@ -1572,14 +1577,14 @@ def test_DFA(injection_config, group=''):
                                 axis=0, ignore_index=True)
                             with open(test_DFA_log, mode='a') as test_log:
                                 test_log.write('recorded DFA results for injection with parameters:\n')
-                                test_log.write('binning: {}, # bins: {}'.format(names[binner], bins))
+                                test_log.write('inference: {}, avg inference: {}, binning: {}, # bins: {}'.format(elapsed, avg_elapsed, names[binner], bins))
                                 test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
                                                                                    percentage))
                                 test_log.write(
                                     'scores: precision: {}, recall: {}, auc: {}, f1: {}, prc:{}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
                                         result['precision'],
                                         result['recall'],
-                                        result['auc score'],
+                                        result['auc'],
                                         result['f1'], result['prc'], result['tn'], result['fn'], result['tp'],
                                         result['fp']))
 

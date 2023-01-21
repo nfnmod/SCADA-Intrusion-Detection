@@ -208,7 +208,9 @@ def find_frequent_transitions_sequences(packets, time_window, support):
                 last_state_idx = end_indices[-1]
                 end_time = packets.loc[last_state_idx, 'timestamp']
                 time_delta = end_time - start_time
-                if first_state != last_state or first_idx != last_idx or time_delta > time_window:
+                if time_delta > time_window:
+                    break # since all following ones are too late as well.
+                if first_state != last_state or first_idx != last_idx:
                     continue
                 else:
                     # we can append them.
@@ -239,6 +241,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
         frequently_used = {t: False for t in frequent_transitions}
         added = {}
+        used = {t: False for t in frequent_transitions}
         base_transitions_count = len(frequent_transitions)
         for i in range(len(flat_transitions) - 1):
             # now we filter out the infrequent/fully extended sequences.
@@ -246,12 +249,18 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
             transition = indices_and_transition[1]
 
+            if used[transition]:
+                continue  # already used this transition.
+
             for j in range(i + 1, len(flat_transitions) - 1):
                 following_transition_and_indices = flat_transitions[j]
 
                 following_transition = following_transition_and_indices[1]
 
                 extension_states = transition + following_transition[1:]
+
+                if used[following_transition]:
+                    continue
 
                 parts = components.get(extension_states, [])
                 if not parts:
@@ -270,7 +279,10 @@ def find_frequent_transitions_sequences(packets, time_window, support):
                         frequently_used[following_transition] = True
                         # add the transition.
                         frequent_transitions.append(extension_states)
+                        used[transition] = True
+                        used[following_transition] = True
                         added[extension_states] = True
+                        break  # we extend once, only with the earliest option.
 
         for i in range(base_transitions_count):
             transition = frequent_transitions[i]
