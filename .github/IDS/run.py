@@ -11,7 +11,8 @@ import pandas as pd
 import tensorflow
 import yaml
 from keras.losses import mean_squared_error
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, confusion_matrix
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, confusion_matrix, \
+    precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.svm import OneClassSVM
 
@@ -47,21 +48,18 @@ excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp',
-              'tn', 'fn'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
-           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn',
-           'fn'}
+           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp',
-              'tn', 'fn'}
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
-            'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn', 'fn'}
+            'recall', 'auc', 'f1', 'prc'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
-                    'f1', 'prc', 'tp', 'fp', 'tn', 'fn'}
+                    'f1', 'prc'}
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -1143,7 +1141,7 @@ def create_test_df_for_KL_based_OCSVM(KL_config_path, injections_config_path):
 def make_best(results_df):
     # df for best scores without hyper-parameters being taken into consideration.
     best_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'prc', 'tp', 'fp', 'tn', 'fn',
+        columns=['data version', 'binning', '# bins', 'precision', 'recall', 'auc', 'f1', 'prc',
                  'injection length',
                  'step over', 'percentage'])
     # group by the non-hyper-parameters and get the best results.
@@ -1156,11 +1154,10 @@ def make_best(results_df):
         best_auc = max(group['auc'])
         best_f1 = max(group['f1'])
         best_prc = max(group['prc'])
-        best_tp, best_tn, best_fp, best_fn = max(group['tp']), max(group['tn']), min(group['fp']), min(group['fn'])
 
         best_result = {'data version': group_name[0], 'binning': group_name[1], '# bins': group_name[2],
                        'precision': best_precision, 'recall': best_recall, 'auc': best_auc, 'f1': best_f1,
-                       'prc': best_prc, 'tp': best_tp, 'tn': best_tn, 'fp': best_fp, 'fn': best_fn,
+                       'prc': best_prc,
                        'injection length': group_name[3],
                        'step over': group_name[4], 'percentage': group_name[5]}
         temp_df = pd.DataFrame.from_dict(data={'0': best_result}, orient='index', columns=best_df.columns)
@@ -1551,7 +1548,7 @@ def test_DFA(injection_config, group=''):
                             elapsed = end - start
                             avg_elapsed = elapsed / len(test_labels)
 
-                            precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                            precision, recall, auc_score, f1, prc_auc_score = get_metrics(
                                 y_true=test_labels, y_pred=decisions)
 
                             result = {'binning': names[binner],
@@ -1563,11 +1560,7 @@ def test_DFA(injection_config, group=''):
                                       'recall': recall,
                                       'auc': auc_score,
                                       'f1': f1,
-                                      'prc': prc_auc_score,
-                                      'tn': tn,
-                                      'fp': fp,
-                                      'fn': fn,
-                                      'tp': tp}
+                                      'prc': prc_auc_score}
 
                             for col_name in excel_cols.difference(DFA_cols):
                                 result[col_name] = '-'
@@ -2124,11 +2117,10 @@ def get_metrics(y_true, y_pred):
     precisions, recalls, thresholds = precision_recall_curve(
         y_true=y_true,
         probas_pred=y_pred)
-    precision = precisions[0]
-    recall = recalls[0]
+    precision = precision_score(y_true=y_true, y_pred=y_pred)
+    recall = recall_score(y_true=y_true, y_pred=y_pred)
     auc_score = roc_auc_score(y_true=y_true, y_score=y_pred)
     f1 = f1_score(y_true=y_true, y_pred=y_pred)
     prc_auc_score = auc(recalls, precisions)
-    tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
 
-    return precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp
+    return precision, recall, auc_score, f1, prc_auc_score
