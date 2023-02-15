@@ -1,10 +1,9 @@
 # TODO: filter TIRPs by percentiles instead of HS value.
-# TODO: switch to Isolation Forests.
+# TODO: find a new detector/use static threshold and update implementations.
 # TODO: unsupervised KL- tests, create test sets when testing.
 # TODO: add KL based classifiers which learn on the difference from the prediction.
 
 # EXPERIMENTS:
-1. train LSTM.
 2. test LSTM.
 5. train LSTM based classifiers.
 6. test LSTM based classifiers.

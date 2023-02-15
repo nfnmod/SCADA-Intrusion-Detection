@@ -86,32 +86,39 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
         # calculate new arrival time.
         if percentage > 0:
             for j in range(i + injection_length - 1, i - 1, -1):
-                pkt = cpy.iloc[j]
                 old_time = cpy.iloc[j, 0]
-                next_pkt_idx = get_next_pkt_idx(pkt, cpy, j + 1)
+                next_pkt_idx = j + 1
+                if next_pkt_idx >= len(test_data):
+                    next_pkt_idx = -1
                 if next_pkt_idx != - 1:
                     next_time = cpy.iloc[next_pkt_idx, 0]
+                    # original inter-arrival time.
                     inter_arrival = (next_time - old_time).total_seconds()
+                    # new inter-arrival time.
+                    new_inter_arrival_time = inter_arrival * (1 - (percentage / 100))
+                    # new arrival time.
+                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=new_inter_arrival_time)
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
-                    max_limit = cpy.iloc[next_pkt_idx, 0] - timedelta(seconds=epsilon)
-                    new_time = old_time + timedelta(seconds=inter_arrival * (percentage / 100))
+                    max_limit = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=epsilon)
                     if new_time > max_limit:
                         new_time = max_limit
                     labels[j] = 1
                     test_data.iloc[j, 0] = new_time
         else:
             for j in range(i, i + injection_length):
-                pkt = cpy.iloc[j]
                 old_time = cpy.iloc[j, 0]
-                prev_pkt_idx = get_prev_pkt_idx(pkt, cpy, j - 1)
+                prev_pkt_idx = j - 1
+                if j < 0:
+                    j = -1
                 if prev_pkt_idx != -1:
                     prev_time = cpy.iloc[prev_pkt_idx, 0]
                     inter_arrival = (old_time - prev_time).total_seconds()
+                    new_inter_arrival_time = inter_arrival * (1 + (percentage / 100))
+                    new_time = prev_time + timedelta(seconds=new_inter_arrival_time)
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
                     min_limit = prev_time + timedelta(seconds=epsilon)
-                    new_time = old_time + timedelta(seconds=inter_arrival * (percentage / 100))
                     if new_time < min_limit:
                         new_time = min_limit
                     labels[j] = 1

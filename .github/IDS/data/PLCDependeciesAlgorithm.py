@@ -192,6 +192,9 @@ def find_frequent_transitions_sequences(packets, time_window, support):
             first_state_idx = start_indices[0]
             start_time = packets.loc[first_state_idx, 'timestamp']
 
+            if len(start_states) > 2:
+                middle1 = start_states[1::]
+
             # we need to check every sequence which occurred after start.
             # if we extended, then break, remove them both from the candidates for the current iteration.
             # save the extended one aside for the next iteration.
@@ -208,36 +211,51 @@ def find_frequent_transitions_sequences(packets, time_window, support):
                 last_state_idx = end_indices[-1]
                 end_time = packets.loc[last_state_idx, 'timestamp']
                 time_delta = end_time - start_time
-                if time_delta > time_window:
-                    break # since all following ones are too late as well.
-                if first_state != last_state or first_idx != last_idx:
+
+                if len(end_states) > 2:
+                    middle2 = end_states[0:: len(end_states) - 1]
+
+                if time_delta > time_window:  # all next ones fulfil this condition so can't extend.
+                    break
+
+                if len(end_states) > 2 and len(start_states) > 2:
+                    consistent = True
+                    for i in range(len(middle2)):
+                        consistent = consistent and (middle2[i] == middle1[i])
+                        if not consistent:
+                            break
+
+                    if not consistent:
+                        continue
+
+                if len(end_states) == 2 and first_state != last_state or first_idx != last_idx:
                     continue
-                else:
-                    # we can append them.
-                    # extended sequence.
-                    start_part = start_states
-                    end_part = end_states[1:]
-                    extended_transition = start_part + end_part
 
-                    # extended indices.
-                    start_part_indices = start_indices
-                    end_part_indices = end_indices[1:]
-                    extended_transition_indices = start_part_indices + end_part_indices
+                # we can append them.
+                # extended sequence.
+                start_part = start_states
+                end_part = end_states[-1]
+                extended_transition = start_part + (end_part,)
 
-                    # add times
-                    known_times = times.get(extended_transition, [])
-                    known_times.append(time_delta)
-                    times[extended_transition] = known_times
+                # extended indices.
+                start_part_indices = start_indices
+                end_part_indices = end_indices[-1]
+                extended_transition_indices = start_part_indices + (end_part_indices,)
 
-                    # add indices
-                    known_indices = indices.get(extended_transition, [])
-                    known_indices.append(extended_transition_indices)
-                    indices[extended_transition] = known_indices
+                # add times
+                known_times = times.get(extended_transition, [])
+                known_times.append(time_delta)
+                times[extended_transition] = known_times
 
-                    # save the smaller sequences which were extended.
-                    # this will be used in case the extension isn't frequent.
-                    if components.get(extended_transition, None) is None:
-                        components[extended_transition] = [start_states, end_states]
+                # add indices
+                known_indices = indices.get(extended_transition, [])
+                known_indices.append(extended_transition_indices)
+                indices[extended_transition] = known_indices
+
+                # save the smaller sequences which were extended.
+                # this will be used in case the extension isn't frequent.
+                if components.get(extended_transition, None) is None:
+                    components[extended_transition] = [start_states, end_states]
 
         frequently_used = {t: False for t in frequent_transitions}
         added = {}
@@ -257,7 +275,7 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
                 following_transition = following_transition_and_indices[1]
 
-                extension_states = transition + following_transition[1:]
+                extension_states = transition + following_transition[-1]
 
                 if used[following_transition]:
                     continue
@@ -289,8 +307,6 @@ def find_frequent_transitions_sequences(packets, time_window, support):
 
             # the transition never extended any other one OR extended some other transition but the extension wasn't
             # frequent enough.
-            if transition not in frequently_used.keys():
-                break
             if not frequently_used[transition]:
                 # save result and remove.
                 fully_extended.append(transition)

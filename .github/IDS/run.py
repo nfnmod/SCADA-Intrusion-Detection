@@ -1923,9 +1923,15 @@ def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
                 else:
                     for percentage in percentages:
                         for epsilon in epsilons:
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                        percentage,
-                                                                        epsilon)
+                            df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
+                                                                                            percentage)
+                            labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
+                                                                                                  step_over,
+                                                                                                  percentage)
+                            with open(df_path, mode='rb') as p:
+                                anomalous_data = pickle.load(p)
+                            with open(labels_path, mode='rb') as p:
+                                labels = pickle.load(p)
                             #  process the data using the different versions
                             with open(train_config, mode='r') as processing_config:
                                 config = yaml.load(processing_config, Loader=yaml.FullLoader)
