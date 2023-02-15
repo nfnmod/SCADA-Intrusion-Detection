@@ -2,6 +2,7 @@ import csv
 import itertools
 import os
 import pickle
+import statistics
 import time
 from pathlib import Path
 
@@ -57,6 +58,8 @@ OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
+LSTM_detection_cols = DFA_cols.copy()
+
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
@@ -69,6 +72,9 @@ xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classi
 test_LSTM_RF_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM-RF-OCSVM.txt'
 test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
 test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
+test_LSTM_STD_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
+
+LSTM_validation = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation\\LSTM\\'
 
 
 def get_models_folders_data_folders(train_config):
@@ -1570,7 +1576,11 @@ def test_DFA(injection_config, group=''):
                                 axis=0, ignore_index=True)
                             with open(test_DFA_log, mode='a') as test_log:
                                 test_log.write('recorded DFA results for injection with parameters:\n')
-                                test_log.write('inference: {}, avg inference: {}, binning: {}, # bins: {}'.format(elapsed, avg_elapsed, names[binner], bins))
+                                test_log.write(
+                                    'inference: {}, avg inference: {}, binning: {}, # bins: {}'.format(elapsed,
+                                                                                                       avg_elapsed,
+                                                                                                       names[binner],
+                                                                                                       bins))
                                 test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
                                                                                    percentage))
                                 test_log.write(
@@ -1902,11 +1912,10 @@ def train_LSTM(train_config):
 
 
 # for LSTM classifiers.
-def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
+def create_test_sets_LSTMs(train_config, injection_config):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
 
-    test_data = data.load(test_sets_base_folder, raw_test_df)
     lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
@@ -1974,12 +1983,22 @@ def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
                                         # p_suffix = group_id + p_suffix
 
                                         # make sure dirs exist and dump.
-                                        dir_path = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}'.format(
+                                        dir_path = test_sets_base_folder + '\\LSTM\\{}_{}_{}'.format(
                                             folder_name, name, number_of_bins)
 
-                                        p_x_test = dir_path + '\\X_test_' + p_suffix
-                                        p_y_test = dir_path + '\\y_test_' + p_suffix
-                                        p_labels = dir_path + '\\labels_' + p_suffix
+                                        bin_part = folders[method_name]
+
+                                        suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
+                                                                            bin_part,
+                                                                            number_of_bins,
+                                                                            injection_length,
+                                                                            step_over,
+                                                                            percentage)
+
+                                        p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
+                                        p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
+                                        p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
+
                                         if not os.path.exists(dir_path):
                                             Path(dir_path).mkdir(parents=True, exist_ok=True)
 
@@ -2058,6 +2077,171 @@ def test_LSTM(train_config, raw_test_data):
         results_df.to_excel(writer, sheet_name='LSTM scores')
 
 
+def detect_LSTM(lstm_config, injection_config):
+    injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
+
+    # grid over the lstm data sets : get labels and data.
+    # for each data set: predict and get metrics.
+
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
+    results_df = pd.DataFrame(columns=excel_cols)
+
+    # go over all combinations, process raw test set, test and save metric scores.
+    with open(lstm_config, mode='r') as c:
+        train_params = yaml.load(c, Loader=yaml.FullLoader)
+
+    binning_methods = train_params['binning_methods']
+    numbers_of_bins = train_params['bins']
+    data_versions = train_params['train_sets_config']
+
+    # for each lstm (grid over lstm_config):
+    # get the validation data set, predict on it, calculate the deviation mean + 3 std.
+    for data_version in data_versions:
+        folder_name = data_version['name']
+        file_name = data_version['desc']
+        for binning_method in binning_methods:
+            for number_of_bins in numbers_of_bins:
+                validation_X = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                            file_name, binning_method, number_of_bins)
+                validation_Y = LSTM_validation + '{}_{}\\Y_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                            file_name, binning_method,
+                                                                            number_of_bins)
+
+                with open(validation_X, mode='rb') as val_p:
+                    val_X = pickle.load(val_p)
+
+                with open(validation_Y, mode='rb') as val_p:
+                    val_y = pickle.load(val_p)
+
+                bin_part = folders[binning_method]
+                version_part = data_version['name']
+                model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
+                dump_model = data.modeles_path + '\\{}_{}'.format(bin_part, version_part)
+
+                with open(dump_model + '\\' + model_name, mode='rb') as model_path:
+                    LSTM = keras.models.load_model(model_path)
+
+                pred = LSTM.predict(val_X)
+                deviations = calc_deviations(pred, val_y)
+                mean = statistics.mean(deviations)
+                std = statistics.stdev(deviations)
+                threshold = mean + 3 * std
+
+                for injection_length in injection_lengths:
+                    for step_over in step_overs:
+                        anomaly_percentage = injection_length / (injection_length + step_over)
+                        if anomaly_percentage > lim:
+                            pass
+                        else:
+                            for percentage in percentages:
+                                for epsilon in injection_epsilons:
+                                    suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
+                                                                        bin_part,
+                                                                        number_of_bins,
+                                                                        injection_length,
+                                                                        step_over,
+                                                                        percentage)
+
+                                    p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
+                                    p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
+                                    p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
+
+                                    with open(p_x_test, mode='rb') as x_path:
+                                        X_test = pickle.load(x_path)
+                                    with open(p_y_test, mode='rb') as y_path:
+                                        Y_test = pickle.load(y_path)
+                                    with open(p_labels, mode='rb') as l_path:
+                                        labels = pickle.load(l_path)
+
+                                    test_pred = LSTM.predict(X_test)
+                                    test_deviations = calc_deviations(Y_test, test_pred)
+                                    pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
+                                    precision, recall, auc_score, f1, prc_auc_score = get_metrics(labels, pred_labels)
+
+                                    result = {'binning': bin_part,
+                                              '# bins': number_of_bins,
+                                              'injection length': injection_length,
+                                              'step over': step_over,
+                                              'percentage': percentage,
+                                              'precision': precision,
+                                              'recall': recall,
+                                              'auc': auc_score,
+                                              'f1': f1,
+                                              'prc': prc_auc_score}
+
+                                    for col_name in excel_cols.difference(DFA_cols):
+                                        result[col_name] = '-'
+                                    results_df = pd.concat(
+                                        [results_df,
+                                         pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
+                                                                orient='index')],
+                                        axis=0, ignore_index=True)
+                                    with open(test_LSTM_STD_log, mode='a') as test_log:
+                                        test_log.write(
+                                            'tested, data version:{}, binning:{}, #bins:{}\n'.format(folder_name,
+                                                                                                     binning_method,
+                                                                                                     number_of_bins))
+                                        test_log.write(
+                                            'injection: {}, {}, {}\n'.format(injection_length, step_over, percentage))
+                                        test_log.write(
+                                            'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
+                                                                                                      prc_auc_score,
+                                                                                                      precision,
+                                                                                                      recall))
+    results_df['algorithm'] = 'LSTM+STD'
+    with pd.ExcelWriter(xl_path) as writer:
+        results_df.to_excel(writer, sheet_name='LSTM+STD scores')
+
+
+def create_val_for_LSTM(lstm_config):
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
+    val_df = data.load(data.datasets_path, 'MB_TCP_VAL')
+
+    # go over all combinations, process raw test set, test and save metric scores.
+    with open(lstm_config, mode='r') as c:
+        train_params = yaml.load(c, Loader=yaml.FullLoader)
+
+    binning_methods = train_params['binning_methods']
+    numbers_of_bins = train_params['bins']
+    data_versions = train_params['train_sets_config']
+
+    for data_version in data_versions:
+        val_lstm = None
+        folder_name = data_version['name']
+        file_name = data_version['desc']
+        if not data_version['reprocess']:
+            val_lstm = data.process_data_v3(val_df, None, None, False)
+        for binning_method in binning_methods:
+            for number_of_bins in numbers_of_bins:
+                if data_version['reprocess']:
+                    lstm_in = data.process(val_df, number_of_bins, binning_method, True)
+                else:
+                    lstm_in = val_lstm.copy()
+                    cols_not_to_bin = data_version['no_bin']
+
+                    # scale everything, bin by config file.
+                    for col_name in lstm_in.columns:
+                        if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
+                            data.bin_col(lstm_in, binning_method, col_name, number_of_bins)
+                        lstm_in[col_name] = data.scale_col(lstm_in, col_name)
+
+                X_val, y_val = models.custom_train_test_split(lstm_in, series_len=20, np_seed=42, train=1.0)
+
+                validation_path_X = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                              file_name, binning_method, number_of_bins)
+                validation_path_Y = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                                 file_name, binning_method,
+                                                                                 number_of_bins)
+                with open(validation_path_X, mode='wb') as x_val_f:
+                    pickle.dump(X_val, x_val_f)
+                with open(validation_path_Y, mode='wb') as y_val_f:
+                    pickle.dump(y_val, y_val_f)
+
+
 def create_raw_test_sets(injections_config):
     with open(injections_config, mode='r') as injections_conf:
         injection_params = yaml.load(injections_conf, Loader=yaml.FullLoader)
@@ -2130,3 +2314,14 @@ def get_metrics(y_true, y_pred):
     prc_auc_score = auc(recalls, precisions)
 
     return precision, recall, auc_score, f1, prc_auc_score
+
+
+def calc_deviations(pred, true):
+    deviations = []
+    for i in range(len(pred)):
+        real = true[i]
+        predicted = pred[i]
+        dist = np.linalg.norm(real - predicted)
+        deviations.append(dist)
+
+    return deviations
