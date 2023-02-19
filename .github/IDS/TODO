@@ -1,11 +1,15 @@
 # TODO: use static threshold and update implementations.
 # TODO: unsupervised KL- tests, create test sets when testing.
 # TODO: filter TIRPs by percentiles instead of HS value.
+# TODO: fix dfa train, use squeeze.
 
 # EXPERIMENTS:
 2. test LSTM.
 5. train LSTM based classifiers.
 6. test LSTM based classifiers.
+retrain dfa.
+recreate test sets.
+test dfa again.
 7. define events then run KL.
 8. train KLSTM.
 9. test KLSTM.

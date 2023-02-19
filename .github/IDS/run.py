@@ -11,9 +11,8 @@ import numpy as np
 import pandas as pd
 import tensorflow
 import yaml
-from keras.losses import mean_squared_error
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, confusion_matrix, \
-    precision_score, recall_score
+    precision_score, recall_score, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.svm import OneClassSVM
 
@@ -30,6 +29,7 @@ logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 test_sets_base_folder = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets'
 KL_based_OCSVM_log = logs + 'KarmaLego based OCSVM.txt'
 KL_LSTM_log = logs + 'KL-LSTM.txt'
+lstm_test_log = logs + 'LSTM test.txt'
 DFA_log = logs + 'DFA.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
@@ -1136,6 +1136,7 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                     pickle.dump(test_df, test_f)
 
 
+# WAIT WITH THIS. NEED TO DETERMINE THE DETECTION METHOD.
 # 3. after having DFs for the LSTMs, make dfs for OCSVMs
 def create_test_df_for_KL_based_OCSVM(KL_config_path, injections_config_path):
     # the labels already exist, we saved them when creating test sets for KL.
@@ -2014,7 +2015,7 @@ def test_LSTM(train_config, raw_test_data):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
 
-    test_df = data.load(data.datasets_path, raw_test_data)
+    test_df = data.load(test_sets_base_folder, raw_test_data)
 
     results_df = pd.DataFrame(columns=['data_version', 'binning', '# bins', 'mse', 'r2'])
 
@@ -2028,21 +2029,32 @@ def test_LSTM(train_config, raw_test_data):
 
     for data_version in data_versions:
         test_lstm = None
+        file_name = data_version['desc']
+        folder_name = data_version['name']
+
         if not data_version['reprocess']:
-            test_lstm = data.process_data_v3(test_df, None, None, False)
+            test_lstm = data.process(test_df, data_version['name'], None, None, False)
         for binning_method in binning_methods:
+            method_folder = folders[binning_method]
             for number_of_bins in numbers_of_bins:
                 if data_version['reprocess']:
-                    lstm_in = data.process(test_df, number_of_bins, binning_method, True)
+                    lstm_in = data.process(test_df, data_version['name'], number_of_bins, binning_method, True)
                 else:
                     lstm_in = test_lstm.copy()
                     cols_not_to_bin = data_version['no_bin']
 
+                    model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
+                    suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
+
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
                         if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                            data.bin_col(lstm_in, binning_method, col_name, number_of_bins)
-                        lstm_in[col_name] = data.scale_col(lstm_in, col_name)
+                            with open(binners_base + suffix + '_{}'.format(col_name), mode='wb') as binner_p:
+                                binner = pickle.load(binner_p)
+                            lstm_in[col_name] = binner.transorm(lstm_in[col_name].to_numpy().reshape(-1, 1))
+                        with open(scalers_base + suffix + '_{}'.format(col_name), mode='wb') as scaler_p:
+                            scaler = pickle.load(scaler_p)
+                        lstm_in[col_name] = scaler.transorm(lstm_in[col_name].to_numpy().reshape(-1, 1))
 
                 bin_part = folders[binning_method]
                 version_part = data_version['name']
@@ -2054,12 +2066,14 @@ def test_LSTM(train_config, raw_test_data):
 
                 X_test, y_test = models.models.custom_train_test_split(lstm_in, 20, 42, train=1.0)
 
-                with open(test_sets_base_folder + '\\{}_{}'.format(bin_part,
-                                                                   version_part) + '\\X_test_' + model_name) as x_test_p:
+                dir_p = test_sets_base_folder + '//{}_{}'.format(bin_part, version_part)
+                if not os.path.exists(dir_p):
+                    Path(dir_p).mkdir(parents=True, exist_ok=True)
+
+                with open(dir_p + '//X_test_' + model_name) as x_test_p:
                     pickle.dump(X_test, x_test_p)
 
-                with open(test_sets_base_folder + '\\{}_{}'.format(bin_part,
-                                                                   version_part) + '\\y_test_' + model_name) as y_test_p:
+                with open(dir_p + '//y_test_' + model_name) as y_test_p:
                     pickle.dump(y_test, y_test_p)
 
                 y_pred = LSTM.predict(X_test)
@@ -2072,6 +2086,8 @@ def test_LSTM(train_config, raw_test_data):
                           'r2': r2}
                 res_df = pd.DataFrame.from_dict(columns=results_df.columns, data={'0': result}, orient='index')
                 results_df = pd.concat([results_df, res_df], ignore_index=True)
+                with open(lstm_test_log, mode='a') as log:
+                    log.write('mse:{}, r2:{}, version:{}, binning:{}, bins:{}'.format(mse, r2, data_version['name'], folders[binning_method], number_of_bins))
 
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM scores')

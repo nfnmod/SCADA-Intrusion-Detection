@@ -696,7 +696,8 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
 # GAVE BAD RESULTS.
 # save inter-arrival time, values of registers ,
 # time since registers got those values, similarity score to previous known state
-def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None):
+def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None,
+                    load_binner=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -781,7 +782,12 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
         # fill missing values for registers and bin. prepare dataframe for the time calculation.
         for reg_num in registers:
             time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
-            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+            if not load_binner:
+                time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+            else:
+                with open(binners_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as binner_p:
+                    binner = pickle.load(binner_p)
+                time_vals_df[reg_num] = binner.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
         # iterate over dataframe. update the duration of the values in the registers after the values were binned.
         for n in range(len(time_vals_df)):
             curr = time_vals_df.iloc[n]
@@ -808,21 +814,47 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
             time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
             time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
             if scale:
-                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
-                time_vals_df[reg_key] = scale_col(time_vals_df, reg_key, binner_path)
+                if not load_binner:
+                    time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
+                    time_vals_df[reg_key] = scale_col(time_vals_df, reg_key, binner_path)
+                else:
+                    with open(scalers_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as scaler_p:
+                        scaler = pickle.load(scaler_p)
+                    time_vals_df[reg_num] = scaler.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
+                    with open(scalers_base + '//{}_{}'.format(binner_path, reg_key), mode='wb') as scaler_p:
+                        scaler = pickle.load(scaler_p)
+                    time_vals_df[reg_key] = scaler.transorm(time_vals_df[reg_key].to_numpy().reshape(-1, 1))
     else:
         for reg_num in registers:
             reg_key = 'time_' + str(reg_num)
             time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
             time_vals_df[reg_key] = time_vals_df[reg_key].fillna(time_vals_df[reg_key].mean())
             if binner is not None:
-                time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+                if not load_binner:
+                    time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+                else:
+                    with open(binners_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as binner_p:
+                        binner = pickle.load(binner_p)
+                    time_vals_df[reg_num] = binner.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
             if scale:
-                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
-                time_vals_df[reg_key] = scale_col(time_vals_df, reg_key, binner_path)
+                if not load_binner:
+                    time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
+                    time_vals_df[reg_key] = scale_col(time_vals_df, reg_key, binner_path)
+                else:
+                    with open(scalers_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as scaler_p:
+                        scaler = pickle.load(scaler_p)
+                    time_vals_df[reg_num] = scaler.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
+                    with open(scalers_base + '//{}_{}'.format(binner_path, reg_key), mode='wb') as scaler_p:
+                        scaler = pickle.load(scaler_p)
+                    time_vals_df[reg_key] = scaler.transorm(time_vals_df[reg_key].to_numpy().reshape(-1, 1))
 
     if scale:
-        time_vals_df['time'] = scale_col(time_vals_df, 'time', binner_path)
+        if not load_binner:
+            time_vals_df['time'] = scale_col(time_vals_df, 'time', binner_path)
+        else:
+            with open(scalers_base + '//{}_{}'.format(binner_path, 'time'), mode='wb') as scaler_p:
+                scaler = pickle.load(scaler_p)
+            time_vals_df['time'] = scaler.transorm(time_vals_df['time'].to_numpy().reshape(-1, 1))
 
     return time_vals_df
 
@@ -940,7 +972,7 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
 
 
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
-def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None):
+def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None, load_binner=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -1038,9 +1070,19 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
         if binner is not None:
-            time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+            if not load_binner:
+                time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
+            else:
+                with open(binners_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as binner_p:
+                    binner = pickle.load(binner_p)
+                time_vals_df[reg_num] = binner.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
         if scale:
-            time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
+            if not load_binner:
+                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
+            else:
+                with open(scalers_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as scaler_p:
+                    scaler = pickle.load(scaler_p)
+                time_vals_df[reg_num] = scaler.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
 
     if abstract and binner is not None:
         # now we calculate the time_in_state after the temporal abstraction of registers values by binning.
@@ -1063,7 +1105,12 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
     for col_name in ['time', 'time_in_state']:
         time_vals_df[col_name] = time_vals_df[col_name].fillna(time_vals_df[col_name].mean())
         if scale:
-            time_vals_df[col_name] = scale_col(time_vals_df, col_name, binner_path)
+            if not load_binner:
+                time_vals_df[col_name] = scale_col(time_vals_df, col_name, binner_path)
+            else:
+                with open(scalers_base + '//{}_{}'.format(binner_path, col_name), mode='wb') as scaler_p:
+                    scaler = pickle.load(scaler_p)
+                time_vals_df[col_name] = scaler.transorm(time_vals_df[col_name].to_numpy().reshape(-1, 1))
 
     return time_vals_df
 
@@ -1116,6 +1163,7 @@ def squeeze(binned_df):
             squeezed.loc[len(squeezed) - 1, 'time_in_state'] = 0
 
     return squeezed
+
 
 # inter-arrival time,
 # time in state so far / value duration of each register,
@@ -1588,49 +1636,61 @@ def process(data, name, bins, binning, scale=True, binner_path=None):
     if name == 'embedding_MP_deltas_regs_times':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10,
+                            binner_path=binner_path)
     elif name == 'embedding_MP_regs_deltas_state_duration':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10,
+                            binner_path=binner_path)
     elif name == 'embedding_MP_regs_values_state_duration':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=True, w=10, j=10,
+                            binner_path=binner_path)
     elif name == 'embedding_regs_deltas_state_duration':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False,
+                            binner_path=binner_path)
     elif name == 'embedding_regs_times_deltas':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_deltas_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False,
+                            binner_path=binner_path)
     elif name == 'embedding_regs_times_values':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=False,
+                            binner_path=binner_path)
     elif name == 'embedding_regs_values_state_duration':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=True, matrix_profiles=False,
+                            binner_path=binner_path)
     elif name == 'MP_embedding_regs_times_values':
         return embedding_v1(data, 5, neighborhood=20, regs_times_maker=embed_v1_with_values_regs_times,
                             binner=names[binning],
-                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10, binner_path=binner_path)
+                            n_bins=bins, scale=True, state_duration=False, matrix_profiles=True, w=10, j=10,
+                            binner_path=binner_path)
     elif name == 'v1_1':
-        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v1, scale=scale, binner_path=binner_path)
+        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v1, scale=scale,
+                               binner_path=binner_path)
     elif name == 'v1_2':
-        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2, scale=scale, binner_path=binner_path)
+        return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2, scale=scale,
+                               binner_path=binner_path)
     elif name == 'v2':
         return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
     elif name == 'v2_abstract':
-        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale, binner_path=binner_path)
+        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
+                               binner_path=binner_path, load_binner=True)
     elif name == 'v3':
         return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
     elif name == 'v3_2':
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
     else:
-        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale, binner_path=binner_path)
+        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
+                                 binner_path=binner_path, load_binner=True)
 
 
 def bin_col(df, method, col, n_bins, path=None):
@@ -1770,5 +1830,7 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
         results_df.to_excel(writer, sheet_name=sheet_name)
 
 
-
-
+if __name__ == '__main__':
+    y_true = [[0.5, 1], [-1, 1], [7, -6]]
+    y_pred = [[0, 2], [-1, 2], [8, -5]]
+    print(mean_squared_error(y_true, y_pred))
