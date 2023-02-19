@@ -813,7 +813,7 @@ def create_test_files_DFA(injection_config, group=''):
                                             folders_names[names[binner]], bins, col_name)
                                         with open(binner_path, mode='rb') as binner_p:
                                             col_binner = pickle.load(binner_p)
-                                        binned_test_df[col_name] = col_binner(binned_test_df, col_name, bins)
+                                        binned_test_df[col_name] = col_binner.transform(binned_test_df[col_name].to_numpy().reshape(-1, 1))
 
                                 dfa_in = squeeze(binned_test_df)
                                 # we need to know which transitions include anomalies to create the test labels.
