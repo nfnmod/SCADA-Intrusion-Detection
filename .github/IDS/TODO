@@ -3,16 +3,18 @@
 # TODO: filter TIRPs by percentiles instead of HS value.
 
 # EXPERIMENTS:
-2. test LSTM.
-5. train LSTM based classifiers.
-6. test LSTM based classifiers.
-CREATE TEST SETS-RAW, FOR DFA, FOR LSTM DETECTOR + VALIDATION SETS FOR LSTM.
-TEST DFA.
-7. define events then run KL.
-8. train KLSTM.
-9. test KLSTM.
-10. train KLSTM based classifiers.
-11. test KLSTM based classifiers.
-12. train HTM
-13. train HTM based classifiers.
-14. test HTM based classifiers.
+train LSTM.
+create test sets- for LSTM detector.
+create validation sets for LSTM.
+test LSTM based detectors.
+train DFA.
+create test sets.
+test DFA.
+define events then run KL.
+train KLSTM.
+test KLSTM.
+train KLSTM based classifiers.
+test KLSTM based classifiers.
+train HTM
+train HTM based classifiers.
+test HTM based classifiers.

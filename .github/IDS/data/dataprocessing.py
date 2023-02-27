@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
+from openpyxl import load_workbook
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
@@ -972,7 +973,8 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
 
 
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
-def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None, load_binner=False):
+def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None,
+                      load_binner=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -1831,6 +1833,10 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    y_true = [[0.5, 1], [-1, 1], [7, -6]]
-    y_pred = [[0, 2], [-1, 2], [8, -5]]
-    print(mean_squared_error(y_true, y_pred))
+    path = datasets_path + '\\modbus12'
+    with open(path, mode='rb') as df_f:
+        pkt_df = pickle.load(df_f)
+    stats_df = get_plcs_values_statistics(pkt_df, 8)
+    xl_p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\stats_mbtcp_big_df_8_regs.xlsx'
+    with pd.ExcelWriter(xl_p) as writer:
+        stats_df.to_excel(writer, sheet_name='regs and plcs stats')

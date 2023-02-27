@@ -43,8 +43,14 @@ KL_OCSVM_datasets = models.SCADA_base + '\\KL_OCSVM datasets'
 KL_OCSVM_base = models.SCADA_base + '\\KL_OCSVM'
 KL_test_sets_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 
-excel_cols = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
-              'criterion', 'max features',
+excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# bins', 'nu', 'kernel', '# estimators',
+                  'criterion', 'max features',
+                  'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
+                  'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
+                  'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
+                  'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
+                  'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+excel_cols = {'data version', 'binning', '# bins',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -58,16 +64,21 @@ OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
-LSTM_detection_cols = DFA_cols.copy()
+LSTM_detection_cols = {'data version', 'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
+                       'recall', 'auc', 'f1', 'prc'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
 
+window_sizes = [200, 300, 400]
+
 best_cols = DFA_cols.copy()
 lim = 0.2
 
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
+
+xl_labels_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\labels.xlsx'
 
 test_LSTM_RF_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM-RF-OCSVM.txt'
 test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
@@ -813,7 +824,8 @@ def create_test_files_DFA(injection_config, group=''):
                                             folders_names[names[binner]], bins, col_name)
                                         with open(binner_path, mode='rb') as binner_p:
                                             col_binner = pickle.load(binner_p)
-                                        binned_test_df[col_name] = col_binner.transform(binned_test_df[col_name].to_numpy().reshape(-1, 1))
+                                        binned_test_df[col_name] = col_binner.transform(
+                                            binned_test_df[col_name].to_numpy().reshape(-1, 1))
 
                                 dfa_in = squeeze(binned_test_df)
                                 # we need to know which transitions include anomalies to create the test labels.
@@ -829,6 +841,11 @@ def create_test_files_DFA(injection_config, group=''):
                                 # number of state
                                 state_idx = 0
 
+                                # packets to states dict. for the labeling of windows when testing.
+                                pkts_to_states = dict()
+                                pkts_to_states[0] = 0
+                                pkts_to_states[1] = 0
+
                                 # labels of the packets in the state.
                                 packet_labels_in_state = [labels[1]]
                                 # arrival time of the last known packet in the state.
@@ -843,21 +860,27 @@ def create_test_files_DFA(injection_config, group=''):
                                         packet_labels_in_state = [labels[pkt_idx]]
                                     else:
                                         packet_labels_in_state.append(labels[pkt_idx])
+                                    pkts_to_states[pkt_idx] = state_idx
                                     last_time = anomalous_data.loc[pkt_idx, 'time']
                                 if group != '':
                                     middle = '\\DFA_{}'.format(group)
                                 else:
                                     middle = '\\DFA'
 
-                                p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}_{}'.format(
+                                p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}{}_{}_{}'.format(
                                     names[binner], bins, injection_length,
                                     step_over,
-                                    percentage, epsilon)
+                                    percentage)
 
-                                p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}_{}'.format(
+                                p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
                                     names[binner], bins, injection_length,
                                     step_over,
-                                    percentage, epsilon)
+                                    percentage)
+
+                                p_pkt_dict = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
+                                    names[binner], bins, injection_length,
+                                    step_over,
+                                    percentage)
 
                                 if not os.path.exists(test_sets_base_folder + middle):
                                     Path(test_sets_base_folder + middle).mkdir(parents=True, exist_ok=True)
@@ -866,6 +889,8 @@ def create_test_files_DFA(injection_config, group=''):
                                     pickle.dump(dfa_in, test_path)
                                 with open(p_labels, mode='wb') as p_labels:
                                     pickle.dump(transitions_labels, p_labels)
+                                with open(p_pkt_dict, mode='wb') as p_pkts_dict:
+                                    pickle.dump(pkts_to_states, p_pkts_dict)
 
 
 def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
@@ -1501,7 +1526,7 @@ def test_DFA(injection_config, group=''):
              data.equal_width_discretization: "equal_width"}
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
-    n_bins = [5, 6, 7, 8, 9, 10]
+    n_bins = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     with open(injection_config, mode='r') as injections:
         injection_params = yaml.load(injections, Loader=yaml.FullLoader)
@@ -1511,6 +1536,8 @@ def test_DFA(injection_config, group=''):
     percentages = injection_params['Percentage']
     epsilons = injection_params['Epsilon']
     results_df = pd.DataFrame(columns=excel_cols)
+    labels_df = pd.DataFrame(columns=['binning', '# bins', 'injection length', 'step over', 'percentage', 'window size',
+                                      '# window', 'model label', 'true label'])
 
     if group is '':
         middle = '\\DFA'
@@ -1537,11 +1564,18 @@ def test_DFA(injection_config, group=''):
                                 injection_length,
                                 step_over,
                                 percentage)
+                            p_pkt_dict = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
+                                names[binner], bins, injection_length,
+                                step_over,
+                                percentage)
 
                             with open(p_x_test, mode='rb') as test_data_path:
                                 test_df = pickle.load(test_data_path)
                             with open(p_labels, mode='rb') as labels_path:
                                 test_labels = pickle.load(labels_path)
+                            with open(p_pkt_dict, mode='rb') as pkts_to_stats_p:
+                                pkts_to_states_dict = pickle.load(pkts_to_stats_p)
+
                             with open(data.automaton_path + middle + "\\DFA_{}_{}".format(folders[names[binner]], bins),
                                       mode='rb') as dfa_path:
                                 DFA = pickle.load(dfa_path)
@@ -1568,6 +1602,20 @@ def test_DFA(injection_config, group=''):
                                       'auc': auc_score,
                                       'f1': f1,
                                       'prc': prc_auc_score}
+                            for w in window_sizes:
+                                true_windows_labels, dfa_window_labels = DFA_window_labels(decisions, test_labels, w,
+                                                                                           pkts_to_states_dict)
+                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
+                                labels_test_df['window size'] = w
+                                labels_test_df['model label'] = dfa_window_labels
+                                labels_test_df['true label'] = true_windows_labels
+                                labels_test_df['binning'] = folders[names[binner]]
+                                labels_test_df['# bins'] = bins
+                                labels_test_df['injection length'] = injection_length
+                                labels_test_df['step over'] = step_over
+                                labels_test_df['percentage'] = percentage
+                                labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
 
                             for col_name in excel_cols.difference(DFA_cols):
                                 result[col_name] = '-'
@@ -1605,6 +1653,8 @@ def test_DFA(injection_config, group=''):
         results_df.to_excel(excel_writer=writer, sheet_name='DFA ' + performance)
         best_df['algorithm'] = algo
         best_df.to_excel(excel_writer=writer, sheet_name='DFA best ' + performance)
+    with pd.ExcelWriter(xl_labels_path) as writer:
+        labels_df.to_excel(writer, sheet_name='DFA window labels')
 
 
 def many_PLC_DFAs(groups_ids, injection_config):
@@ -1965,12 +2015,29 @@ def create_test_sets_LSTMs(train_config, injection_config):
                                         else:
                                             lstm_input = processed.copy()
                                             cols_not_to_bin = data_version['no_bin']
+                                            method_folder = folders[method_name]
+                                            file_name = data_version['desc']
+                                            folder_name = data_version['name']
+
+                                            model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
+                                            suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(
+                                                model_name)
+
+                                            if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                                                suffix = '//{}_{}'.format(method_folder,
+                                                                          folder_name) + '//{}_{}_{}'.format(file_name,
+                                                                                                             file_name,
+                                                                                                             number_of_bins)
 
                                             # scale everything, bin by config file.
                                             for col_name in lstm_input.columns:
                                                 if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                                                    data.bin_col(lstm_input, method_name, col_name, number_of_bins)
-                                                lstm_input[col_name] = data.scale_col(lstm_input, col_name)
+                                                    with open(binners_base + suffix + '_{}'.format(col_name),
+                                                              mode='rb') as binner_p:
+                                                        binner = pickle.load(binner_p)
+                                                    lstm_input[col_name] = binner.transform(
+                                                        lstm_input[col_name].to_numpy().reshape(-1, 1))
+                                                lstm_input[col_name] = data.scale_col(lstm_input, col_name, None)
 
                                         # now create test data set for LSTM. Only need X_test and y_test.
                                         X_test, y_test = models.custom_train_test_split(
@@ -2046,15 +2113,18 @@ def test_LSTM(train_config, raw_test_data):
                     model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
+                    if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
+                                                                                                    file_name,
+                                                                                                    number_of_bins)
+
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
                         if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                            with open(binners_base + suffix + '_{}'.format(col_name), mode='wb') as binner_p:
+                            with open(binners_base + suffix + '_{}'.format(col_name), mode='rb') as binner_p:
                                 binner = pickle.load(binner_p)
-                            lstm_in[col_name] = binner.transorm(lstm_in[col_name].to_numpy().reshape(-1, 1))
-                        with open(scalers_base + suffix + '_{}'.format(col_name), mode='wb') as scaler_p:
-                            scaler = pickle.load(scaler_p)
-                        lstm_in[col_name] = scaler.transorm(lstm_in[col_name].to_numpy().reshape(-1, 1))
+                            lstm_in[col_name] = binner.transform(lstm_in[col_name].to_numpy().reshape(-1, 1))
+                        lstm_in[col_name] = data.scale_col(lstm_in, col_name, None)
 
                 bin_part = folders[binning_method]
                 version_part = data_version['name']
@@ -2087,7 +2157,9 @@ def test_LSTM(train_config, raw_test_data):
                 res_df = pd.DataFrame.from_dict(columns=results_df.columns, data={'0': result}, orient='index')
                 results_df = pd.concat([results_df, res_df], ignore_index=True)
                 with open(lstm_test_log, mode='a') as log:
-                    log.write('mse:{}, r2:{}, version:{}, binning:{}, bins:{}'.format(mse, r2, data_version['name'], folders[binning_method], number_of_bins))
+                    log.write('mse:{}, r2:{}, version:{}, binning:{}, bins:{}'.format(mse, r2, data_version['name'],
+                                                                                      folders[binning_method],
+                                                                                      number_of_bins))
 
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM scores')
@@ -2103,6 +2175,9 @@ def detect_LSTM(lstm_config, injection_config):
                "equal_width": 'EqualWidth'}
 
     results_df = pd.DataFrame(columns=excel_cols)
+    labels_df = pd.DataFrame(
+        columns=['data version', 'binning', '# bins', 'injection length', 'step over', 'percentage', 'window size',
+                 '# window', 'model label', 'true label'])
 
     # go over all combinations, process raw test set, test and save metric scores.
     with open(lstm_config, mode='r') as c:
@@ -2176,7 +2251,24 @@ def detect_LSTM(lstm_config, injection_config):
                                     pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
                                     precision, recall, auc_score, f1, prc_auc_score = get_metrics(labels, pred_labels)
 
-                                    result = {'binning': bin_part,
+                                    for w in window_sizes:
+                                        true_windows_labels, model_windows_labels = LSTM_HTM_preds_to_window_preds(
+                                            pred_labels, labels, w)
+                                        labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                        labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
+                                        labels_test_df['window size'] = w
+                                        labels_test_df['model label'] = model_windows_labels
+                                        labels_test_df['true label'] = true_windows_labels
+                                        labels_test_df['data version'] = data_version['name']
+                                        labels_test_df['binning'] = bin_part
+                                        labels_test_df['# bins'] = number_of_bins
+                                        labels_test_df['injection length'] = injection_length
+                                        labels_test_df['step over'] = step_over
+                                        labels_test_df['percentage'] = percentage
+                                        labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
+
+                                    result = {'data version': data_version['name'],
+                                              'binning': bin_part,
                                               '# bins': number_of_bins,
                                               'injection length': injection_length,
                                               'step over': step_over,
@@ -2187,7 +2279,7 @@ def detect_LSTM(lstm_config, injection_config):
                                               'f1': f1,
                                               'prc': prc_auc_score}
 
-                                    for col_name in excel_cols.difference(DFA_cols):
+                                    for col_name in excel_cols.difference(LSTM_detection_cols):
                                         result[col_name] = '-'
                                     results_df = pd.concat(
                                         [results_df,
@@ -2209,6 +2301,9 @@ def detect_LSTM(lstm_config, injection_config):
     results_df['algorithm'] = 'LSTM+STD'
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM+STD scores')
+
+    with pd.ExcelWriter(xl_labels_path) as writer:
+        labels_df.to_excel(writer, sheet_name='LSTM window labels')
 
 
 def create_val_for_LSTM(lstm_config):
@@ -2232,23 +2327,34 @@ def create_val_for_LSTM(lstm_config):
         if not data_version['reprocess']:
             val_lstm = data.process_data_v3(val_df, None, None, False)
         for binning_method in binning_methods:
+            method_folder = folders[binning_method]
             for number_of_bins in numbers_of_bins:
                 if data_version['reprocess']:
                     lstm_in = data.process(val_df, number_of_bins, binning_method, True)
                 else:
                     lstm_in = val_lstm.copy()
                     cols_not_to_bin = data_version['no_bin']
+                    model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
+                    suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
+
+                    if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
+                                                                                                    file_name,
+                                                                                                    number_of_bins)
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
                         if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                            data.bin_col(lstm_in, binning_method, col_name, number_of_bins)
-                        lstm_in[col_name] = data.scale_col(lstm_in, col_name)
+                            with open(binners_base + suffix + '_{}'.format(col_name), mode='rb') as binner_p:
+                                binner = pickle.load(binner_p)
+                            lstm_in[col_name] = binner.transform(lstm_in[col_name].to_numpy().reshape(-1, 1))
+                        lstm_in[col_name] = data.scale_col(lstm_in, col_name, None)
 
                 X_val, y_val = models.custom_train_test_split(lstm_in, series_len=20, np_seed=42, train=1.0)
 
                 validation_path_X = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
-                                                                              file_name, binning_method, number_of_bins)
+                                                                                 file_name, binning_method,
+                                                                                 number_of_bins)
                 validation_path_Y = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
                                                                                  file_name, binning_method,
                                                                                  number_of_bins)
@@ -2292,6 +2398,36 @@ def create_raw_test_sets(injections_config):
 
                         with open(labels_path, mode='wb') as labels_p:
                             pickle.dump(labels, labels_p)
+
+
+# xl file will save for each model: model name, model parameters, injection parameters, true labels for window, model labels for windows.
+# this is an additional file. other files for the metrics. true window labels and labels according to the models.
+def LSTM_HTM_preds_to_window_preds(model_detections, true_labels, window_size):
+    model_windows_labels = []
+    true_windows_labels = []
+    length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
+    for i in range(length - window_size + 1):
+        true_window_label = max(true_labels[i: i + window_size])
+        model_window_label = max(model_detections[i: min(i + window_size, len(model_detections) - 1)])
+        true_windows_labels.append(true_window_label)
+        model_windows_labels.append(model_window_label)
+
+    return true_windows_labels, model_windows_labels
+
+
+def DFA_window_labels(decisions, true_labels, window_size, pkts_to_states_dict):
+    dfa_windows_labels = []
+    true_windows_labels = []
+    length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
+    for i in range(length - window_size + 1):
+        true_window_label = max(true_labels[i: i + window_size])
+        window_start_state = pkts_to_states_dict[i]
+        window_end_state = pkts_to_states_dict[i + window_size - 1]
+        dfa_window_label = max(decisions[window_start_state: window_end_state + 1])
+        true_windows_labels.append(true_window_label)
+        dfa_windows_labels.append(dfa_window_label)
+
+    return true_windows_labels, dfa_windows_labels
 
 
 # functions to get parameters from files. refactored.
