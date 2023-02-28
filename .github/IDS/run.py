@@ -505,7 +505,8 @@ def create_data_for_HTM(HTM_input_creation_config, many=False, g_ids=None):
                 helper(HTM_input_creation_config, g_df, g)
 
 
-def helper(HTM_input_creation_config, pkt_df, g=''):
+# run with x_val to create validation sets.
+def helper(HTM_input_creation_config, pkt_df, g='', df_type='train'):
     with open(HTM_input_creation_config, mode='r') as input_config:
         params = yaml.load(input_config, Loader=yaml.FullLoader)
         versions_dicts = params['processing_config']
@@ -515,22 +516,17 @@ def helper(HTM_input_creation_config, pkt_df, g=''):
             if not use:
                 pass
             else:
-                processed_df = data.process(pkt_df, data_version, None, None)
-                # X_train will be used to train the HTM network. X_test and sets created by injecting anomalies into X_test will be used
-                # for testing the HTM network.
-                X_train, X_test = train_test_split(processed_df, test_size=0.2, random_state=42)
+                # X_train will be used to train the HTM network.
+                X_train = data.process(pkt_df, data_version, None, None)
                 # 1. write column names.
                 # 2. write columns data types.
                 # 3. write df to csv without the columns names.
                 folder = HTM_base + '\\datasets\\' + '{}'.format(data_version)
 
-                train_path_str = folder + '\\' + "X_train_" + g + '_' + data_version + ".csv"
-                test_path_str = folder + '\\' + "X_test_" + g + '_' + data_version + ".csv"
+                train_path_str = folder + '\\' + "X_" + df_type + "_" + g + '_' + data_version + ".csv"
                 train_path = Path(train_path_str)
-                test_path = Path(test_path_str)
 
                 train_path.parent.mkdir(parents=True, exist_ok=True)
-                test_path.parent.mkdir(parents=True, exist_ok=True)
 
                 with open(train_path_str, 'w', newline='') as train_file:
                     train_writer = csv.writer(train_file)
@@ -544,17 +540,6 @@ def helper(HTM_input_creation_config, pkt_df, g=''):
                     train_writer.writerow([])
                 X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
 
-                with open(test_path_str, 'w', newline='') as test_file:
-                    test_writer = csv.writer(test_file)
-                    # write the field names.
-                    test_cols = list(X_test.columns)
-                    test_writer.writerow(test_cols)
-                    # write the field types.
-                    test_cols_types = ['float'] * len(test_cols)
-                    test_writer.writerow(test_cols_types)
-                    # use no flags.
-                    test_writer.writerow([])
-                X_test.to_csv(path_or_buf=test_path, index=False, header=False, mode='a')
 
 
 """
@@ -572,68 +557,66 @@ def create_test_files_HTM(raw_test_data_df, data_versions_config, injection_conf
     lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
     with open(injection_config, mode='r') as anomalies_config:
         injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['InjectionLength']
-        step_overs = injection_params['StepOver']
-        percentages = injection_params['percentage']
-        epsilons = injection_params['Epsilon']
-        # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
-        for injection_length in injection_lengths:
-            for step_over in step_overs:
-                anomaly_percentage = injection_length / (injection_length + step_over)
-                if anomaly_percentage > lim:
-                    pass
-                else:
-                    for percentage in percentages:
-                        for epsilon in epsilons:
-                            anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                        percentage,
-                                                                        epsilon)
-                            #  process the data using the different versions
-                            with open(data_versions_config, mode='r') as processing_config:
-                                config = yaml.load(processing_config, Loader=yaml.FullLoader)
-                                # binnings = config['binning']
-                                data_versions = config['processing_config']
 
-                                for data_version in data_versions:
-                                    to_use = data_version['use']
-                                    if not to_use:
-                                        pass
-                                    else:
-                                        name = data_version['name']
-                                        # bins = data_version['bins']
-                                        # desc = data_version['desc']
+    injection_lengths = injection_params['InjectionLength']
+    step_overs = injection_params['StepOver']
+    percentages = injection_params['percentage']
+    epsilons = injection_params['Epsilon']
+    # first ,inject anomalies. and create the test set.
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
+                                                                    percentage,
+                                                                    epsilon)
+                        #  process the data using the different versions
+                        with open(data_versions_config, mode='r') as processing_config:
+                            config = yaml.load(processing_config, Loader=yaml.FullLoader)
 
-                                        # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores to be used by
-                                        # the classifiers based on the HTM network.
-                                        # no binning for HTM, only scaling.
-                                        test_df = data.process(anomalous_data, name, None, None)
-                                        suffix = '_{}_{}_{}_{}.csv'.format(
-                                            name, injection_length,
-                                            step_over, percentage, epsilon)
-                                        if group_id != '':
-                                            suffix = group_id + suffix
-                                        p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix
-                                        p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
+                        data_versions = config['processing_config']
 
-                                        if not os.path.exists(test_sets_base_folder + '\\HTM'):
-                                            Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
-                                                                                        exist_ok=True)
+                        for data_version in data_versions:
+                            to_use = data_version['use']
+                            if not to_use:
+                                pass
+                            else:
+                                name = data_version['name']
 
-                                        with open(p_x_test_HTM, mode='w', newline='') as test_file:
-                                            writer = csv.writer(test_file)
-                                            test_cols = list(test_df.columns)
-                                            # write columns names
-                                            writer.writerow(test_cols)
-                                            # write columns types
-                                            columns_types = ['float'] * len(test_cols)
-                                            # no flags
-                                            writer.writerow(columns_types)
-                                            writer.writerow([])
-                                        test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
-                                                       mode='a')
+                                # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores.
+                                # no binning for HTM, only scaling.
+                                test_df = data.process(anomalous_data, name, None, None)
+                                suffix = '_{}_{}_{}_{}'.format(
+                                    name, injection_length,
+                                    step_over, percentage)
+                                if group_id != '':
+                                    suffix = group_id + suffix
+                                p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix + '.csv'
+                                p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
 
-                                        with open(p_labels_HTM, mode='wb') as labels_path:
-                                            pickle.dump(labels, labels_path)
+                                if not os.path.exists(test_sets_base_folder + '\\HTM'):
+                                    Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
+                                                                                exist_ok=True)
+
+                                with open(p_x_test_HTM, mode='w', newline='') as test_file:
+                                    writer = csv.writer(test_file)
+                                    test_cols = list(test_df.columns)
+                                    # write columns names
+                                    writer.writerow(test_cols)
+                                    # write columns types
+                                    columns_types = ['float'] * len(test_cols)
+                                    # no flags
+                                    writer.writerow(columns_types)
+                                    writer.writerow([])
+                                test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
+                                               mode='a')
+
+                                with open(p_labels_HTM, mode='wb') as labels_path:
+                                    pickle.dump(labels, labels_path)
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):

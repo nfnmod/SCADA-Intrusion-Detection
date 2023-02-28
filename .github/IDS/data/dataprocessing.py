@@ -1836,7 +1836,7 @@ if __name__ == '__main__':
     path = datasets_path + '\\modbus12'
     with open(path, mode='rb') as df_f:
         pkt_df = pickle.load(df_f)
-    stats_df = get_plcs_values_statistics(pkt_df, 8)
-    xl_p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\stats_mbtcp_big_df_8_regs.xlsx'
+    stats_df = get_plcs_values_statistics(pkt_df, 5)
+    xl_p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\stats_mbtcp_big_df_5_regs.xlsx'
     with pd.ExcelWriter(xl_p) as writer:
         stats_df.to_excel(writer, sheet_name='regs and plcs stats')

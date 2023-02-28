@@ -1,6 +1,7 @@
 # TODO: use static threshold and update implementations.
 # TODO: unsupervised KL- tests, create test sets when testing.
 # TODO: filter TIRPs by percentiles instead of HS value.
+# TODO: ask meir about the best scores xl file.
 
 # EXPERIMENTS:
 train LSTM.
@@ -15,6 +16,8 @@ train KLSTM.
 test KLSTM.
 train KLSTM based classifiers.
 test KLSTM based classifiers.
-train HTM
+train HTM.
 train HTM based classifiers.
 test HTM based classifiers.
+train FSTM.
+test FSTM.
