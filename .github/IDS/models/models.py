@@ -258,7 +258,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
     early_stopping = tensorflow.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min', restore_best_weights=True)
 
     params_dict = dict()
-    params_dict['epochs'] = [20, 30, 40]
+    params_dict['epochs'] = [40]
     params_dict['batch_size'] = [32, 64, 128]
     params_dict['callbacks'] = [[early_stopping]]
 
@@ -293,16 +293,19 @@ def grid_search_train(pkt_data, series_len, np_seed, model_name, train=0.8):
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
+    early_stopping = tensorflow.keras.callbacks.EarlyStopping(monitor='loss', patience=5, verbose=1, mode='min', restore_best_weights=True, min_delta=0.0005)
+
     params_dict = dict()
-    params_dict['epochs'] = np.linspace(3, 15, num=13, dtype=np.int)
-    params_dict['batch_size'] = [32, 48, 64]
+    params_dict['epochs'] = [40]
+    params_dict['batch_size'] = [32, 64, 128]
+    params_dict['callbacks'] = [[early_stopping]]
 
     for train, test in kf.split(X_train, y_train):
         X_split_train, X_split_test = X_train[train], X_train[test]
         y_split_train, y_split_test = y_train[train], y_train[test]
         for epochs in params_dict['epochs']:
             for batch in params_dict['batch_size']:
-                model = build_LSTM(epochs, batch)
+                model = build_LSTM(epochs, batch, early_stopping)
                 with open(LSTM_train_log, mode='a') as log:
                     log.write('training with: epochs = {}, batch size = {}\n'.format(epochs, batch))
                 start = time.time()

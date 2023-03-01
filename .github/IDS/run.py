@@ -11,9 +11,8 @@ import numpy as np
 import pandas as pd
 import tensorflow
 import yaml
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, confusion_matrix, \
-    precision_score, recall_score, mean_squared_error
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, precision_score, \
+    recall_score, mean_squared_error
 from sklearn.svm import OneClassSVM
 
 import data
@@ -50,7 +49,7 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = {'data version', 'binning', '# bins',
+excel_cols = {'data version', 'binning', '# bins', '# std',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -64,7 +63,8 @@ OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
-LSTM_detection_cols = {'data version', 'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
+LSTM_detection_cols = {'data version', 'binning', '# bins', '# std', 'injection length', 'step over', 'percentage',
+                       'precision',
                        'recall', 'auc', 'f1', 'prc'}
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
@@ -72,6 +72,8 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal V
                     'f1', 'prc'}
 
 window_sizes = [200, 300, 400]
+
+nums_std = [2, 2.5, 3]
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -265,7 +267,7 @@ def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=Tru
 
 
 def make_input_for_KL(TIRP_config_file_path):
-    pkt_df = data.load(data.datasets_path, "MB_TCP_TRAIN")
+    pkt_df = data.load(data.datasets_path, "TRAIN")
     IP = data.plc
     # consider only response packets from the PLC.
     plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
@@ -277,7 +279,7 @@ def make_input_for_KL(TIRP_config_file_path):
     binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
                        'EqualWidth': TIRP.equal_width_discretization}
     number_of_bins = discovery_params['number_of_bins']
-    windows = discovery_params['windows_sizes']
+    windows = window_sizes
     bins_window_options = itertools.product(number_of_bins, windows)
     options = itertools.product(binning, bins_window_options)
 
@@ -305,7 +307,7 @@ def filter_TIRPs(KL_config_file_path):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinHorizontalSups']
+    min_horizontal_supps = KL_params['MinHorizontalSupsPercentiles']
 
     binning_times_bins = itertools.product(binning, bins)
     parent_folders = itertools.product(windows, binning_times_bins)
@@ -328,7 +330,7 @@ def filter_TIRPs(KL_config_file_path):
             horizontal_supp = eps_gap_supp[1][1]
 
             # we will save the filtered TIRPs here.
-            dest_path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, horizontal_supp, max_gap)
+            dest_path_suffix = "\\eps_{0}_minHS%_{1}_maxGap_{2}".format(epsilon, horizontal_supp, max_gap)
             # path to read the whole set of TIRPs from.
             src_path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, default_supp, max_gap)
 
@@ -342,17 +344,25 @@ def filter_TIRPs(KL_config_file_path):
             filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp)
 
 
+# switch to filtering by a percentile!
 def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp):
     # iterate over the TIRPs in the windows files in the src folder.
     # read every TIRP line in the file and check for the HS. if it's high enough write it to the destination file.
     for TIRPs_in_window in os.listdir(windows_outputs_src_folder_path):
         window_file = windows_outputs_src_folder_path + '\\' + TIRPs_in_window
         dst_window_file = windows_outputs_destination_folder_path + '\\' + TIRPs_in_window
+        numbers_of_instances = []
+        for TIRP_line in window_file:
+            tirp = TIRP.parse_line(TIRP_line)
+            numbers_of_instances.append(TIRP.get_number_of_instances(tirp.instances))
+
+        percentile_hs = np.percentile(numbers_of_instances, horizontal_supp)
+
         for TIRP_line in window_file:
             # parse into TIRP object
             tirp = TIRP.parse_line(TIRP_line)
             # filter by horizontal support.
-            if TIRP.get_number_of_instances(tirp.instances) >= horizontal_supp:
+            if TIRP.get_number_of_instances(tirp.instances) >= percentile_hs:
                 if not os.path.exists(dst_window_file):
                     Path(dst_window_file).mkdir(parents=True)
                 # write TIRP.
@@ -371,8 +381,8 @@ def train_LSTMs_from_KL(KL_config_file_path):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinVerSups']
-    look_back = [20, 30]
+    min_horizontal_supps = KL_params['MinHorizontalSupsPercentiles']
+    look_back = [20]
 
     for binning_method in binning:
         for number_of_bins in bins:
@@ -383,27 +393,30 @@ def train_LSTMs_from_KL(KL_config_file_path):
 
                 for epsilon in epsilons:
                     for max_gap in max_gaps:
-                        for min_horizontal_supp in min_horizontal_supps:
+                        for min_horizontal_supp_percentile in min_horizontal_supps:
 
-                            path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, min_horizontal_supp, max_gap)
+                            path_suffix = "\\eps_{0}_minHS%_{1}_maxGap_{2}".format(epsilon,
+                                                                                   min_horizontal_supp_percentile,
+                                                                                   max_gap)
                             windows_outputs_folder_path = windows_folders_folder + path_suffix
                             TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window_size, epsilon,
-                                                                                  min_horizontal_supp, max_gap)
+                                                                                  min_horizontal_supp_percentile,
+                                                                                  max_gap)
 
                             # for each configuration: call parse_output.
                             TIRP_df = TIRP.output.parse_output(windows_outputs_folder_path, train=True,
                                                                tirps_path=TIRP_path)
                             # train LSTM.
                             for series_len in look_back:
-                                model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
-                                                                           epsilon, max_gap, min_horizontal_supp,
-                                                                           series_len)
+                                model_name = '{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
+                                                                        epsilon, max_gap,
+                                                                        min_horizontal_supp_percentile)
                                 train_data_path = KL_base + 'KL_LSTM'
                                 models_path = data.modeles_path + '\\KL_LSTM'
                                 with open(KL_LSTM_log, mode='a') as log:
-                                    log.write('Training: {}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
-                                                                                      window_size, epsilon, max_gap,
-                                                                                      min_horizontal_supp, series_len))
+                                    log.write('Training: {}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
+                                                                                   window_size, epsilon, max_gap,
+                                                                                   min_horizontal_supp_percentile))
 
                                 start = time.time()
                                 models.simple_LSTM(TIRP_df, series_len, 42, model_name, train=1,
@@ -413,6 +426,8 @@ def train_LSTMs_from_KL(KL_config_file_path):
                                     log.write("trained, time elapsed: {}".format(end - start))
 
 
+##########################################################################################
+# IRRELEVANT FOR NOW.
 def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
     # go over all KL-LSTM configurations:
     # for each configuration: train RF, all the labels are 0.
@@ -487,6 +502,7 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
                                         keras.models.save_model(ocsvm, model_path)
 
 
+##########################################################################################
 # process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
 # The csv file is formatted by the requirements of HTM.
 def create_data_for_HTM(HTM_input_creation_config, many=False, g_ids=None):
@@ -539,7 +555,6 @@ def helper(HTM_input_creation_config, pkt_df, g='', df_type='train'):
                     # use no flags.
                     train_writer.writerow([])
                 X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
-
 
 
 """
@@ -902,12 +917,6 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
 
     binning = TIRP_params['binning']
     bins = TIRP_params['number_of_bins']
-    window_params = TIRP_params['window_sizes']
-    window_min = window_params['start']
-    window_max = window_params['end']
-    window_step = window_params['step']
-    window_sizes = range(window_min, window_max, window_step)
-    lim = 0.2
 
     for injection_length in injection_lengths:
         for step_over in step_overs:
@@ -927,9 +936,9 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                             for number_of_bins in bins:
                                 for window_size in window_sizes:
                                     # discover events in separate windows.
-                                    test_path_sliding_windows = test_sets_base_folder + '\\KL\\test_events\\{}_{}_{_{}_{}_{}_{}'.format(
+                                    test_path_sliding_windows = test_sets_base_folder + '\\KL\\test_events\\{}_{}_{}_{}_{}_{}'.format(
                                         method, number_of_bins, window_size, injection_length, step_over,
-                                        percentage, epsilon)
+                                        percentage)
 
                                     # make sure dirs exists.
                                     dir_path = test_sets_base_folder + '\\KL\\test_events'
@@ -954,9 +963,9 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                                     test_path=test_path_sliding_windows,
                                                     ready_symbols=ready_symbols, ready_entities=ready_entities)
 
-                                    # create the labels for the OCSVM classifier.
+                                    # create the labels for the detection.
                                     # for each window: [start, end]
-                                    test_labels_OCSVM = []
+                                    test_labels = []
                                     for i in range(len(anomalous_data) - window_size + 1):
                                         # get the labels for the windows' packets.
                                         window_labels = labels[i, i + window_size]
@@ -966,23 +975,22 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         window_label = max(window_labels)
 
                                         # add label.
-                                        test_labels_OCSVM.append(window_label)
+                                        test_labels.append(window_label)
 
-                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
+                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}'.format(
                                         method,
                                         number_of_bins,
                                         window_size,
                                         injection_length,
                                         step_over,
-                                        percentage,
-                                        epsilon)
+                                        percentage)
 
                                     dir_path = test_sets_base_folder + '\\KL\\test_labels'
                                     if not os.path.exists(dir_path):
                                         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
                                     with open(path, mode='wb') as labels_path:
-                                        pickle.dump(test_labels_OCSVM, labels_path)
+                                        pickle.dump(test_labels, labels_path)
 
 
 # 1. after running KL on the test_events, filter TIRPs by support.
@@ -1007,7 +1015,7 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinHorizontalSups']
+    min_horizontal_supps_percentiles = KL_params['MinHorizontalSups']
 
     injection_lengths = injection_params['InjectionLength']
     step_overs = injection_params['StepOver']
@@ -1016,8 +1024,6 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
 
     binning_times_bins = itertools.product(binning, bins)
     parent_folders = itertools.product(windows, binning_times_bins)
-
-    lim = 0.2
 
     for injection_length in injection_lengths:
         for step_over in step_overs:
@@ -1032,25 +1038,24 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
                             window = window_binning_bins[0]
                             binning = window_binning_bins[1][0]
                             bins = window_binning_bins[1][1]
-                            # \\{0}_{1}_{2}_{3}_{4}_{5}_{6}", method, num_bins, windowSize, length, step, percentage, epsilon);
-                            windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning, bins,
-                                                                                                       window,
-                                                                                                       injection_length,
-                                                                                                       step_over,
-                                                                                                       percentage,
-                                                                                                       injection_epsilon)
+                            # \\{0}_{1}_{2}_{3}_{4}_{5}_{6}", method, num_bins, windowSize, length, step, percentage);
+                            windows_folders_folder = KL_test_sets_base + "\\{}_{}_{}_{}_{}_{}".format(binning, bins,
+                                                                                                      window,
+                                                                                                      injection_length,
+                                                                                                      step_over,
+                                                                                                      percentage)
 
-                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
+                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps_percentiles)
                             KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
 
                             # parameters of KL.
                             for eps_gap_supp in KL_hyperparams:
                                 epsilon = eps_gap_supp[0]
                                 max_gap = eps_gap_supp[1][0]
-                                horizontal_supp = eps_gap_supp[1][1]
+                                horizontal_supp_percentile = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
+                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp_percentile, max_gap)
                                 # path to read the whole set of TIRPs from.
                                 src_path_suffix = "\\{}_{}_{}".format(epsilon, default_supp, max_gap)
 
@@ -1062,13 +1067,13 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
 
                                 # call helper function to finish.
                                 filter_and_write(windows_outputs_src_folder_path,
-                                                 windows_outputs_destination_folder_path, horizontal_supp)
+                                                 windows_outputs_destination_folder_path, horizontal_supp_percentile)
 
 
 # 2. after filtering, make dfs for the LSTM.
 def create_test_sets_KLSTM(KL_config_path, injections_config_path):
     # 1. go over kl params
-    binning_methods, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_path)
+    binning_methods, bins, windows, epsilons, max_gaps, min_horizontal_supps_percentiles = get_KL_params(KL_config_path)
 
     # 2. go over injection paras
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injections_config_path)
@@ -1092,25 +1097,24 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                             binning = window_binning_bins[1][0]
                             bins = window_binning_bins[1][1]
 
-                            test_windows_folders_folder = KL_test_sets_base + "{}_{}_{}_{}_{}_{}_{}".format(binning,
-                                                                                                            bins,
-                                                                                                            window,
-                                                                                                            injection_length,
-                                                                                                            step_over,
-                                                                                                            percentage,
-                                                                                                            injection_epsilon)
+                            test_windows_folders_folder = KL_test_sets_base + "\\{}_{}_{}_{}_{}_{}".format(binning,
+                                                                                                           bins,
+                                                                                                           window,
+                                                                                                           injection_length,
+                                                                                                           step_over,
+                                                                                                           percentage)
 
-                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
+                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps_percentiles)
                             KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
 
                             # parameters of KL.
                             for eps_gap_supp in KL_hyperparams:
                                 epsilon = eps_gap_supp[0]
                                 max_gap = eps_gap_supp[1][0]
-                                horizontal_supp = eps_gap_supp[1][1]
+                                horizontal_supp_percentile = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                test_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp, max_gap)
+                                test_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp_percentile, max_gap)
 
                                 # folder of tirps text files.
                                 test_windows_outputs_folder_path = test_windows_folders_folder + test_path_suffix
@@ -1119,7 +1123,8 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
 
                                 TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window,
                                                                                       epsilon,
-                                                                                      horizontal_supp, max_gap)
+                                                                                      horizontal_supp_percentile,
+                                                                                      max_gap)
                                 # call parse outout and save.
                                 test_df = TIRP.output.parse_output(test_windows_outputs_folder_path,
                                                                    tirps_path=TIRP_path, train=False)
@@ -1130,15 +1135,14 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                 if not os.path.exists(test_df_path_dir):
                                     Path(test_df_path_dir).mkdir(parents=True, exist_ok=True)
 
-                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
-                                                                                                           bins, window,
-                                                                                                           horizontal_supp,
-                                                                                                           epsilon,
-                                                                                                           max_gap,
-                                                                                                           injection_length,
-                                                                                                           step_over,
-                                                                                                           percentage,
-                                                                                                           injection_epsilon)
+                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
+                                                                                                        bins, window,
+                                                                                                        horizontal_supp_percentile,
+                                                                                                        epsilon,
+                                                                                                        max_gap,
+                                                                                                        injection_length,
+                                                                                                        step_over,
+                                                                                                        percentage)
 
                                 with open(test_df_path, mode='wb') as test_f:
                                     pickle.dump(test_df, test_f)
@@ -2159,7 +2163,8 @@ def detect_LSTM(lstm_config, injection_config):
 
     results_df = pd.DataFrame(columns=excel_cols)
     labels_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', 'injection length', 'step over', 'percentage', 'window size',
+        columns=['data version', 'binning', '# bins', '#std', 'injection length', 'step over', 'percentage',
+                 'window size',
                  '# window', 'model label', 'true label'])
 
     # go over all combinations, process raw test set, test and save metric scores.
@@ -2200,87 +2205,91 @@ def detect_LSTM(lstm_config, injection_config):
                 pred = LSTM.predict(val_X)
                 deviations = calc_deviations(pred, val_y)
                 mean = statistics.mean(deviations)
-                std = statistics.stdev(deviations)
-                threshold = mean + 3 * std
+                for num_std in nums_std:
+                    threshold = mean + 3 * num_std
 
-                for injection_length in injection_lengths:
-                    for step_over in step_overs:
-                        anomaly_percentage = injection_length / (injection_length + step_over)
-                        if anomaly_percentage > lim:
-                            pass
-                        else:
-                            for percentage in percentages:
-                                for epsilon in injection_epsilons:
-                                    suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
-                                                                        bin_part,
-                                                                        number_of_bins,
-                                                                        injection_length,
-                                                                        step_over,
-                                                                        percentage)
+                    for injection_length in injection_lengths:
+                        for step_over in step_overs:
+                            anomaly_percentage = injection_length / (injection_length + step_over)
+                            if anomaly_percentage > lim:
+                                pass
+                            else:
+                                for percentage in percentages:
+                                    for epsilon in injection_epsilons:
+                                        suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
+                                                                            bin_part,
+                                                                            number_of_bins,
+                                                                            injection_length,
+                                                                            step_over,
+                                                                            percentage)
 
-                                    p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
-                                    p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
-                                    p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
+                                        p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
+                                        p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
+                                        p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
 
-                                    with open(p_x_test, mode='rb') as x_path:
-                                        X_test = pickle.load(x_path)
-                                    with open(p_y_test, mode='rb') as y_path:
-                                        Y_test = pickle.load(y_path)
-                                    with open(p_labels, mode='rb') as l_path:
-                                        labels = pickle.load(l_path)
+                                        with open(p_x_test, mode='rb') as x_path:
+                                            X_test = pickle.load(x_path)
+                                        with open(p_y_test, mode='rb') as y_path:
+                                            Y_test = pickle.load(y_path)
+                                        with open(p_labels, mode='rb') as l_path:
+                                            labels = pickle.load(l_path)
 
-                                    test_pred = LSTM.predict(X_test)
-                                    test_deviations = calc_deviations(Y_test, test_pred)
-                                    pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
-                                    precision, recall, auc_score, f1, prc_auc_score = get_metrics(labels, pred_labels)
+                                        test_pred = LSTM.predict(X_test)
+                                        test_deviations = calc_deviations(Y_test, test_pred)
+                                        pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
+                                        precision, recall, auc_score, f1, prc_auc_score = get_metrics(labels,
+                                                                                                      pred_labels)
 
-                                    for w in window_sizes:
-                                        true_windows_labels, model_windows_labels = LSTM_HTM_preds_to_window_preds(
-                                            pred_labels, labels, w)
-                                        labels_test_df = pd.DataFrame(columns=labels_df.columns)
-                                        labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
-                                        labels_test_df['window size'] = w
-                                        labels_test_df['model label'] = model_windows_labels
-                                        labels_test_df['true label'] = true_windows_labels
-                                        labels_test_df['data version'] = data_version['name']
-                                        labels_test_df['binning'] = bin_part
-                                        labels_test_df['# bins'] = number_of_bins
-                                        labels_test_df['injection length'] = injection_length
-                                        labels_test_df['step over'] = step_over
-                                        labels_test_df['percentage'] = percentage
-                                        labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
+                                        for w in window_sizes:
+                                            true_windows_labels, model_windows_labels = LSTM_HTM_preds_to_window_preds(
+                                                pred_labels, labels, w)
+                                            labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                            labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
+                                            labels_test_df['window size'] = w
+                                            labels_test_df['model label'] = model_windows_labels
+                                            labels_test_df['true label'] = true_windows_labels
+                                            labels_test_df['data version'] = data_version['name']
+                                            labels_test_df['binning'] = bin_part
+                                            labels_test_df['# bins'] = number_of_bins
+                                            labels_test_df['injection length'] = injection_length
+                                            labels_test_df['step over'] = step_over
+                                            labels_test_df['percentage'] = percentage
+                                            labels_test_df['# std'] = num_std
+                                            labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
 
-                                    result = {'data version': data_version['name'],
-                                              'binning': bin_part,
-                                              '# bins': number_of_bins,
-                                              'injection length': injection_length,
-                                              'step over': step_over,
-                                              'percentage': percentage,
-                                              'precision': precision,
-                                              'recall': recall,
-                                              'auc': auc_score,
-                                              'f1': f1,
-                                              'prc': prc_auc_score}
+                                        result = {'data version': data_version['name'],
+                                                  'binning': bin_part,
+                                                  '# bins': number_of_bins,
+                                                  '# std': num_std,
+                                                  'injection length': injection_length,
+                                                  'step over': step_over,
+                                                  'percentage': percentage,
+                                                  'precision': precision,
+                                                  'recall': recall,
+                                                  'auc': auc_score,
+                                                  'f1': f1,
+                                                  'prc': prc_auc_score}
 
-                                    for col_name in excel_cols.difference(LSTM_detection_cols):
-                                        result[col_name] = '-'
-                                    results_df = pd.concat(
-                                        [results_df,
-                                         pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
-                                                                orient='index')],
-                                        axis=0, ignore_index=True)
-                                    with open(test_LSTM_STD_log, mode='a') as test_log:
-                                        test_log.write(
-                                            'tested, data version:{}, binning:{}, #bins:{}\n'.format(folder_name,
-                                                                                                     binning_method,
-                                                                                                     number_of_bins))
-                                        test_log.write(
-                                            'injection: {}, {}, {}\n'.format(injection_length, step_over, percentage))
-                                        test_log.write(
-                                            'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
-                                                                                                      prc_auc_score,
-                                                                                                      precision,
-                                                                                                      recall))
+                                        for col_name in excel_cols.difference(LSTM_detection_cols):
+                                            result[col_name] = '-'
+                                        results_df = pd.concat(
+                                            [results_df,
+                                             pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
+                                                                    orient='index')],
+                                            axis=0, ignore_index=True)
+                                        with open(test_LSTM_STD_log, mode='a') as test_log:
+                                            test_log.write(
+                                                'tested, data version:{}, binning:{}, #bins:{}\n'.format(folder_name,
+                                                                                                         binning_method,
+                                                                                                         number_of_bins))
+                                            test_log.write(
+                                                'injection: {}, {}, {}\n'.format(injection_length, step_over,
+                                                                                 percentage))
+                                            test_log.write(
+                                                'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
+                                                                                                          prc_auc_score,
+                                                                                                          precision,
+                                                                                                          recall))
     results_df['algorithm'] = 'LSTM+STD'
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM+STD scores')
@@ -2320,10 +2329,10 @@ def create_val_for_LSTM(lstm_config):
                     model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
-                    if file_name == 'v1_single_plc_make_entry_v1_20_packets':
-                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
-                                                                                                    file_name,
-                                                                                                    number_of_bins)
+                    # if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                    # suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
+                    #   file_name,
+                    # number_of_bins)
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
@@ -2411,6 +2420,21 @@ def DFA_window_labels(decisions, true_labels, window_size, pkts_to_states_dict):
         dfa_windows_labels.append(dfa_window_label)
 
     return true_windows_labels, dfa_windows_labels
+
+
+# WHEN COMPARING METHODS TO KLSTM, NEED TO TAKE THE LABELS FROM THE 21ST WINDOW FOR THE OTHER METHOD.
+def KLSTM_window_labels(model_windows_labels, true_labels, window_size):
+    klstm_windows_labels = []
+    true_windows_labels = []
+    length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
+    # KLSTM labels windows from the 21st window.
+    for i in range(20, length - window_size + 1):
+        true_window_label = max(true_labels[i: i + window_size])
+        model_window_label = model_windows_labels[i - 20]  # window 21 = index 0 = first window ...
+        klstm_windows_labels.append(model_window_label)
+        true_windows_labels.append(true_window_label)
+
+    return true_windows_labels, klstm_windows_labels
 
 
 # functions to get parameters from files. refactored.

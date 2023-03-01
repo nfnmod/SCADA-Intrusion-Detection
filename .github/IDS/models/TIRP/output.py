@@ -4,6 +4,7 @@ It will be used for the featured definition of the classifier.
 """
 import os
 import pickle
+from sklearn.preprocessing import MinMaxScaler
 
 import numpy as np
 import pandas as pd
@@ -218,5 +219,12 @@ def parse_output(window_TIRPs_folder, tirps_path, train=True):
         # add to the dataframe
         window_df = pd.DataFrame.from_dict(columns=features, data={'0': window_features}, orient='index')
         windows_TIRPs_df = pd.concat((windows_TIRPs_df, window_df), axis=0, ignore_index=True)
+
+    # min-max scaling of the columns.
+    for col in windows_TIRPs_df.columns:
+        scaler = MinMaxScaler()
+        np_col = windows_TIRPs_df[col].to_numpy().reshape(-1, 1)
+        scaler.fit(np_col)
+        windows_TIRPs_df[col] = scaler.transform(np_col)
 
     return windows_TIRPs_df

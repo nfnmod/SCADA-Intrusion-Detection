@@ -1,6 +1,4 @@
-# TODO: use static threshold and update implementations.
-# TODO: unsupervised KL- tests, create test sets when testing.
-# TODO: filter TIRPs by percentiles instead of HS value.
+# TODO: KLSTM- validation, testing, detection.
 # TODO: ask meir about the best scores xl file.
 
 # EXPERIMENTS:

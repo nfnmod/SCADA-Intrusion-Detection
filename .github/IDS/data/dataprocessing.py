@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
-from openpyxl import load_workbook
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
@@ -1833,10 +1832,12 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    path = datasets_path + '\\modbus12'
-    with open(path, mode='rb') as df_f:
-        pkt_df = pickle.load(df_f)
-    stats_df = get_plcs_values_statistics(pkt_df, 5)
-    xl_p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\data\\stats_mbtcp_big_df_5_regs.xlsx'
-    with pd.ExcelWriter(xl_p) as writer:
-        stats_df.to_excel(writer, sheet_name='regs and plcs stats')
+    for name in ['TRAIN', 'VAL', 'TEST']:
+        path = datasets_path + '\\{}'.format(name)
+        with open(path, mode='rb') as f:
+            df = pickle.load(f)
+        df = df.reset_index(drop=True)
+        print(df)
+        with open(path, mode='wb') as f:
+            pickle.dump(df, f)
+
