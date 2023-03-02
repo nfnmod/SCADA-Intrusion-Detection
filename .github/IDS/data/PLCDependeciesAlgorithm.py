@@ -510,3 +510,62 @@ def extract_features_v2(flat_transitions, prev_times, longest, registers, timest
         extracted_df = pd.concat([extracted_df, entry_df], ignore_index=True)
 
     return extracted_df
+
+
+def extract_features_v3(binned_df, patterns_dict, indices, times, window_size):
+    """
+    :param prev_times: map a transition to the sequences of times between states.
+    :param binned_df: a dataframe of states after binning.
+    :param window_size: sliding window size.
+    :param patterns_dict: a dictionary of pattern -> pattern index.
+    :return: a dataframe with features describing the frequent transitions.
+    """
+
+    # 1. get the squeezed data.
+    # 2. mine patterns in each window.
+    # 3. make an entry from each window.
+    # 4. return the dataframe.
+
+    presence = [str(t_idx) for t_idx in sorted(patterns_dict.keys())]
+    supports = ['supp_{}'.format(t_idx) for t_idx in sorted(patterns_dict.keys())]
+    mean_durations = ['md_{}'.format(t_idx) for t_idx in sorted(patterns_dict.keys())]
+    cols = np.concatenate([presence, supports, mean_durations])
+    extracted_df = pd.DataFrame(columns=cols)
+
+    for i in range(len(binned_df) - window_size + 1):
+        # create an entry for the df from the patterns in the sliding window.
+        window_dict = dict()
+        for p in presence:
+            window_dict[p] = 0
+        for s in supports:
+            window_dict[s] = 0
+        for md in mean_durations:
+            window_dict[md] = 0
+
+        for seq_idx in patterns_dict.keys():
+            pattern = patterns_dict[seq_idx]
+            pattern_indices = indices.get(pattern, [])
+            pattern_times = []
+            for j in range(len(pattern_indices)):
+                idx_lst = pattern_indices[j]
+                start_idx = min(idx_lst)
+                end_idx = max(idx_lst)
+                if (start_idx >= i) and (end_idx <= (i + window_size)):
+                    pattern_times.append(times[pattern][j])
+
+            if len(pattern_times) > 0:
+                window_dict[str(seq_idx)] = 1
+
+            supp = (len(pattern_times) * 100) / window_size
+            window_dict['supp_{}'.format(seq_idx)] = supp
+
+            sum_times = 0
+            for ts in pattern_times:
+                sum_times += ts
+            mean_duration = sum_times / max(len(pattern_times), 1)
+            window_dict['md_{}'.format(seq_idx)] = mean_duration
+
+        window_df = pd.DataFrame.from_dict(columns=cols, data={'0': window_dict}, orient='index')
+        extracted_df = pd.concat([extracted_df, window_df], axis=0, ignore_index=True)
+
+    return extracted_df

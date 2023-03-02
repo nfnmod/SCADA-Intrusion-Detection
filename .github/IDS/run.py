@@ -18,11 +18,12 @@ from sklearn.svm import OneClassSVM
 import data
 import models
 import models.TIRP as TIRP
-from data import squeeze
+from data import squeeze, find_frequent_transitions_sequences
 from data.injections import inject_to_raw_data
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
+FSTM_data = data.datasets_path + '\\FSTM'
 HTM_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\"
 logs = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\'
 test_sets_base_folder = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets'
@@ -30,6 +31,7 @@ KL_based_OCSVM_log = logs + 'KarmaLego based OCSVM.txt'
 KL_LSTM_log = logs + 'KL-LSTM.txt'
 lstm_test_log = logs + 'LSTM test.txt'
 DFA_log = logs + 'DFA.txt'
+FSTM_train_log = logs + 'FSTM train.txt'
 KL_output_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
 TIRPs_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL TIRPS'
 LSTM_classifiers_classifications = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\LSTM_classifications'
@@ -207,14 +209,9 @@ def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=
     2. process data using algorithm.
     3. train lstm on the output of step 2.
     """
+    # load and unpack params.
     with open(FSTM_config, mode='r') as algo_config:
         FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
-
-    with open(raw_data, mode='rb') as data_path:
-        pkts = pickle.load(data_path)
-
-    funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
-                  "equal_width": data.equal_width_discretization}
 
     time_windows = FSTM_params['window']
     min_supports = FSTM_params['supp']
@@ -224,33 +221,179 @@ def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=
 
     for binning_method in binning_methods:
         for number_of_bins in numbers_of_bins:
-            processed = data.process_data_v3(pkts, 5, funcs_dict[binning_method], number_of_bins, False)
+            # load training data.
+            with open(FSTM_data + '\\train\\X_{}_{}'.format(binning_method, number_of_bins), mode='wb') as f:
+                train = pickle.load(f)
             for time_window in time_windows:
-                for min_support in min_supports:
-                    # call algo.
-                    flat_transitions, prev_times, prev_indices, longest, time_stamps = data.find_frequent_transitions_sequences(
-                        processed, time_window, min_support)
+                # load algo results.
+                times_p = FSTM_data + '\\complete_patterns\\train_times_{}_{}_{}'.format(binning_method,
+                                                                                         number_of_bins,
+                                                                                         time_window)
 
-                    # get features.
-                    df_v1 = data.extract_features_v1(flat_transitions, prev_times, time_stamps, group_registers)
-                    df_v2 = data.extract_features_v2(flat_transitions, prev_times, longest, group_registers,
-                                                     time_stamps)
+                indices_p = FSTM_data + '\\complete_patterns\\train_indices_{}_{}_{}'.format(binning_method,
+                                                                                             number_of_bins,
+                                                                                             time_window)
 
-                    # scale.
-                    for c in df_v1.columns():
-                        df_v1[c] = data.scale_col(df_v1, c)
-                    for c in df_v2.columns():
-                        df_v2[c] = data.scale_col(df_v2, c)
+                with open(times_p, mode='rb') as p:
+                    prev_times = pickle.load(p)
 
-                    for series_length in series_lengths:
-                        dump_model = data.modeles_path + '\\{}_FSTM\\'.format(group)
-                        dump_df = data.datasets_path + '\\{}_FSTM\\'.format(group)
-                        model_name = 'FSTM_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, time_window,
-                                                                  min_support, series_length)
-                        models.simple_LSTM(processed, series_length, 42, model_name, train=1.0, models_path=dump_model,
-                                           data_path=dump_df)
+                with open(indices_p, mode='rb') as p:
+                    prev_indices = pickle.load(p)
+
+                for min_support in min_supports:  # load dict and extract features from sliding windows.
+                    filtered_patterns_dict = FSTM_data + '\\filtered\\train_patterns_dict_{}_{}_{}_{}'
+                    filtered_patterns_dict_p = filtered_patterns_dict.format(binning_method, number_of_bins,
+                                                                             time_window,
+                                                                             min_support)
+                    with open(filtered_patterns_dict_p, mode='rb') as f:
+                        p_dict = pickle.load(f)
+                    for window in window_sizes:
+                        LSTM_train = data.PLCDependeciesAlgorithm.extract_features_v3(train, p_dict, prev_indices,
+                                                                                      prev_times, window)
+
+                        for series_length in series_lengths:  # train LSTM models.
+                            dump_model = data.modeles_path + '\\FSTM\\'
+                            dump_df = data.datasets_path + '\\FSTM\\'
+                            model_name = 'FSTM_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, time_window,
+                                                                      min_support, series_length)
+                            models.simple_LSTM(LSTM_train, series_length, 42, model_name, train=1.0,
+                                               models_path=dump_model,
+                                               data_path=dump_df)
 
 
+def run_FSTM(FSTM_config):
+    # get params.
+    with open(FSTM_config, mode='r') as algo_config:
+        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)['params_dict']
+
+    funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
+                  "equal_width": data.equal_width_discretization}
+
+    time_windows = FSTM_params['time_window']
+    numbers_of_bins = FSTM_params['bins']
+    binning_methods = FSTM_params['binning']
+    supports = FSTM_params['support']
+
+    with open(data.datasets_path + '\\TRAIN', mode='rb') as p:  # load data.
+        pkts = pickle.load(p)
+
+    for binning_method in binning_methods:
+        for number_of_bins in numbers_of_bins:
+            binners_folder = binners_base + '\\{}_{}'.format(binning_method, number_of_bins)
+
+            if not os.path.exists(binners_folder):
+                Path(binners_folder).mkdir(parents=True, exist_ok=True)
+
+            suffix = '{}_{}\\col'.format(binning_method, number_of_bins)
+
+            train_data = data.process_data_v3(pkts, 8, funcs_dict[binning_method], number_of_bins, False)
+
+            for col_name in train_data.columns:  # bin data.
+                if 'time' not in col_name:
+                    train_data[col_name] = funcs_dict[binning_method](train_data, col_name, number_of_bins, suffix)
+
+            train_data = squeeze(train_data)  # squeeze states.
+
+            with open(FSTM_data + '\\train\\X_{}_{}'.format(binning_method, number_of_bins), mode='wb') as f:
+                pickle.dump(train_data, f)
+
+            for time_window in time_windows:
+                # call algo.
+                # do it once with a very low support and filter the not frequent enough ones when testing.
+                start = time.time()
+                print(
+                    'running fstm, bins {}, window {}, binning {}'.format(number_of_bins, time_window, binning_method))
+
+                frequent_transitions, prev_times, prev_indices, longest, time_stamps = find_frequent_transitions_sequences(
+                    train_data, time_window, 0.5)
+
+                print('found (unfiltered) = {}\n'.format(len(frequent_transitions)))
+
+                end = time.time()
+
+                with open(FSTM_train_log, mode='a') as log:
+                    log.write('FSTM time elapsed: {}\n'.format(end - start))
+
+                patterns_folder = FSTM_data + '\\complete_patterns'
+
+                if not os.path.exists(patterns_folder):
+                    Path(patterns_folder).mkdir(exist_ok=True, parents=True)
+
+                # save the results of the low support run.
+
+                times_p = FSTM_data + '\\complete_patterns\\train_times_{}_{}_{}'.format(binning_method,
+                                                                                         number_of_bins,
+                                                                                         time_window)
+
+                indices_p = FSTM_data + '\\complete_patterns\\train_indices_{}_{}_{}'.format(binning_method,
+                                                                                             number_of_bins,
+                                                                                             time_window)
+
+                timestamps_p = FSTM_data + '\\complete_patterns\\train_timestamps_{}_{}_{}'.format(
+                    binning_method, number_of_bins,
+                    time_window)
+
+                with open(
+                        FSTM_data + '\\complete_patterns\\train_patterns_{}_{}_{}'.format(binning_method,
+                                                                                          number_of_bins,
+                                                                                          time_window),
+                        mode='wb') as patterns_p:
+                    pickle.dump(frequent_transitions, patterns_p)
+
+                with open(times_p, mode='wb') as p:
+                    pickle.dump(prev_times, p)
+
+                with open(indices_p, mode='wb') as p:
+                    pickle.dump(prev_indices, p)
+
+                with open(timestamps_p, mode='wb') as p:
+                    pickle.dump(time_stamps, p)
+
+                # filter
+                filtered_dir = FSTM_data + '\\filtered'
+
+                if not os.path.exists(filtered_dir):
+                    Path(filtered_dir).mkdir(exist_ok=True, parents=True)
+
+                filtered_patterns = FSTM_data + '\\filtered\\train_patterns_{}_{}_{}_{}'
+                filtered_patterns_dict = FSTM_data + '\\filtered\\train_patterns_dict_{}_{}_{}_{}'
+
+                for min_sup in supports:  # filter the transitions.
+                    freq_transitions = []
+                    # save, go over all the patterns and sub-patterns.
+                    for transition, times in prev_times.items():
+                        s = (len(times) * 100) / len(train_data)
+                        if s >= min_sup:
+                            freq_transitions.append(transition)
+
+                    print('support = {}, bins = {}, binning = {}, window = {}, found = {}\n'.format(min_sup,
+                                                                                                    number_of_bins,
+                                                                                                    binning_method,
+                                                                                                    time_window,
+                                                                                                    len(freq_transitions)))
+
+                    filtered_patterns_p = filtered_patterns.format(binning_method, number_of_bins, time_window,
+                                                                   min_sup)
+                    filtered_patterns_dict_p = filtered_patterns_dict.format(binning_method, number_of_bins,
+                                                                             time_window,
+                                                                             min_sup)
+
+                    # save the filtered patterns.
+                    with open(filtered_patterns_p, mode='wb') as filtered_patterns_path:
+                        pickle.dump(freq_transitions, filtered_patterns_path)
+
+                    # create and save the filtered patterns' dictionary.
+                    idx = 0
+                    p_dict = dict()
+                    for p in freq_transitions:
+                        p_dict[idx] = p
+                        idx += 1
+
+                    with open(filtered_patterns_dict_p, mode='wb') as f:
+                        pickle.dump(p_dict, f)
+
+
+# IRRELEVANT FOR NOW. NEED TO DETERMINE DETECTION METHOD.
 def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=True):
     with open(classifier_config, mode='r') as classifier_conf:
         params = yaml.load(classifier_conf, Loader=yaml.FullLoader)
@@ -653,7 +796,7 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
     numbers_of_bins = FSTM_params['bins']
     binning_methods = FSTM_params['binning']
     series_lengths = FSTM_params['series']
-    lim = 0.2
+
     injection_lengths = injection_params['InjectionLength']
     step_overs = injection_params['StepOver']
     percentages = injection_params['Percentage']
@@ -667,108 +810,111 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
             else:
                 for percentage in percentages:
                     for epsilon in epsilons:
-                        anomalous_data, labels = data.inject_to_raw_data(test_data, injection_length, step_over,
-                                                                         percentage,
+                        # load raw test sets and labels.
+                        parent = test_sets_base_folder + '\\raw'
+                        data_path = parent + '\\data_{}_{}_{}_{}'.format(injection_length, step_over, percentage,
                                                                          epsilon)
+                        labels_path = parent + '\\labels_{}_{}_{}_{}'.format(injection_length, step_over, percentage,
+                                                                             epsilon)
+
+                        with open(data_path, mode='rb') as d_p:
+                            anomalous_data = pickle.load(d_p)
+
+                        with open(labels_path, mode='rb') as l_p:
+                            labels = pickle.load(l_p)
+
                         for binning_method in binning_methods:
                             for number_of_bins in numbers_of_bins:
-                                processed = data.process_data_v3(anomalous_data, 5, funcs_dict[binning_method],
+                                processed = data.process_data_v3(anomalous_data, 8, funcs_dict[binning_method],
                                                                  number_of_bins, False)
+                                # we need to know which transitions include anomalies to create the test labels.
+                                # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
+                                # state as anomalous.
+
+                                FSTM_in = squeeze(processed)
+
+                                # labels of transitions.
                                 transitions_labels = []
+
                                 # time in state.
                                 time_in_state = 0
+
                                 # number of state
                                 state_idx = 0
+
+                                # packets to states dict. for the labeling of windows when testing.
+                                pkts_to_states = dict()
+                                pkts_to_states[0] = 0
+                                pkts_to_states[1] = 0
+
                                 # labels of the packets in the state.
-                                packet_labels_in_state = [labels[0]]
+                                packet_labels_in_state = [labels[1]]
                                 # arrival time of the last known packet in the state.
-                                last_time = anomalous_data.loc[0, 'time']
-                                for pkt_idx in range(1, len(anomalous_data)):
-                                    time_in_state += (anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
-                                    if time_in_state == processed.iloc[state_idx, 1]:
+                                last_time = anomalous_data.loc[1, 'time']
+                                for pkt_idx in range(2, len(anomalous_data)):
+                                    time_in_state += (
+                                            anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
+                                    if time_in_state == FSTM_in.iloc[state_idx, 1]:
                                         time_in_state = 0
                                         state_idx += 1
                                         transitions_labels.append(max(packet_labels_in_state))
-                                        packet_labels_in_state = []
+                                        packet_labels_in_state = [labels[pkt_idx]]
                                     else:
                                         packet_labels_in_state.append(labels[pkt_idx])
+                                    pkts_to_states[pkt_idx] = state_idx
                                     last_time = anomalous_data.loc[pkt_idx, 'time']
+
+                                p_pkt_dict = test_sets_base_folder + '\\labels_{}_{}_{}_{}_{}'.format(
+                                    binning_method, number_of_bins, injection_length,
+                                    step_over,
+                                    percentage)
+
+                                with open(p_pkt_dict, mode='wb') as f:
+                                    pickle.dump(pkts_to_states, f)
+
                                 for time_window in time_windows:
+                                    times_p = FSTM_data + '\\complete_patterns\\train_times_{}_{}_{}'.format(
+                                        binning_method,
+                                        number_of_bins,
+                                        time_window)
+
+                                    indices_p = FSTM_data + '\\complete_patterns\\train_indices_{}_{}_{}'.format(
+                                        binning_method,
+                                        number_of_bins,
+                                        time_window)
+
+                                    with open(times_p, mode='rb') as p:
+                                        prev_times = pickle.load(p)
+
+                                    with open(indices_p, mode='rb') as p:
+                                        prev_indices = pickle.load(p)
+
                                     for min_support in min_supports:
-                                        flat_transitions, prev_times, prev_indices, longest, time_stamps = data.find_frequent_transitions_sequences(
-                                            processed, time_window, min_support)
-                                        # create test labels for the classifiers.
-                                        # labels for v1, v2.
-                                        v1_labels = []
-                                        v2_labels = []
-                                        for flat_t in flat_transitions:
-                                            indices = flat_t[0]
-                                            idx_len = len(indices)
-                                            start = 1
-                                            end = max(len(indices) - 1, 2)
-                                            sequence_label = 0
-
-                                            for i in range(start, end):
-                                                # indices of adjacent states in the sequence of transitions.
-                                                prev = indices[i - 1]
-                                                curr = indices[i]
-                                                prev_label = transitions_labels[prev]
-                                                curr_label = transitions_labels[curr]
-                                                transition_label = max(prev_label, curr_label)
-                                                # this means there was more than 1 transition in the sequence.
-                                                # the last one won't be checked so check now.
-                                                if i == idx_len - 2:
-                                                    transition_label = max(transition_label,
-                                                                           transitions_labels[indices[idx_len - 1]])
-                                                v1_labels.append(transition_label)
-                                                sequence_label = max(sequence_label, transition_label)
-
-                                            v2_labels.append(sequence_label)
-
-                                        v1_test_set = data.extract_features_v1(flat_transitions, prev_times,
-                                                                               time_stamps, group_regs)
-                                        v2_test_set = data.extract_features_v2(flat_transitions, prev_times, longest,
-                                                                               time_stamps, group_regs)
-
-                                        for series_length in series_lengths:
-                                            X_test_v1, y_test_v1 = models.models.custom_train_test_split(v1_test_set,
-                                                                                                         series_length,
-                                                                                                         42, 0.0)
-                                            X_test_v2, y_test_v2 = models.models.custom_train_test_split(v2_test_set,
-                                                                                                         series_length,
-                                                                                                         42, 0.0)
-                                            # make sure dirs exist and dump.
-                                            dir_path = test_sets_base_folder + '\\FSTM\\{}\\{}_{}_{}'.format(group
-                                                                                                             ,
-                                                                                                             folders_dict[
-                                                                                                                 binning_method],
-                                                                                                             number_of_bins,
-                                                                                                             series_length)
-                                            if not os.path.exists(dir_path):
-                                                Path(dir_path).mkdir(exist_ok=True, parents=True)
-
-                                            suffix_path = '{}_{}_{}_{}_{}_{}'.format(time_window, min_support,
-                                                                                     injection_length, step_over,
-                                                                                     percentage, epsilon)
-
-                                            x_test_path = dir_path + '\\X_test_{}_' + suffix_path
-                                            y_test_path = dir_path + '\\y_test_{}_' + suffix_path
-                                            labels_path = dir_path + '\\labels_{}_' + suffix_path
-
-                                            with open(x_test_path.format('v1'), mode='wb') as x_test:
-                                                pickle.dump(X_test_v1, x_test)
-                                            with open(x_test_path.format('v2'), mode='wb') as x_test:
-                                                pickle.dump(X_test_v2, x_test)
-
-                                            with open(y_test_path.format('v1'), mode='wb') as y_test:
-                                                pickle.dump(y_test_v1, y_test)
-                                            with open(y_test_path.format('v2'), mode='wb') as y_test:
-                                                pickle.dump(y_test_v2, y_test)
-
-                                            with open(labels_path.format('v1'), mode='wb') as labels_p:
-                                                pickle.dump(v1_labels, labels_p)
-                                            with open(labels_path.format('v2'), mode='wb') as labels_p:
-                                                pickle.dump(v2_labels, labels_p)
+                                        filtered_patterns_dict = FSTM_data + '\\filtered\\train_patterns_dict_{}_{}_{}_{}'
+                                        filtered_patterns_dict_p = filtered_patterns_dict.format(binning_method,
+                                                                                                 number_of_bins,
+                                                                                                 time_window,
+                                                                                                 min_support)
+                                        with open(filtered_patterns_dict_p, mode='rb') as f:
+                                            p_dict = pickle.load(f)
+                                        for window in window_sizes:
+                                            test_data = data.PLCDependeciesAlgorithm.extract_features_v3(FSTM_in,
+                                                                                                         p_dict,
+                                                                                                         prev_indices,
+                                                                                                         prev_times,
+                                                                                                         window)
+                                            for series_length in series_lengths:
+                                                X_test, y_test = models.custom_train_test_split(test_data,
+                                                                                                series_length, 42, 1)
+                                                suffix = '{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
+                                                                                 time_window, min_support, window)
+                                                X_test_p = test_sets_base_folder + '\\FSTM_X_test_' + suffix
+                                                Y_test_p = test_sets_base_folder + '\\FSTM_Y_test_' + suffix
+                                                # save x test and y test.
+                                                with open(X_test_p, mode='wb') as f:
+                                                    pickle.dump(X_test, f)
+                                                with open(Y_test_p, mode='wb') as f:
+                                                    pickle.dump(y_test, f)
 
 
 def create_test_files_DFA(injection_config, group=''):
@@ -2435,6 +2581,23 @@ def KLSTM_window_labels(model_windows_labels, true_labels, window_size):
         true_windows_labels.append(true_window_label)
 
     return true_windows_labels, klstm_windows_labels
+
+
+def FSTM_window_labels(model_windows_labels, true_labels, window_size, pkts_to_states_dict):
+    fstm_windows_labels = []
+    true_windows_labels = []
+    length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
+    # FSTM labels windows from the 21st window.
+
+    for i in range(20, length - window_size + 1):
+        true_window_label = max(true_labels[i: i + window_size])
+        window_start_state = max(pkts_to_states_dict[i], 20)
+        window_end_state = max(pkts_to_states_dict[i + window_size - 1], 20)
+        fstm_window_label = max(model_windows_labels[window_start_state - 20: window_end_state + 1 - 20])
+        fstm_windows_labels.append(fstm_window_label)
+        true_windows_labels.append(true_window_label)
+
+    return true_windows_labels, fstm_windows_labels
 
 
 # functions to get parameters from files. refactored.
