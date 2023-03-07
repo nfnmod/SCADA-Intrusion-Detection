@@ -51,7 +51,7 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = {'data version', 'binning', '# bins', '# std',
+excel_cols = {'name', 'data version', 'binning', '# bins', '# std',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -157,11 +157,7 @@ def train_automaton(group=None):
     else:
         pkts = data.load(data.datasets_path, "MODBUS_TCP_TRAIN")
 
-    bins = [5, 6, 7, 8, 9, 10]
-    binning_methods = {'k_means': data.k_means_binning, 'equal_frequency': data.equal_frequency_discretization,
-                       'equal_width': data.equal_width_discretization}
-    names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
-             'equal_width': 'EqualWidth'}
+    bins, binning_methods, names = get_DFA_params()
 
     processed = data.process(pkts, 'v3_2_abstract', None, None, False)
     registers = processed.columns[2:]
@@ -210,14 +206,7 @@ def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=
     3. train lstm on the output of step 2.
     """
     # load and unpack params.
-    with open(FSTM_config, mode='r') as algo_config:
-        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
-
-    time_windows = FSTM_params['window']
-    min_supports = FSTM_params['supp']
-    numbers_of_bins = FSTM_params['bins']
-    binning_methods = FSTM_params['binning']
-    series_lengths = FSTM_params['series']
+    time_windows, min_supports, numbers_of_bins, binning_methods, series_lengths = get_FSTM_params(FSTM_config)
 
     for binning_method in binning_methods:
         for number_of_bins in numbers_of_bins:
@@ -262,17 +251,11 @@ def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=
 
 
 def run_FSTM(FSTM_config):
-    # get params.
-    with open(FSTM_config, mode='r') as algo_config:
-        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)['params_dict']
-
     funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
                   "equal_width": data.equal_width_discretization}
 
-    time_windows = FSTM_params['time_window']
-    numbers_of_bins = FSTM_params['bins']
-    binning_methods = FSTM_params['binning']
-    supports = FSTM_params['support']
+    # get params.
+    time_windows, supports, numbers_of_bins, binning_methods, series_lengths = get_FSTM_params(FSTM_config)
 
     with open(data.datasets_path + '\\TRAIN', mode='rb') as p:  # load data.
         pkts = pickle.load(p)
@@ -412,6 +395,7 @@ def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=Tru
 def make_input_for_KL(TIRP_config_file_path):
     pkt_df = data.load(data.datasets_path, "TRAIN")
     IP = data.plc
+
     # consider only response packets from the PLC.
     plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
     with open(TIRP_config_file_path, mode='r') as train_config:
@@ -441,16 +425,7 @@ def filter_TIRPs(KL_config_file_path):
     :return:
     """
     # 1. get to the file containing the mined TIRPs with very low support.
-    with open(KL_config_file_path, mode='r') as train_config:
-        params = yaml.load(train_config, Loader=yaml.FullLoader)
-
-    KL_params = params['KarmaLegoParams']
-    binning = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinHorizontalSupsPercentiles']
+    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_file_path)
 
     binning_times_bins = itertools.product(binning, bins)
     parent_folders = itertools.product(windows, binning_times_bins)
@@ -515,16 +490,7 @@ def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destinatio
 
 def train_LSTMs_from_KL(KL_config_file_path):
     # go over all KL configurations:
-    with open(KL_config_file_path, mode='r') as train_config:
-        params = yaml.load(train_config, Loader=yaml.FullLoader)
-
-    KL_params = params['KarmaLegoParams']
-    binning = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinHorizontalSupsPercentiles']
+    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_file_path)
     look_back = [20]
 
     for binning_method in binning:
@@ -778,29 +744,13 @@ def create_test_files_HTM(raw_test_data_df, data_versions_config, injection_conf
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
-    test_data = data.load(test_sets_base_folder, raw_test_data_df)
-
-    with open(injection_config, mode='r') as injection_conf:
-        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
-
-    with open(FSTM_config, mode='r') as algo_config:
-        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
+    # injection params.
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
     funcs_dict = {"k_means": data.k_means_binning, "equal_frequency": data.equal_frequency_discretization,
                   "equal_width": data.equal_width_discretization}
-    folders_dict = {"k_means": "KMeans", "equal_frequency": "EqualFreq",
-                    "equal_width": "EqualWidth"}
-
-    time_windows = FSTM_params['window']
-    min_supports = FSTM_params['supp']
-    numbers_of_bins = FSTM_params['bins']
-    binning_methods = FSTM_params['binning']
-    series_lengths = FSTM_params['series']
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
+    # fstm params.
+    time_windows, min_supports, numbers_of_bins, binning_methods, series_lengths = get_FSTM_params(FSTM_config)
 
     for injection_length in injection_lengths:
         for step_over in step_overs:
@@ -833,36 +783,7 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
 
                                 FSTM_in = squeeze(processed)
 
-                                # labels of transitions.
-                                transitions_labels = []
-
-                                # time in state.
-                                time_in_state = 0
-
-                                # number of state
-                                state_idx = 0
-
-                                # packets to states dict. for the labeling of windows when testing.
-                                pkts_to_states = dict()
-                                pkts_to_states[0] = 0
-                                pkts_to_states[1] = 0
-
-                                # labels of the packets in the state.
-                                packet_labels_in_state = [labels[1]]
-                                # arrival time of the last known packet in the state.
-                                last_time = anomalous_data.loc[1, 'time']
-                                for pkt_idx in range(2, len(anomalous_data)):
-                                    time_in_state += (
-                                            anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
-                                    if time_in_state == FSTM_in.iloc[state_idx, 1]:
-                                        time_in_state = 0
-                                        state_idx += 1
-                                        transitions_labels.append(max(packet_labels_in_state))
-                                        packet_labels_in_state = [labels[pkt_idx]]
-                                    else:
-                                        packet_labels_in_state.append(labels[pkt_idx])
-                                    pkts_to_states[pkt_idx] = state_idx
-                                    last_time = anomalous_data.loc[pkt_idx, 'time']
+                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels, FSTM_in)
 
                                 p_pkt_dict = test_sets_base_folder + '\\labels_{}_{}_{}_{}_{}'.format(
                                     binning_method, number_of_bins, injection_length,
@@ -921,22 +842,10 @@ def create_test_files_DFA(injection_config, group=''):
     """
      just grid over all the injection parameters and binning params.
     """
-
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
-    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
-             data.equal_width_discretization: "equal_width"}
     folders_names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
                      'equal_width': 'EqualWidth'}
-    n_bins = [5, 6, 7, 8, 9, 10]
-
-    with open(injection_config, mode='r') as anomalies_config:
-        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
-    lim = 0.2
+    n_bins, binners, names = get_DFA_params()
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
     for injection_length in injection_lengths:
         for step_over in step_overs:
@@ -976,36 +885,8 @@ def create_test_files_DFA(injection_config, group=''):
                                 # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
                                 # state as anomalous.
 
-                                # labels of transitions.
-                                transitions_labels = []
+                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels, dfa_in)
 
-                                # time in state.
-                                time_in_state = 0
-
-                                # number of state
-                                state_idx = 0
-
-                                # packets to states dict. for the labeling of windows when testing.
-                                pkts_to_states = dict()
-                                pkts_to_states[0] = 0
-                                pkts_to_states[1] = 0
-
-                                # labels of the packets in the state.
-                                packet_labels_in_state = [labels[1]]
-                                # arrival time of the last known packet in the state.
-                                last_time = anomalous_data.loc[1, 'time']
-                                for pkt_idx in range(2, len(anomalous_data)):
-                                    time_in_state += (
-                                            anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
-                                    if time_in_state == dfa_in.iloc[state_idx, 1]:
-                                        time_in_state = 0
-                                        state_idx += 1
-                                        transitions_labels.append(max(packet_labels_in_state))
-                                        packet_labels_in_state = [labels[pkt_idx]]
-                                    else:
-                                        packet_labels_in_state.append(labels[pkt_idx])
-                                    pkts_to_states[pkt_idx] = state_idx
-                                    last_time = anomalous_data.loc[pkt_idx, 'time']
                                 if group != '':
                                     middle = '\\DFA_{}'.format(group)
                                 else:
@@ -1050,13 +931,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
     raw_test_data = data.load(data.datasets_path, raw_test_data_df)
 
     # first, grid over injection params.
-    with open(injection_config, mode='r') as anomalies_config:
-        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
     with open(input_creation_config, mode='r') as TIRP_creation_config:
         TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
@@ -1149,24 +1024,10 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
     :return:
     """
     # 1. get to the file containing the mined TIRPs with very low support.
-    with open(KL_config_file_path, mode='r') as train_config:
-        params = yaml.load(train_config, Loader=yaml.FullLoader)
+    # get params for kl and injections.
+    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps_percentiles = get_KL_params(KL_config_file_path)
 
-    with open(injection_config, mode='r') as injection_conf:
-        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
-
-    KL_params = params['KarmaLegoParams']
-    binning = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps_percentiles = KL_params['MinHorizontalSups']
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    injection_epsilons = injection_params['Epsilon']
+    injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
 
     binning_times_bins = itertools.product(binning, bins)
     parent_folders = itertools.product(windows, binning_times_bins)
@@ -1330,6 +1191,7 @@ def make_best(results_df):
     return best_df
 
 
+#################################IRRELEVANT FOR NOW#####################################################
 def test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path, group=''):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
@@ -1547,10 +1409,14 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                 best_df.to_excel(excel_writer=writer, sheet_name=sheet)
 
 
+#################################IRRELEVANT FOR NOW#####################################################
+
+
 def test_FSTM(models_train_config, injection_config, tests_config_path, group=''):
     return None
 
 
+#################################IRRELEVANT FOR NOW#####################################################
 def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config, tests_config_path, groups_ids):
     with open(injection_config, mode='r') as injection_conf:
         injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
@@ -1653,21 +1519,14 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                 best_df.to_excel(writer, sheet_name=sheet)
 
 
+#################################IRRELEVANT FOR NOW#####################################################
+
 def test_DFA(injection_config, group=''):
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
-    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
-             data.equal_width_discretization: "equal_width"}
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
-    n_bins = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+    n_bins, binners, names = get_DFA_params()
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
-    with open(injection_config, mode='r') as injections:
-        injection_params = yaml.load(injections, Loader=yaml.FullLoader)
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
     results_df = pd.DataFrame(columns=excel_cols)
     labels_df = pd.DataFrame(columns=['binning', '# bins', 'injection length', 'step over', 'percentage', 'window size',
                                       '# window', 'model label', 'true label'])
@@ -1816,19 +1675,10 @@ def many_PLC_DFAs(groups_ids, injection_config):
         weights[group_id] = weight
 
     # dfa parameters.
-    numbers_of_bins = [5, 6, 7, 8, 9, 10]
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
-    names = {data.k_means_binning: "k_means", data.equal_frequency_discretization: "equal_frequency",
-             data.equal_width_discretization: "equal_width"}
+    numbers_of_bins, binners, names = get_DFA_params()
 
     # injection paramters.
-    with open(injection_config, mode='rb') as injection_conf:
-        injection_params = yaml.load(injection_conf, Loader=yaml.FullLoader)
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
     sheets_dfs = dict()
 
@@ -1890,6 +1740,7 @@ def many_PLC_DFAs(groups_ids, injection_config):
         best_df.to_excel(writer, sheet_name=sheet)
 
 
+######################IRRELEVANT FOR NOW########################################
 def test_KL_based_RF(KL_config_path, injection_config_path):
     results_df = pd.DataFrame(columns=excel_cols)
     with open(KL_config_path, mode='r') as KL_params_path:
@@ -2037,6 +1888,9 @@ def test_KL_based_RF(KL_config_path, injection_config_path):
         results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
 
 
+######################IRRELEVANT FOR NOW########################################
+
+
 # functions for training LSTMs.
 def train_LSTM(train_config):
     """
@@ -2048,13 +1902,9 @@ def train_LSTM(train_config):
     """
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
-
-    with open(train_config, mode='r') as train_conf:
-        train_params = yaml.load(train_conf, Loader=yaml.FullLoader)
-    data_versions = train_params['versions']
-    bins = train_params['bins']
-    methods = train_params['binning_methods']
-    raw_df = pd.DataFrame()
+    # lstm params.
+    methods, bins, data_versions = get_LSTM_params(train_config)
+    raw_df = data.load(data.datasets_path, 'TRAIN')
 
     for data_version in data_versions:
         folder_name = data_version['name']
@@ -2074,8 +1924,10 @@ def train_LSTM(train_config):
 
                 if not os.path.exists(binners_p):
                     Path(binners_p).mkdir(exist_ok=True, parents=True)
+
                 if not os.path.exists(scalers_p):
                     Path(scalers_p).mkdir(exist_ok=True, parents=True)
+
                 if data_version['reprocess']:
                     lstm_input = data.process(raw_df, folder_name, number_of_bins, method_name, True,
                                               binner_path=suffix)
@@ -2100,115 +1952,114 @@ def create_test_sets_LSTMs(train_config, injection_config):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
 
-    lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
-    with open(injection_config, mode='r') as anomalies_config:
-        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-        injection_lengths = injection_params['InjectionLength']
-        step_overs = injection_params['StepOver']
-        percentages = injection_params['percentage']
-        epsilons = injection_params['Epsilon']
-        # first ,inject anomalies. and create the test set for: LSTM , RF and OCSVM.
-        for injection_length in injection_lengths:
-            for step_over in step_overs:
-                anomaly_percentage = injection_length / (injection_length + step_over)
-                if anomaly_percentage > lim:
-                    pass
-                else:
-                    for percentage in percentages:
-                        for epsilon in epsilons:
-                            df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
-                                                                                            percentage)
-                            labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
-                                                                                                  step_over,
-                                                                                                  percentage)
-                            with open(df_path, mode='rb') as p:
-                                anomalous_data = pickle.load(p)
-                            with open(labels_path, mode='rb') as p:
-                                labels = pickle.load(p)
-                            #  process the data using the different versions
-                            with open(train_config, mode='r') as processing_config:
-                                config = yaml.load(processing_config, Loader=yaml.FullLoader)
-                                binnings = config['binning_methods']
-                                data_versions = config['train_sets_config']
-                                numbers_of_bins = config['bins']
+    # injection params.
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
+
+    # first ,inject anomalies. and create the test set for: LSTM , RF(?) and OCSVM(?).
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
+                                                                                        percentage)
+                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
+                                                                                              step_over,
+                                                                                              percentage)
+                        with open(df_path, mode='rb') as p:
+                            anomalous_data = pickle.load(p)
+
+                        with open(labels_path, mode='rb') as p:
+                            labels = pickle.load(p)
+
+                        #  process the data using the different versions, get params.
+                        binnings, numbers_of_bins, data_versions = get_LSTM_params(train_config)
+
+                        # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
+                        for data_version in data_versions:
+                            name = data_version['name']
+                            desc = data_version['desc']
+                            processed = None
+                            if not data_version['reprocess']:
+                                processed = data.process(anomalous_data, name, None, None, False)
 
                             for method_name in binnings:
                                 folder_name = folders[method_name]
-                                # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
-                                for data_version in data_versions:
-                                    name = data_version['name']
-                                    desc = data_version['desc']
-                                    if not data_version['reprocess']:
-                                        processed = data.process(anomalous_data, folder_name, None, None, False)
-                                    for number_of_bins in numbers_of_bins:
-                                        if data_version['reprocess']:
-                                            lstm_input = data.process(anomalous_data, folder_name, number_of_bins,
-                                                                      method_name,
-                                                                      True)
-                                        else:
-                                            lstm_input = processed.copy()
-                                            cols_not_to_bin = data_version['no_bin']
-                                            method_folder = folders[method_name]
-                                            file_name = data_version['desc']
-                                            folder_name = data_version['name']
+                                for number_of_bins in numbers_of_bins:
+                                    if data_version['reprocess']:
+                                        lstm_input = data.process(anomalous_data, name, number_of_bins,
+                                                                  method_name,
+                                                                  True)
+                                    else:
+                                        lstm_input = processed.copy()
+                                        cols_not_to_bin = data_version['no_bin']
+                                        method_folder = folders[method_name]
+                                        file_name = data_version['desc']
+                                        folder_name = data_version['name']
 
-                                            model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
-                                            suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(
-                                                model_name)
+                                        model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
+                                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(
+                                            model_name)
 
-                                            if file_name == 'v1_single_plc_make_entry_v1_20_packets':
-                                                suffix = '//{}_{}'.format(method_folder,
-                                                                          folder_name) + '//{}_{}_{}'.format(file_name,
-                                                                                                             file_name,
-                                                                                                             number_of_bins)
+                                        # if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                                        # suffix = '//{}_{}'.format(method_folder,
+                                        # folder_name) + '//{}_{}_{}'.format(file_name,
+                                        # file_name,
+                                        # number_of_bins)
 
-                                            # scale everything, bin by config file.
-                                            for col_name in lstm_input.columns:
-                                                if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
-                                                    with open(binners_base + suffix + '_{}'.format(col_name),
-                                                              mode='rb') as binner_p:
-                                                        binner = pickle.load(binner_p)
-                                                    lstm_input[col_name] = binner.transform(
-                                                        lstm_input[col_name].to_numpy().reshape(-1, 1))
-                                                lstm_input[col_name] = data.scale_col(lstm_input, col_name, None)
+                                        # scale everything, bin by config file.
+                                        for col_name in lstm_input.columns:
+                                            if 'time' not in col_name and 'state' not in col_name and col_name not in cols_not_to_bin:
+                                                with open(binners_base + suffix + '_{}'.format(col_name),
+                                                          mode='rb') as binner_p:
+                                                    binner = pickle.load(binner_p)
+                                                lstm_input[col_name] = binner.transform(
+                                                    lstm_input[col_name].to_numpy().reshape(-1, 1))
+                                            lstm_input[col_name] = data.scale_col(lstm_input, col_name, None)
 
-                                        # now create test data set for LSTM. Only need X_test and y_test.
-                                        X_test, y_test = models.custom_train_test_split(
-                                            lstm_input,
-                                            20, 42, train=1.0)
-                                        # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
-                                        p_suffix = '_{}_{}_{}_{}_{}'.format(
-                                            folder_name, name, number_of_bins, desc, injection_length,
-                                            step_over, percentage, epsilon)
-                                        # if group_id != '':
-                                        # p_suffix = group_id + p_suffix
+                                    # now create test data set for LSTM. Only need X_test and y_test.
+                                    X_test, y_test = models.custom_train_test_split(
+                                        lstm_input,
+                                        20, 42, train=1.0)
 
-                                        # make sure dirs exist and dump.
-                                        dir_path = test_sets_base_folder + '\\LSTM\\{}_{}_{}'.format(
-                                            folder_name, name, number_of_bins)
+                                    # now save, X_test, y_test and the labels which will be used to obtain the y_test of the classifier.
+                                    p_suffix = '_{}_{}_{}_{}_{}'.format(
+                                        folder_name, name, number_of_bins, desc, injection_length,
+                                        step_over, percentage, epsilon)
+                                    # if group_id != '':
+                                    # p_suffix = group_id + p_suffix
 
-                                        bin_part = folders[method_name]
+                                    # make sure dirs exist and dump.
+                                    dir_path = test_sets_base_folder + '\\LSTM\\{}_{}_{}'.format(
+                                        folder_name, name, number_of_bins)
 
-                                        suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
-                                                                            bin_part,
-                                                                            number_of_bins,
-                                                                            injection_length,
-                                                                            step_over,
-                                                                            percentage)
+                                    bin_part = folders[method_name]
 
-                                        p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
-                                        p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
-                                        p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
+                                    suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
+                                                                        bin_part,
+                                                                        number_of_bins,
+                                                                        injection_length,
+                                                                        step_over,
+                                                                        percentage)
 
-                                        if not os.path.exists(dir_path):
-                                            Path(dir_path).mkdir(parents=True, exist_ok=True)
+                                    p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
+                                    p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
+                                    p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
 
-                                        with open(p_x_test, mode='wb') as data_path:
-                                            pickle.dump(X_test, data_path)
-                                        with open(p_y_test, mode='wb') as data_path:
-                                            pickle.dump(y_test, data_path)
-                                        with open(p_labels, mode='wb') as data_path:
-                                            pickle.dump(labels, data_path)
+                                    if not os.path.exists(dir_path):
+                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                    with open(p_x_test, mode='wb') as data_path:
+                                        pickle.dump(X_test, data_path)
+
+                                    with open(p_y_test, mode='wb') as data_path:
+                                        pickle.dump(y_test, data_path)
+
+                                    with open(p_labels, mode='wb') as data_path:
+                                        pickle.dump(labels, data_path)
 
 
 def test_LSTM(train_config, raw_test_data):
@@ -2220,12 +2071,7 @@ def test_LSTM(train_config, raw_test_data):
     results_df = pd.DataFrame(columns=['data_version', 'binning', '# bins', 'mse', 'r2'])
 
     # go over all combinations, process raw test set, test and save metric scores.
-    with open(train_config, mode='r') as c:
-        train_params = yaml.load(c, Loader=yaml.FullLoader)
-
-    binning_methods = train_params['binning_methods']
-    numbers_of_bins = train_params['bins']
-    data_versions = train_params['train_sets_config']
+    binning_methods, numbers_of_bins, data_versions = get_LSTM_params(train_config)
 
     for data_version in data_versions:
         test_lstm = None
@@ -2246,10 +2092,10 @@ def test_LSTM(train_config, raw_test_data):
                     model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
-                    if file_name == 'v1_single_plc_make_entry_v1_20_packets':
+                    """if file_name == 'v1_single_plc_make_entry_v1_20_packets':
                         suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
                                                                                                     file_name,
-                                                                                                    number_of_bins)
+                                                                                                    number_of_bins)"""
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
@@ -2287,6 +2133,7 @@ def test_LSTM(train_config, raw_test_data):
                           '# bins': number_of_bins,
                           'mse': mse,
                           'r2': r2}
+
                 res_df = pd.DataFrame.from_dict(columns=results_df.columns, data={'0': result}, orient='index')
                 results_df = pd.concat([results_df, res_df], ignore_index=True)
                 with open(lstm_test_log, mode='a') as log:
@@ -2314,12 +2161,7 @@ def detect_LSTM(lstm_config, injection_config):
                  '# window', 'model label', 'true label'])
 
     # go over all combinations, process raw test set, test and save metric scores.
-    with open(lstm_config, mode='r') as c:
-        train_params = yaml.load(c, Loader=yaml.FullLoader)
-
-    binning_methods = train_params['binning_methods']
-    numbers_of_bins = train_params['bins']
-    data_versions = train_params['train_sets_config']
+    binning_methods, numbers_of_bins, data_versions = get_LSTM_params(lstm_config)
 
     # for each lstm (grid over lstm_config):
     # get the validation data set, predict on it, calculate the deviation mean + 3 std.
@@ -2451,12 +2293,7 @@ def create_val_for_LSTM(lstm_config):
     val_df = data.load(data.datasets_path, 'MB_TCP_VAL')
 
     # go over all combinations, process raw test set, test and save metric scores.
-    with open(lstm_config, mode='r') as c:
-        train_params = yaml.load(c, Loader=yaml.FullLoader)
-
-    binning_methods = train_params['binning_methods']
-    numbers_of_bins = train_params['bins']
-    data_versions = train_params['train_sets_config']
+    binning_methods, numbers_of_bins, data_versions = get_LSTM_params(lstm_config)
 
     for data_version in data_versions:
         val_lstm = None
@@ -2503,14 +2340,8 @@ def create_val_for_LSTM(lstm_config):
 
 
 def create_raw_test_sets(injections_config):
-    with open(injections_config, mode='r') as injections_conf:
-        injection_params = yaml.load(injections_conf, Loader=yaml.FullLoader)
-
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['percentage']
-    epsilons = injection_params['Epsilon']
-    lim = 0.2
+    # get params for injections.
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injections_config)
 
     with open(test_sets_base_folder + '//MB_TCP_TEST', mode='rb') as test_path:
         test_data = pickle.load(test_path)
@@ -2610,8 +2441,39 @@ def get_KL_params(KL_config_path):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_ver_sups = KL_params['MinVerSups']
-    return binning_methods, bins, windows, epsilons, max_gaps, min_ver_sups
+    min_h_percentile_sups = KL_params['MinHorizontalSups']
+    return binning_methods, bins, windows, epsilons, max_gaps, min_h_percentile_sups
+
+
+def get_DFA_params():
+    bins = [5, 6, 7, 8, 9, 10]
+    binning_methods = {'k_means': data.k_means_binning, 'equal_frequency': data.equal_frequency_discretization,
+                       'equal_width': data.equal_width_discretization}
+    names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq',
+             'equal_width': 'EqualWidth'}
+    return bins, binning_methods, names
+
+
+def get_FSTM_params(FSTM_config):
+    with open(FSTM_config, mode='r') as algo_config:
+        FSTM_params = yaml.load(algo_config, Loader=yaml.FullLoader)
+
+    time_windows = FSTM_params['window']
+    min_supports = FSTM_params['supp']
+    numbers_of_bins = FSTM_params['bins']
+    binning_methods = FSTM_params['binning']
+    series_lengths = FSTM_params['series']
+    return time_windows, min_supports, numbers_of_bins, binning_methods, series_lengths
+
+
+def get_LSTM_params(lstm_config):
+    with open(lstm_config, mode='r') as c:
+        train_params = yaml.load(c, Loader=yaml.FullLoader)
+
+    binning_methods = train_params['binning_methods']
+    numbers_of_bins = train_params['bins']
+    data_versions = train_params['train_sets_config']
+    return binning_methods, numbers_of_bins, data_versions
 
 
 def get_injection_params(injections_config_path):
@@ -2636,6 +2498,41 @@ def get_metrics(y_true, y_pred):
     prc_auc_score = auc(recalls, precisions)
 
     return precision, recall, auc_score, f1, prc_auc_score
+
+
+def get_transitions_labels(anomalous_data, labels, algo_input):
+    # labels of transitions.
+    transitions_labels = []
+
+    # time in state.
+    time_in_state = 0
+
+    # number of state
+    state_idx = 0
+
+    # packets to states dict. for the labeling of windows when testing.
+    pkts_to_states = dict()
+    pkts_to_states[0] = 0
+    pkts_to_states[1] = 0
+
+    # labels of the packets in the state.
+    packet_labels_in_state = [labels[1]]
+    # arrival time of the last known packet in the state.
+    last_time = anomalous_data.loc[1, 'time']
+    for pkt_idx in range(2, len(anomalous_data)):
+        time_in_state += (
+                anomalous_data.loc[pkt_idx, 'time'] - last_time).total_seconds()
+        if time_in_state == algo_input.iloc[state_idx, 1]:
+            time_in_state = 0
+            state_idx += 1
+            transitions_labels.append(max(packet_labels_in_state))
+            packet_labels_in_state = [labels[pkt_idx]]
+        else:
+            packet_labels_in_state.append(labels[pkt_idx])
+        pkts_to_states[pkt_idx] = state_idx
+        last_time = anomalous_data.loc[pkt_idx, 'time']
+
+    return transitions_labels, pkts_to_states
 
 
 def calc_deviations(pred, true):
