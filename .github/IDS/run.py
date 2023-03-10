@@ -51,12 +51,12 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = {'name', 'data version', 'binning', '# bins', '# std',
+excel_cols = {'algorithm', 'data version', 'binning', '# bins', '# std',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
@@ -73,7 +73,7 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal V
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
 
-window_sizes = [200, 300, 400]
+window_sizes = [400, 600, 800, 1000]
 
 nums_std = [2, 2.5, 3]
 
@@ -2156,7 +2156,7 @@ def detect_LSTM(lstm_config, injection_config):
 
     results_df = pd.DataFrame(columns=excel_cols)
     labels_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', '#std', 'injection length', 'step over', 'percentage',
+        columns=['data version', 'binning', '# bins', '#std', 'injection length', 'percentage',
                  'window size',
                  '# window', 'model label', 'true label'])
 
@@ -2193,8 +2193,9 @@ def detect_LSTM(lstm_config, injection_config):
                 pred = LSTM.predict(val_X)
                 deviations = calc_deviations(pred, val_y)
                 mean = statistics.mean(deviations)
+                std = statistics.stdev(deviations)
                 for num_std in nums_std:
-                    threshold = mean + 3 * num_std
+                    threshold = mean + std * num_std
 
                     for injection_length in injection_lengths:
                         for step_over in step_overs:
@@ -2229,7 +2230,7 @@ def detect_LSTM(lstm_config, injection_config):
                                                                                                       pred_labels)
 
                                         for w in window_sizes:
-                                            true_windows_labels, model_windows_labels = LSTM_HTM_preds_to_window_preds(
+                                            true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
                                                 pred_labels, labels, w)
                                             labels_test_df = pd.DataFrame(columns=labels_df.columns)
                                             labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
@@ -2240,7 +2241,6 @@ def detect_LSTM(lstm_config, injection_config):
                                             labels_test_df['binning'] = bin_part
                                             labels_test_df['# bins'] = number_of_bins
                                             labels_test_df['injection length'] = injection_length
-                                            labels_test_df['step over'] = step_over
                                             labels_test_df['percentage'] = percentage
                                             labels_test_df['# std'] = num_std
                                             labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
@@ -2250,7 +2250,6 @@ def detect_LSTM(lstm_config, injection_config):
                                                   '# bins': number_of_bins,
                                                   '# std': num_std,
                                                   'injection length': injection_length,
-                                                  'step over': step_over,
                                                   'percentage': percentage,
                                                   'precision': precision,
                                                   'recall': recall,
@@ -2312,10 +2311,6 @@ def create_val_for_LSTM(lstm_config):
                     model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
-                    # if file_name == 'v1_single_plc_make_entry_v1_20_packets':
-                    # suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}_{}'.format(file_name,
-                    #   file_name,
-                    # number_of_bins)
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
@@ -2371,13 +2366,22 @@ def create_raw_test_sets(injections_config):
 
 # xl file will save for each model: model name, model parameters, injection parameters, true labels for window, model labels for windows.
 # this is an additional file. other files for the metrics. true window labels and labels according to the models.
-def LSTM_HTM_preds_to_window_preds(model_detections, true_labels, window_size):
+def LSTM_preds_to_window_preds(model_detections, true_labels, window_size):
     model_windows_labels = []
     true_windows_labels = []
     length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
     for i in range(length - window_size + 1):
         true_window_label = max(true_labels[i: i + window_size])
-        model_window_label = max(model_detections[i: min(i + window_size, len(model_detections) - 1)])
+        if i < 20:
+            # there are missing detections for part of the window. consider only labels for the packets
+            # for which there are detections.
+            # take labels for packets: i...i+window-1 = predictions from 0...i+window-1-20.
+            # the jth prediction is for the j+20 packet
+            model_window_label = max(model_detections[:i + window_size - 20])
+        else:
+            # take labels for packets: i-20...min(i+window-1-20, |detections| - 1).
+            # use min to avoid out of boundary exception.
+            model_window_label = max(model_detections[i - 20: min(i + window_size - 20, len(model_detections) - 1)])
         true_windows_labels.append(true_window_label)
         model_windows_labels.append(model_window_label)
 
