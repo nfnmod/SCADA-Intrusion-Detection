@@ -1832,12 +1832,10 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    for name in ['TRAIN', 'VAL', 'TEST']:
+    for name in ['TRAIN']:
         path = datasets_path + '\\{}'.format(name)
-        with open(path, mode='rb') as f:
-            df = pickle.load(f)
-        df = df.reset_index(drop=True)
-        print(df)
-        with open(path, mode='wb') as f:
-            pickle.dump(df, f)
+        with open(path, mode='rb') as df_f:
+            df = pickle.load(df_f)
+        stats_dict = get_plcs_values_statistics(df, 8, False)
+        print(stats_dict)
 

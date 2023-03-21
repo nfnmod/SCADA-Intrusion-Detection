@@ -2,7 +2,6 @@ import csv
 import itertools
 import os
 import pickle
-import statistics
 import time
 from pathlib import Path
 
@@ -51,7 +50,7 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = {'algorithm', 'data version', 'binning', '# bins', '# std',
+excel_cols = {'algorithm', 'data version', 'binning', '# bins', '# std', 'window size',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -783,7 +782,8 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
 
                                 FSTM_in = squeeze(processed)
 
-                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels, FSTM_in)
+                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels,
+                                                                                            FSTM_in)
 
                                 p_pkt_dict = test_sets_base_folder + '\\labels_{}_{}_{}_{}_{}'.format(
                                     binning_method, number_of_bins, injection_length,
@@ -885,7 +885,8 @@ def create_test_files_DFA(injection_config, group=''):
                                 # iterate over anomalous_data, if a packet is anomalous, mark the transition from its' corresponding
                                 # state as anomalous.
 
-                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels, dfa_in)
+                                transitions_labels, pkts_to_states = get_transitions_labels(anomalous_data, labels,
+                                                                                            dfa_in)
 
                                 if group != '':
                                     middle = '\\DFA_{}'.format(group)
@@ -2192,8 +2193,8 @@ def detect_LSTM(lstm_config, injection_config):
 
                 pred = LSTM.predict(val_X)
                 deviations = calc_deviations(pred, val_y)
-                mean = statistics.mean(deviations)
-                std = statistics.stdev(deviations)
+                mean = np.mean(deviations)
+                std = np.std(deviations, dtype=np.float64)
                 for num_std in nums_std:
                     threshold = mean + std * num_std
 
@@ -2205,16 +2206,17 @@ def detect_LSTM(lstm_config, injection_config):
                             else:
                                 for percentage in percentages:
                                     for epsilon in injection_epsilons:
-                                        suffix = '{}_{}_{}_{}_{}_{}'.format(folder_name,
-                                                                            bin_part,
+                                        suffix = '{}_{}_{}_{}_{}_{}'.format(file_name,
+                                                                            binning_method,
                                                                             number_of_bins,
                                                                             injection_length,
                                                                             step_over,
                                                                             percentage)
+                                        folder = '//LSTM//{}_{}_{}'.format(folder_name, binning_method, number_of_bins)
 
-                                        p_x_test = test_sets_base_folder + '//LSTM//X_' + suffix
-                                        p_y_test = test_sets_base_folder + '//LSTM//y_' + suffix
-                                        p_labels = test_sets_base_folder + '//LSTM//labels_' + suffix
+                                        p_x_test = test_sets_base_folder + folder + '//X_test_' + suffix
+                                        p_y_test = test_sets_base_folder + folder + '//y_test_' + suffix
+                                        p_labels = test_sets_base_folder + folder + '//labels_' + suffix
 
                                         with open(p_x_test, mode='rb') as x_path:
                                             X_test = pickle.load(x_path)
@@ -2226,8 +2228,6 @@ def detect_LSTM(lstm_config, injection_config):
                                         test_pred = LSTM.predict(X_test)
                                         test_deviations = calc_deviations(Y_test, test_pred)
                                         pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
-                                        precision, recall, auc_score, f1, prc_auc_score = get_metrics(labels,
-                                                                                                      pred_labels)
 
                                         for w in window_sizes:
                                             true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
@@ -2245,38 +2245,42 @@ def detect_LSTM(lstm_config, injection_config):
                                             labels_test_df['# std'] = num_std
                                             labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
 
-                                        result = {'data version': data_version['name'],
-                                                  'binning': bin_part,
-                                                  '# bins': number_of_bins,
-                                                  '# std': num_std,
-                                                  'injection length': injection_length,
-                                                  'percentage': percentage,
-                                                  'precision': precision,
-                                                  'recall': recall,
-                                                  'auc': auc_score,
-                                                  'f1': f1,
-                                                  'prc': prc_auc_score}
+                                            precision, recall, auc_score, f1, prc_auc_score = get_metrics(true_windows_labels,
+                                                                                                          model_windows_labels)
 
-                                        for col_name in excel_cols.difference(LSTM_detection_cols):
-                                            result[col_name] = '-'
-                                        results_df = pd.concat(
-                                            [results_df,
-                                             pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
-                                                                    orient='index')],
-                                            axis=0, ignore_index=True)
-                                        with open(test_LSTM_STD_log, mode='a') as test_log:
-                                            test_log.write(
-                                                'tested, data version:{}, binning:{}, #bins:{}\n'.format(folder_name,
-                                                                                                         binning_method,
-                                                                                                         number_of_bins))
-                                            test_log.write(
-                                                'injection: {}, {}, {}\n'.format(injection_length, step_over,
-                                                                                 percentage))
-                                            test_log.write(
-                                                'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
-                                                                                                          prc_auc_score,
-                                                                                                          precision,
-                                                                                                          recall))
+                                            result = {'data version': data_version['name'],
+                                                      'binning': bin_part,
+                                                      '# bins': number_of_bins,
+                                                      '# std': num_std,
+                                                      'window size': w,
+                                                      'injection length': injection_length,
+                                                      'percentage': percentage,
+                                                      'precision': precision,
+                                                      'recall': recall,
+                                                      'auc': auc_score,
+                                                      'f1': f1,
+                                                      'prc': prc_auc_score}
+
+                                            for col_name in excel_cols.difference(LSTM_detection_cols):
+                                                result[col_name] = '-'
+                                            results_df = pd.concat(
+                                                [results_df,
+                                                 pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
+                                                                        orient='index')],
+                                                axis=0, ignore_index=True)
+                                            with open(test_LSTM_STD_log, mode='a') as test_log:
+                                                test_log.write(
+                                                    'tested, data version:{}, binning:{}, #bins:{}, window: {}\n'.format(folder_name,
+                                                                                                             binning_method,
+                                                                                                             number_of_bins, w))
+                                                test_log.write(
+                                                    'injection: {}, {}, {}\n'.format(injection_length, step_over,
+                                                                                     percentage))
+                                                test_log.write(
+                                                    'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
+                                                                                                              prc_auc_score,
+                                                                                                              precision,
+                                                                                                              recall))
     results_df['algorithm'] = 'LSTM+STD'
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM+STD scores')
@@ -2310,7 +2314,6 @@ def create_val_for_LSTM(lstm_config):
                     cols_not_to_bin = data_version['no_bin']
                     model_name = '{}_{}_{}'.format(file_name, binning_method, number_of_bins)
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
-
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:

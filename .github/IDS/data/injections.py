@@ -103,7 +103,9 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
                     max_limit = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=epsilon)
                     if new_time > max_limit:
                         new_time = max_limit
-                    labels[j] = 1
+                    labels[j + 1] = 1
+                    if i > 0:
+                        labels[i] = 1
                     test_data.iloc[j, 0] = new_time
         else:
             for j in range(i, i + injection_length):
@@ -111,14 +113,17 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
                 prev_pkt_idx = j - 1
                 if j < 0:
                     j = -1
-                if prev_pkt_idx != -1:
-                    prev_time = cpy.iloc[prev_pkt_idx, 0]
-                    inter_arrival = (old_time - prev_time).total_seconds()
-                    new_inter_arrival_time = inter_arrival * (1 + (percentage / 100))
-                    new_time = prev_time + timedelta(seconds=new_inter_arrival_time)
+                next_pkt_idx = j + 1
+                if next_pkt_idx >= len(test_data):
+                    next_pkt_idx = -1
+                if prev_pkt_idx != -1 and next_pkt_idx != -1:
+                    nxt_time = cpy.iloc[next_pkt_idx, 0]
+                    inter_arrival = (nxt_time - old_time).total_seconds()  # wrt to next one.
+                    new_inter_arrival_time = inter_arrival * (1 - (percentage / 100))  # inc ia time
+                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=new_inter_arrival_time)  # wrt to next one.
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
-                    min_limit = prev_time + timedelta(seconds=epsilon)
+                    min_limit = test_data.iloc[prev_pkt_idx, 0] + timedelta(seconds=epsilon)
                     if new_time < min_limit:
                         new_time = min_limit
                     labels[j] = 1
