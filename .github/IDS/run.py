@@ -2654,3 +2654,27 @@ def cal_MLE_std(values):
 def calc_p_value(mean, std, value):
     z_score = (value - mean) / std
     return scipy.stats.norm.sf(abs(z_score), loc=mean, scale=std)
+
+
+def measure_lag(pred_labels, true_labels, injection_length, step_over, window_size, offset=0):
+    # pred is for windows
+    # true is for packets
+    i = offset
+    detected = 0
+    missed = 0
+    mean_lag = 0
+    while i < len(true_labels):
+        possible_windows = pred_labels[i: i + injection_length + step_over - window_size]
+        if max(possible_windows) == 1:
+            detected += 1
+            lag = -1
+            for i in range(len(possible_windows)):
+                if possible_windows[i] == 1:
+                    lag = i
+                    break
+            mean_lag += lag
+        else:
+            missed += 1
+    mean_lag /= detected
+    return detected, missed, mean_lag
+
