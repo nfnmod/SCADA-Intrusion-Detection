@@ -8,11 +8,13 @@ from pathlib import Path
 import keras.models
 import numpy as np
 import pandas as pd
+import scipy
 import tensorflow
 import yaml
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, precision_score, \
     recall_score, mean_squared_error
 from sklearn.svm import OneClassSVM
+from scipy.spatial import distance
 
 import data
 import models
@@ -50,12 +52,12 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = {'algorithm', 'data version', 'binning', '# bins', '# std', 'window size',
+excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric', 'window size',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
@@ -64,17 +66,20 @@ OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
-LSTM_detection_cols = {'data version', 'binning', '# bins', '# std', 'injection length', 'step over', 'percentage',
+LSTM_detection_cols = ['data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric', 'injection length', 'step over',
+                       'percentage',
                        'precision',
-                       'recall', 'auc', 'f1', 'prc'}
+                       'recall', 'auc', 'f1', 'prc']
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
 
 window_sizes = [400, 600, 800, 1000]
+p_values = [0.01, 0.03, 0.05]
 
-nums_std = [2, 2.5, 3]
+nums_std = [0, 1, 2, 3]
+num_stds_count = [0, 1, 2, 3]
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -2146,7 +2151,7 @@ def test_LSTM(train_config, raw_test_data):
         results_df.to_excel(writer, sheet_name='LSTM scores')
 
 
-def detect_LSTM(lstm_config, injection_config):
+def detect_LSTM(lstm_config, injection_config, d='L2', t='std'):
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
 
     # grid over the lstm data sets : get labels and data.
@@ -2157,7 +2162,7 @@ def detect_LSTM(lstm_config, injection_config):
 
     results_df = pd.DataFrame(columns=excel_cols)
     labels_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', '#std', 'injection length', 'percentage',
+        columns=['data version', 'binning', '# bins', '#std', 'p_value', 'distance metric', 'injection length', 'percentage',
                  'window size',
                  '# window', 'model label', 'true label'])
 
@@ -2188,15 +2193,37 @@ def detect_LSTM(lstm_config, injection_config):
                 model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
                 dump_model = data.modeles_path + '\\{}_{}'.format(bin_part, version_part)
 
+                pred = LSTM.predict(val_X)
+
+                if d == 'MD':
+                    data_for_cov = np.concatenate([val_X[0], val_y])  # covariance of validation data.
+                    cov_val = np.cov(np.transpose(data_for_cov))
+                    cov_val_inv = np.linalg.inv(cov_val)
+                    deviations = calc_MD(pred, val_y, cov_val_inv)  # Mahalanobis distance of prediction from ground truth.
+                elif d == 'L1':
+                    deviations = calc_L1(pred, val_y)
+                else:
+                    deviations = calc_L2(pred, val_y)
+
+                val_size = len(val_X)
+                mean = calc_MLE_mean(deviations)
+                std = cal_MLE_std(deviations)
+
                 with open(dump_model + '\\' + model_name, mode='rb') as model_path:
                     LSTM = keras.models.load_model(model_path)
 
-                pred = LSTM.predict(val_X)
-                deviations = calc_deviations(pred, val_y)
-                mean = np.mean(deviations)
-                std = np.std(deviations, dtype=np.float64)
-                for num_std in nums_std:
-                    threshold = mean + std * num_std
+                limits = None
+                if t == 'std':
+                    limits = nums_std
+                else:
+                    limits = p_values
+
+                for limit in limits:
+                    if t == 'std':
+                        threshold = mean + std * limit
+                        val_labels = [1 if dist > threshold else 0 for dist in deviations]
+                    else:
+                        val_labels = [1 if calc_p_value(mean, std, dist) < limit else 0 for dist in deviations]
 
                     for injection_length in injection_lengths:
                         for step_over in step_overs:
@@ -2226,61 +2253,101 @@ def detect_LSTM(lstm_config, injection_config):
                                             labels = pickle.load(l_path)
 
                                         test_pred = LSTM.predict(X_test)
-                                        test_deviations = calc_deviations(Y_test, test_pred)
-                                        pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
+
+                                        if d == 'MD':
+                                            data_for_cov_test = np.concatenate(
+                                                [X_test[0], Y_test])  # covariance of validation data.
+                                            cov_val_test = np.cov(np.transpose(data_for_cov_test))
+                                            cov_test_inv = np.linalg.inv(cov_val_test)
+
+                                            test_deviations = calc_MD(test_pred, Y_test, cov_test_inv)
+                                        elif d == 'L1':
+                                            test_deviations = calc_L1(test_pred, Y_test)
+                                        else:
+                                            test_deviations = calc_L2(test_pred, Y_test)
+
+                                        if t == '# std':
+                                            pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
+                                        else:
+                                            pred_labels = [1 if calc_p_value(mean, std, dist) < limit else 0 for dist in test_deviations]
 
                                         for w in window_sizes:
-                                            true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
-                                                pred_labels, labels, w)
-                                            labels_test_df = pd.DataFrame(columns=labels_df.columns)
-                                            labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
-                                            labels_test_df['window size'] = w
-                                            labels_test_df['model label'] = model_windows_labels
-                                            labels_test_df['true label'] = true_windows_labels
-                                            labels_test_df['data version'] = data_version['name']
-                                            labels_test_df['binning'] = bin_part
-                                            labels_test_df['# bins'] = number_of_bins
-                                            labels_test_df['injection length'] = injection_length
-                                            labels_test_df['percentage'] = percentage
-                                            labels_test_df['# std'] = num_std
-                                            labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
+                                            above_thresh_counts = []
+                                            for i in range(val_size - w + 1):
+                                                count = sum(val_labels[i: i + w])
+                                                above_thresh_counts.append(count)
 
-                                            precision, recall, auc_score, f1, prc_auc_score = get_metrics(true_windows_labels,
-                                                                                                          model_windows_labels)
+                                            count_mean = calc_MLE_mean(above_thresh_counts)
+                                            count_std = cal_MLE_std(above_thresh_counts)
 
-                                            result = {'data version': data_version['name'],
-                                                      'binning': bin_part,
-                                                      '# bins': number_of_bins,
-                                                      '# std': num_std,
-                                                      'window size': w,
-                                                      'injection length': injection_length,
-                                                      'percentage': percentage,
-                                                      'precision': precision,
-                                                      'recall': recall,
-                                                      'auc': auc_score,
-                                                      'f1': f1,
-                                                      'prc': prc_auc_score}
+                                            for num_std_count in num_stds_count:
+                                                count_threshold = count_mean + count_std * num_std_count
+                                                true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
+                                                    pred_labels, labels, w, count_threshold)
+                                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                                labels_test_df['# window'] = [i for i in
+                                                                              range(len(true_windows_labels))]
+                                                labels_test_df['window size'] = w
+                                                labels_test_df['model label'] = model_windows_labels
+                                                labels_test_df['true label'] = true_windows_labels
+                                                labels_test_df['data version'] = data_version['name']
+                                                labels_test_df['binning'] = bin_part
+                                                labels_test_df['# bins'] = number_of_bins
+                                                labels_test_df['injection length'] = injection_length
+                                                labels_test_df['percentage'] = percentage
+                                                if t == '# std':
+                                                    labels_test_df['# std'] = limit
+                                                    labels_test_df['p_value'] = '-'
+                                                else:
+                                                    labels_test_df['# std'] = '-'
+                                                    labels_test_df['p_value'] = limit
+                                                labels_test_df['distance metric'] = d
+                                                labels_test_df['# std count'] = num_std_count
+                                                labels_df = pd.concat([labels_df, labels_test_df], ignore_index=True)
 
-                                            for col_name in excel_cols.difference(LSTM_detection_cols):
-                                                result[col_name] = '-'
-                                            results_df = pd.concat(
-                                                [results_df,
-                                                 pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
-                                                                        orient='index')],
-                                                axis=0, ignore_index=True)
-                                            with open(test_LSTM_STD_log, mode='a') as test_log:
-                                                test_log.write(
-                                                    'tested, data version:{}, binning:{}, #bins:{}, window: {}\n'.format(folder_name,
-                                                                                                             binning_method,
-                                                                                                             number_of_bins, w))
-                                                test_log.write(
-                                                    'injection: {}, {}, {}\n'.format(injection_length, step_over,
-                                                                                     percentage))
-                                                test_log.write(
-                                                    'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(auc_score, f1,
-                                                                                                              prc_auc_score,
-                                                                                                              precision,
-                                                                                                              recall))
+                                                precision, recall, auc_score, f1, prc_auc_score = get_metrics(
+                                                    true_windows_labels,
+                                                    model_windows_labels)
+
+                                                result = {'data version': data_version['name'],
+                                                          'binning': bin_part,
+                                                          '# bins': number_of_bins,
+                                                          '# std': limit if t == '# std' else '-',
+                                                          'p_value': limit if t == 'p_value' else '-',
+                                                          'distance metric': d,
+                                                          '# std count': num_std_count,
+                                                          'window size': w,
+                                                          'injection length': injection_length,
+                                                          'percentage': percentage,
+                                                          'precision': precision,
+                                                          'recall': recall,
+                                                          'auc': auc_score,
+                                                          'f1': f1,
+                                                          'prc': prc_auc_score}
+
+                                                for col_name in excel_cols:
+                                                    if col_name not in LSTM_detection_cols:
+                                                        result[col_name] = '-'
+                                                results_df = pd.concat(
+                                                    [results_df,
+                                                     pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
+                                                                            orient='index')],
+                                                    axis=0, ignore_index=True)
+                                                with open(test_LSTM_STD_log, mode='a') as test_log:
+                                                    test_log.write(
+                                                        'tested, data version:{}, binning:{}, #bins:{}, window: {}, {}: {}, # std count: {}, distance:{}\n'.format(
+                                                            folder_name,
+                                                            binning_method,
+                                                            number_of_bins, w, t, limit, num_std_count, d))
+                                                    test_log.write(
+                                                        'injection: {}, {}, {}\n'.format(injection_length, step_over,
+                                                                                         percentage))
+                                                    test_log.write(
+                                                        'auc:{}, f1:{}, prc:{}, precision:{}, recall:{}\n'.format(
+                                                            auc_score, f1,
+                                                            prc_auc_score,
+                                                            precision,
+                                                            recall))
     results_df['algorithm'] = 'LSTM+STD'
     with pd.ExcelWriter(xl_path) as writer:
         results_df.to_excel(writer, sheet_name='LSTM+STD scores')
@@ -2369,22 +2436,23 @@ def create_raw_test_sets(injections_config):
 
 # xl file will save for each model: model name, model parameters, injection parameters, true labels for window, model labels for windows.
 # this is an additional file. other files for the metrics. true window labels and labels according to the models.
-def LSTM_preds_to_window_preds(model_detections, true_labels, window_size):
+def LSTM_preds_to_window_preds(model_detections, true_labels, window_size, count_threshold):
     model_windows_labels = []
     true_windows_labels = []
     length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
     for i in range(length - window_size + 1):
         true_window_label = max(true_labels[i: i + window_size])
-        if i < 20:
+        if i < 21:
             # there are missing detections for part of the window. consider only labels for the packets
             # for which there are detections.
-            # take labels for packets: i...i+window-1 = predictions from 0...i+window-1-20.
-            # the jth prediction is for the j+20 packet
-            model_window_label = max(model_detections[:i + window_size - 20])
+            # take labels for packets: i...i+window-1 = predictions from 0...i+window-1-21.
+            # the jth prediction is for the j+21 packet (j >= 1)
+            model_window_label = 1 if sum(model_detections[:i + window_size - 21]) > count_threshold else 0
         else:
-            # take labels for packets: i-20...min(i+window-1-20, |detections| - 1).
+            # take labels for packets: i-21...min(i+window-1-21, |detections|).
             # use min to avoid out of boundary exception.
-            model_window_label = max(model_detections[i - 20: min(i + window_size - 20, len(model_detections) - 1)])
+            model_window_label = 1 if sum(
+                model_detections[i - 21: min(i + window_size - 21, len(model_detections))]) > count_threshold else 0
         true_windows_labels.append(true_window_label)
         model_windows_labels.append(model_window_label)
 
@@ -2542,7 +2610,7 @@ def get_transitions_labels(anomalous_data, labels, algo_input):
     return transitions_labels, pkts_to_states
 
 
-def calc_deviations(pred, true):
+def calc_L2(pred, true):
     deviations = []
     for i in range(len(pred)):
         real = true[i]
@@ -2551,3 +2619,38 @@ def calc_deviations(pred, true):
         deviations.append(dist)
 
     return deviations
+
+
+def calc_MD(pred, val_y, cov_val_inv):
+    MDs = []
+    for i in range(len(pred)):
+        MDs.append(distance.mahalanobis(pred[i], val_y[i], cov_val_inv))
+    return MDs
+
+
+def calc_L1(pred, true):
+    distances = []
+    for i in range(len(pred)):
+        real = true[i]
+        predicted = pred[i]
+        dist = abs(real - predicted)
+        distances.append(dist)
+    return distances
+
+
+def calc_MLE_mean(values):
+    return np.mean(values)
+
+
+def cal_MLE_std(values):
+    mle_mean = calc_MLE_mean(values)
+    s = 0
+    for value in values:
+        s += (value - mle_mean) ** 2
+    s /= len(values)
+    return np.sqrt(s)
+
+
+def calc_p_value(mean, std, value):
+    z_score = (value - mean) / std
+    return scipy.stats.norm.sf(abs(z_score), loc=mean, scale=std)
