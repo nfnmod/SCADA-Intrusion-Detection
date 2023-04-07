@@ -2151,7 +2151,7 @@ def test_LSTM(train_config, raw_test_data):
         results_df.to_excel(writer, sheet_name='LSTM scores')
 
 
-def detect_LSTM(lstm_config, injection_config, d='L2', t='std'):
+def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
 
     # grid over the lstm data sets : get labels and data.
@@ -2178,7 +2178,7 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='std'):
             for number_of_bins in numbers_of_bins:
                 validation_X = LSTM_validation + '{}_{}\\X_{}_{}_{}'.format(folder_name, folders[binning_method],
                                                                             file_name, binning_method, number_of_bins)
-                validation_Y = LSTM_validation + '{}_{}\\Y_{}_{}_{}'.format(folder_name, folders[binning_method],
+                validation_Y = LSTM_validation + '{}_{}\\y_{}_{}_{}'.format(folder_name, folders[binning_method],
                                                                             file_name, binning_method,
                                                                             number_of_bins)
 
@@ -2192,6 +2192,8 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='std'):
                 version_part = data_version['name']
                 model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
                 dump_model = data.modeles_path + '\\{}_{}'.format(bin_part, version_part)
+                model_path = dump_model + '\\' + model_name
+                LSTM = keras.models.load_model(model_path)
 
                 pred = LSTM.predict(val_X)
 
@@ -2209,8 +2211,6 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='std'):
                 mean = calc_MLE_mean(deviations)
                 std = cal_MLE_std(deviations)
 
-                with open(dump_model + '\\' + model_name, mode='rb') as model_path:
-                    LSTM = keras.models.load_model(model_path)
 
                 limits = None
                 if t == 'std':
@@ -2664,7 +2664,7 @@ def measure_lag(pred_labels, true_labels, injection_length, step_over, window_si
     missed = 0
     mean_lag = 0
     while i < len(true_labels):
-        possible_windows = pred_labels[i: i + injection_length + step_over - window_size]
+        possible_windows = pred_labels[i: min(i + injection_length + step_over - window_size, len(pred_labels))]
         if max(possible_windows) == 1:
             detected += 1
             lag = -1
@@ -2675,6 +2675,7 @@ def measure_lag(pred_labels, true_labels, injection_length, step_over, window_si
             mean_lag += lag
         else:
             missed += 1
+        i += step_over + injection_length
     mean_lag /= detected
     return detected, missed, mean_lag
 

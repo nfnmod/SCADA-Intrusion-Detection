@@ -1,7 +1,5 @@
 # TODO: KLSTM- validation, testing, detection.
 # TODO: FSTM- validation, testing, detection.
-# TODO: negative % case for injections.
-# TODO: Gaussian Distribution(learn with MLE) + L1/L2(probability of distance), Mahalanobis distance, L1
 
 # EXPERIMENTS:
 train LSTM.

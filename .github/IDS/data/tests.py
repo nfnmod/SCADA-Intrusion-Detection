@@ -370,7 +370,7 @@ class TestDataConversions(unittest.TestCase):
             return inter_arrivals
 
         cpy = df.copy()
-        injected, labels = data.injections.inject_to_raw_data(df, 3, 2, 30, 0.00001)
+        injected, labels = data.injections.inject_to_raw_data(df, 3, 2, 120, 0.00001)
         inter_arrivals = []
         inter_arrivals = make_ia(injected)
         print(make_ia(cpy))
