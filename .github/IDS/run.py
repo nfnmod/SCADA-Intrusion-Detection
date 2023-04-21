@@ -9,12 +9,11 @@ import keras.models
 import numpy as np
 import pandas as pd
 import scipy
-import tensorflow
 import yaml
-from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, precision_score, \
-    recall_score, mean_squared_error
-from sklearn.svm import OneClassSVM
 from scipy.spatial import distance
+from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, precision_score, \
+    recall_score, mean_squared_error, confusion_matrix
+from sklearn.svm import OneClassSVM
 
 import data
 import models
@@ -52,7 +51,8 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric', 'window size',
+excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric',
+              'window size',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
@@ -60,13 +60,14 @@ excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std', '# std 
               'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-OCSVM_cols = {'data version', 'binning', '# bins', 'nu', 'kernel',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+OCSVM_cols = ['data version', 'binning', '# bins', '# std count', 'window size', 'nu', 'kernel',
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 
 DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
-LSTM_detection_cols = ['data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric', 'injection length', 'step over',
+LSTM_detection_cols = ['data version', 'binning', '# bins', '# std', '# std count', 'p_value', 'distance metric',
+                       'injection length', 'step over',
                        'percentage',
                        'precision',
                        'recall', 'auc', 'f1', 'prc']
@@ -88,7 +89,7 @@ xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classi
 
 xl_labels_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\labels.xlsx'
 
-test_LSTM_RF_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM-RF-OCSVM.txt'
+test_LSTM_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_OCSVM.txt'
 test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
 test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
 test_LSTM_STD_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
@@ -1198,7 +1199,7 @@ def make_best(results_df):
 
 
 #################################IRRELEVANT FOR NOW#####################################################
-def test_LSTM_based_classifiers(models_train_config, injection_config, tests_config_path, group=''):
+def test_LSTM_based_classifiers(lstm_config, ocsvm_config, injection_config, group=''):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
     path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
@@ -1223,44 +1224,81 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                     compute metrics and write parameters and scores to file.
     """
     # 1.
-    with open(models_train_config, mode='r') as train_config:
+    """with open(models_train_config, mode='r') as train_config:
         models_folders, data_folders, binning_dict, params = get_models_folders_data_folders(train_config)
         for i in range(len(models_folders)):
             models_folders[i] = group + '_' + models_folders[i]
         for i in range(len(data_folders)):
             data_folders[i] = group + '_' + data_folders[i]
-    with open(injection_config, mode='r') as injection_config:
-        injection_params = yaml.load(injection_config, Loader=yaml.FullLoader)
-    with open(tests_config_path, mode='r') as test_config:
-        test_params = yaml.load(test_config, Loader=yaml.FullLoader)['processing_config']
 
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
+    with open(tests_config_path, mode='r') as test_config:
+        test_params = yaml.load(test_config, Loader=yaml.FullLoader)['processing_config']"""
+
+    binning_methods, numbers_of_bins, data_versions = get_LSTM_params(lstm_config)
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
+
+    with open(ocsvm_config, mode='r') as config:
+        params = yaml.load(config, Loader=yaml.FullLoader)['params_dict']
+
+    kernels = params['kernel']
+    nus = params['nu']
+
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
 
     # 2.
-    for model_type in ['OCSVM', 'RF']:
-        for prefix in ['', 'diff_']:
-            results_df = pd.DataFrame(columns=excel_cols)
-            for models_folder in models_folders:
-                # a.
-                data_version = models_folder.split(sep='_', maxsplit=1)[1]
-                binning_method = data_version.split(sep='_', maxsplit=1)[0]
-                data_version_dict = test_params[data_version]
-                if data_version_dict['use']:
-                    for model_folder in os.listdir(data.modeles_path + '\\' + models_folder):
-                        model_path = data.modeles_path + "\\" + models_folder + "\\" + model_folder
-                        with open(model_folder, mode='rb'):
-                            LSTM = tensorflow.keras.models.load_model(model_path)
-                        model_name = model_folder + '_{}'.format(model_type)
-                        classifiers_dir = models.SCADA_base + '\\{}s\\'.format(model_name) + prefix + models_folder
-                        for classifier in os.listdir(classifiers_dir):
-                            if model_name in classifier:
-                                number_of_bins = model_folder.split(sep='_')[-1]
-                                injection_sets_folder = models_folder + '_' + number_of_bins
-                                desc = data_version_dict['desc']
-                                # b.
+
+    results_df = pd.DataFrame(columns=excel_cols)
+    labels_df = pd.DataFrame(
+        columns=['data version', 'binning', '# bins', 'kernel', 'nu', '# std count', 'injection length',
+                 'percentage',
+                 'window size',
+                 '# window', 'model label', 'true label'])
+    for data_version in data_versions:
+        # a.
+        folder_name = data_version['name']
+        file_name = data_version['desc']
+        for binning_method in binning_methods:
+            bin_part = folders[binning_method]
+            for number_of_bins in numbers_of_bins:
+                validation_X = LSTM_validation + '//{}_{}//X_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                              file_name, binning_method, number_of_bins)
+                validation_Y = LSTM_validation + '//{}_{}//y_{}_{}_{}'.format(folder_name, folders[binning_method],
+                                                                              file_name, binning_method,
+                                                                              number_of_bins)
+
+                with open(validation_X, mode='rb') as val_p:
+                    val_X = pickle.load(val_p)
+
+                with open(validation_Y, mode='rb') as val_p:
+                    val_y = pickle.load(val_p)
+
+                model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
+                dump_model = data.modeles_path + '//{}_{}'.format(bin_part, folder_name)
+                model_path = dump_model + '//' + model_name
+                LSTM = keras.models.load_model(model_path)
+
+                val_pred = LSTM.predict(val_X)
+
+                model_name = model_name + '_OCSVM'
+                classifiers_dir = models.SCADA_base + '//SVM//{}_{}'.format(bin_part, folder_name)
+                for kernel in kernels:
+                    for nu in nus:
+                        # now get the exact svm model.
+                        classifier = model_name + '_nu_{}_kernel_{}.sav'.format(nu, kernel)
+                        with open(classifiers_dir + '//' + classifier,
+                                  mode='rb') as classifier_p:
+                            trained_classifier = pickle.load(classifier_p)
+
+                        val_classifications = trained_classifier.predict(abs(val_pred - val_y))
+
+                        # count -1 in windows.
+                        # calc mean and std and set the threshold.
+                        for window_size in window_sizes:
+                            mean, std = count_outliers(val_classifications, window_size)
+                            for num_std in nums_std:
+                                count_threshold = mean + num_std * std
+
                                 for injection_length in injection_lengths:
                                     for step_over in step_overs:
                                         anomaly_percentage = injection_length / (injection_length + step_over)
@@ -1268,151 +1306,110 @@ def test_LSTM_based_classifiers(models_train_config, injection_config, tests_con
                                             continue
                                         for percentage in percentages:
                                             for epsilon in epsilons:
-                                                p_suffix = '_{}_{}_{}_{}_{}'.format(
-                                                    injection_sets_folder, desc, number_of_bins, desc, injection_length,
-                                                    step_over, percentage, epsilon)
-                                                if group != '':
-                                                    p_suffix = group + p_suffix
+                                                suffix = '{}_{}_{}_{}_{}_{}'.format(file_name,
+                                                                                    binning_method,
+                                                                                    number_of_bins,
+                                                                                    injection_length,
+                                                                                    step_over,
+                                                                                    percentage)
+                                                folder = '//LSTM//{}_{}_{}'.format(folder_name, binning_method,
+                                                                                   number_of_bins)
 
-                                                p_x_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\X_test_' + p_suffix
-                                                p_y_test = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\y_test_' + p_suffix
-                                                p_labels = test_sets_base_folder + '\\LSTM_RF_OCSVM\\{}_{}_{}\\labels_' + p_suffix
+                                                p_x_test = test_sets_base_folder + folder + '//X_test_' + suffix
+                                                p_y_test = test_sets_base_folder + folder + '//y_test_' + suffix
+                                                p_labels = test_sets_base_folder + folder + '//labels_' + suffix
 
-                                                with open(p_x_test, mode='rb') as X_test_path:
-                                                    X_test = pickle.load(X_test_path)
-                                                with open(p_y_test, mode='rb') as Y_test_path:
-                                                    y_test = pickle.load(Y_test_path)
-                                                with open(p_labels, mode='rb') as labels_path:
-                                                    # labels are the labels (1/0) for all the packets.
-                                                    # however, the LSTM predicts the 21st packet and onwards.
-                                                    labels = pickle.load(labels_path)
+                                                with open(p_x_test, mode='rb') as x_path:
+                                                    X_test = pickle.load(x_path)
+                                                with open(p_y_test, mode='rb') as y_path:
+                                                    y_test = pickle.load(y_path)
+                                                with open(p_labels, mode='rb') as l_path:
+                                                    labels = pickle.load(l_path)
 
                                                 pred = LSTM.predict(X_test)
-                                                test_labels = labels[20:]
-                                                if prefix == 'diff_':
-                                                    test = np.abs(pred - y_test)
-                                                else:
-                                                    test = pred
-
-                                                    # now get the exact RF model.
-                                                with open(classifiers_dir + '\\' + classifier,
-                                                          mode='rb') as classifier_p:
-                                                    trained_classifier = pickle.load(classifier_p)
-
-                                                p_dir = LSTM_classifiers_classifications + '\\' + prefix + model_type
+                                                test = np.abs(pred - y_test)
 
                                                 # make classifications.
                                                 classifications = trained_classifier.predict(test)
+                                                classifications = [1 if c == -1 else 0 for c in classifications]
+
+                                                true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
+                                                    classifications, labels, window_size, count_threshold)
+                                                # detected, missed, mean_lag = measure_lag(model_windows_labels, labels, injection_length, step_over, w)
+                                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                                labels_test_df['# window'] = [i for i in
+                                                                              range(len(true_windows_labels))]
+                                                labels_test_df['window size'] = window_size
+                                                labels_test_df['model label'] = model_windows_labels
+                                                labels_test_df['true label'] = true_windows_labels
+                                                labels_test_df['data version'] = data_version['name']
+                                                labels_test_df['binning'] = bin_part
+                                                labels_test_df['# bins'] = number_of_bins
+                                                labels_test_df['injection length'] = injection_length
+                                                labels_test_df['percentage'] = percentage
+                                                labels_test_df['# std count'] = num_std
+                                                with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
+                                                                    if_sheet_exists="overlay") as writer:
+                                                    labels_test_df.to_excel(writer, sheet_name='windows labels')
+
+                                                precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                                                    true_windows_labels,
+                                                    model_windows_labels)
 
                                                 # parameters for excel.
-                                                data_version_for_excel = data_version_dict['name']
+                                                data_version_for_excel = data_version['name']
                                                 binning_method_for_excel = binning_method
                                                 number_of_bins_for_excel = number_of_bins
 
-                                                # calculate metrics.
-                                                precision, recalls, thresholds = precision_recall_curve(
-                                                    y_true=test_labels,
-                                                    probas_pred=classifications)
-                                                precision = precision[0]
-                                                recall = recalls[0]
-                                                auc_score = roc_auc_score(y_true=test_labels, y_score=classifications)
-                                                f1 = f1_score(y_true=test_labels, y_pred=classifications)
-
                                                 result = {'data version': data_version_for_excel,
                                                           'binning': binning_method_for_excel,
-                                                          '# bins': number_of_bins_for_excel,
-                                                          'precision': precision, 'recall': recall, 'auc': auc_score,
-                                                          'f1': f1,
-                                                          'injection length': injection_length,
-                                                          'step over': step_over,
-                                                          'percentage': percentage}
-                                                # describe: data version, binning, number of bins, RF params
-                                                if not os.path.exists(p_dir):
-                                                    Path(p_dir).mkdir(parents=True, exist_ok=True)
-                                                if prefix == 'diff_':
-                                                    split_model = classifier.split(model_name)[1]
-                                                else:
-                                                    split_model = classifier.split(model_name)[0]
-                                                if model_type == 'RF':
-                                                    RF_params_for_excel = split_model.split(sep='_')
-                                                    estimators = RF_params_for_excel[1]
-                                                    criterion = RF_params_for_excel[3]
-                                                    max_feature = RF_params_for_excel[5].split(sep='.')[0]
-                                                    result['# estimators'] = estimators
-                                                    result['criterion'] = criterion
-                                                    result['max features'] = max_feature
-                                                    for col_name in excel_cols.difference(RF_cols):
+                                                          '# bins': number_of_bins_for_excel, '# std count': num_std,
+                                                          'window size': window_size, 'precision': precision,
+                                                          'recall': recall, 'auc': auc_score, 'f1': f1,
+                                                          'injection length': injection_length, 'step over': step_over,
+                                                          'percentage': percentage, 'kernel': kernel, 'nu': nu}
+
+                                                for col_name in excel_cols:
+                                                    if col_name not in OCSVM_cols:
                                                         result[col_name] = '-'
-                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version,
-                                                                                                         binning_method,
-                                                                                                         number_of_bins,
-                                                                                                         estimators,
-                                                                                                         criterion,
-                                                                                                         max_feature,
-                                                                                                         injection_length,
-                                                                                                         step_over,
-                                                                                                         percentage,
-                                                                                                         epsilon)
-                                                else:
-                                                    OCSVM_params_for_excel = split_model.split(sep='_')
-                                                    nu = OCSVM_params_for_excel[1]
-                                                    kernel = OCSVM_params_for_excel[3].split(sep='.')[0]
-                                                    result['kernel'] = kernel
-                                                    result['nu'] = nu
-                                                    for col_name in excel_cols.difference(OCSVM_cols):
-                                                        result[col_name] = '-'
-                                                    p = p_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(data_version,
-                                                                                                      binning_method,
-                                                                                                      number_of_bins,
-                                                                                                      kernel, nu,
-                                                                                                      injection_length,
-                                                                                                      step_over,
-                                                                                                      percentage,
-                                                                                                      epsilon)
-                                                with open(p, mode='wb') as classifications_file:
-                                                    pickle.dump(classifications, classifications_file)
+
                                                 results_df = pd.concat([results_df,
                                                                         pd.DataFrame.from_dict(data={'0': result},
                                                                                                orient='index',
                                                                                                columns=excel_cols)],
                                                                        axis=0,
                                                                        ignore_index=True)
-                                                with open(test_LSTM_RF_OCSVM_log, mode='a') as test_log:
-                                                    test_log.write('recorded results of model from type: {}\n'.format(
-                                                        prefix + model_type))
+                                                with open(test_LSTM_OCSVM_log, mode='a') as test_log:
+                                                    test_log.write('recorded results of OCSVM\n')
                                                     test_log.write(
                                                         'injection parameters are: len: {}, step: {}, %: {}, eps: {}\n'.format(
                                                             injection_length, step_over, percentage, epsilon))
                                                     test_log.write('model parameters:\n')
                                                     test_log.write(
-                                                        'data version: {}, # bins: {}, binning method: {}\n'.format(
+                                                        'data version: {}, # bins: {}, binning method: {} ,# std:{}\n'.format(
                                                             data_version_for_excel, number_of_bins_for_excel,
-                                                            binning_method_for_excel))
-                                                    if model_type == 'RF':
-                                                        test_log.write(
-                                                            '# estimators: {}, criterion: {}, max features: {}\n'.format(
-                                                                result['# estimators'], result['criterion'],
-                                                                result['max features']))
-                                                    else:
-                                                        test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
-                                                                                                     result['nu']))
+                                                            binning_method_for_excel, num_std))
+                                                    test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
+                                                                                                 result['nu']))
                                                     test_log.write(
-                                                        'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(
-                                                            result['precision'], result['recall'], result['auc scores'],
-                                                            result['f1']))
-            best_df = make_best(results_df)
+                                                        'auc:{}, f1:{}, prc:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
+                                                            auc_score, f1,
+                                                            prc_auc_score,
+                                                            precision,
+                                                            recall, tn, fp, fn, tp))
+    best_df = make_best(results_df)
 
-            with pd.ExcelWriter(xl_path) as writer:
-                best_df['name'] = prefix + model_type
-                results_df['name'] = prefix + model_type
-                sheet = prefix + model_type + ' performance.'
-                if group != '':
-                    sheet += 'group: {}'.format(group)
-                results_df.to_excel(excel_writer=writer, sheet_name=sheet)
-                sheet = prefix + model_type + ' best scores.'
-                if group != '':
-                    sheet += 'group: {}'.format(group)
-                best_df.to_excel(excel_writer=writer, sheet_name=sheet)
+    with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl", if_sheet_exists="replace") as writer:
+        best_df['algorithm'] = 'OCSVM'
+        results_df['algorithm'] = 'OCSVM'
+        sheet = 'OCSVM performance.'
+        # if group != '':
+        # sheet += 'group: {}'.format(group)
+        results_df.to_excel(excel_writer=writer, sheet_name=sheet)
+        sheet = 'OCSVM best scores.'
+        # if group != '':
+        # sheet += 'group: {}'.format(group)
+        best_df.to_excel(excel_writer=writer, sheet_name=sheet)
 
 
 #################################IRRELEVANT FOR NOW#####################################################
@@ -2162,7 +2159,8 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
 
     results_df = pd.DataFrame(columns=excel_cols)
     labels_df = pd.DataFrame(
-        columns=['data version', 'binning', '# bins', '#std', 'p_value', 'distance metric', 'injection length', 'percentage',
+        columns=['data version', 'binning', '# bins', '#std', 'p_value', 'distance metric', 'injection length',
+                 'percentage',
                  'window size',
                  '# window', 'model label', 'true label'])
 
@@ -2201,7 +2199,8 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
                     data_for_cov = np.concatenate([val_X[0], val_y])  # covariance of validation data.
                     cov_val = np.cov(np.transpose(data_for_cov))
                     cov_val_inv = np.linalg.inv(cov_val)
-                    deviations = calc_MD(pred, val_y, cov_val_inv)  # Mahalanobis distance of prediction from ground truth.
+                    deviations = calc_MD(pred, val_y,
+                                         cov_val_inv)  # Mahalanobis distance of prediction from ground truth.
                 elif d == 'L1':
                     deviations = calc_L1(pred, val_y)
                 else:
@@ -2210,7 +2209,6 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
                 val_size = len(val_X)
                 mean = calc_MLE_mean(deviations)
                 std = cal_MLE_std(deviations)
-
 
                 limits = None
                 if t == 'std':
@@ -2269,7 +2267,8 @@ def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
                                         if t == '# std':
                                             pred_labels = [1 if dist > threshold else 0 for dist in test_deviations]
                                         else:
-                                            pred_labels = [1 if calc_p_value(mean, std, dist) < limit else 0 for dist in test_deviations]
+                                            pred_labels = [1 if calc_p_value(mean, std, dist) < limit else 0 for dist in
+                                                           test_deviations]
 
                                         for w in window_sizes:
                                             above_thresh_counts = []
@@ -2571,8 +2570,9 @@ def get_metrics(y_true, y_pred):
     auc_score = roc_auc_score(y_true=y_true, y_score=y_pred)
     f1 = f1_score(y_true=y_true, y_pred=y_pred)
     prc_auc_score = auc(recalls, precisions)
+    tn, fp, fn, tp = confusion_matrix(y_true=y_true, y_pred=y_pred).ravel()
 
-    return precision, recall, auc_score, f1, prc_auc_score
+    return precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp
 
 
 def get_transitions_labels(anomalous_data, labels, algo_input):
@@ -2679,3 +2679,12 @@ def measure_lag(pred_labels, true_labels, injection_length, step_over, window_si
     mean_lag /= detected
     return detected, missed, mean_lag
 
+
+def count_outliers(svm_classification, window_size):
+    counts = []
+    for i in range(len(svm_classification) - window_size + 1):
+        w = svm_classification[i: i + window_size]
+        count = sum([1 if classification == -1 else 0 for classification in w])
+        counts.append(count)
+
+    return calc_MLE_mean(counts), cal_MLE_std(counts)
