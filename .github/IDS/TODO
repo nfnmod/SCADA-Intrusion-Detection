@@ -6,16 +6,21 @@ train LSTM.
 create test sets- for LSTM detector.
 create validation sets for LSTM.
 test LSTM based detectors.
+
 train DFA.
 create test sets.
 test DFA.
+
+train HTM.
+train HTM based classifiers.
+test HTM based classifiers.
+
 define events then run KL.
 train KLSTM.
 test KLSTM.
 train KLSTM based classifiers.
 test KLSTM based classifiers.
-train HTM.
-train HTM based classifiers.
-test HTM based classifiers.
+
+
 train FSTM.
 test FSTM.

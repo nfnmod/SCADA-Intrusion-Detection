@@ -862,7 +862,7 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 # ---------------------------------------------------------------------------------------------------------------------------
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
-def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None):
+def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None, fill=True):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -955,6 +955,11 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
             else:
                 # there was no state change. so we got 1 more packet in the same state and stayed longer in it
                 time_vals_df.iloc[df_len - 1, 1] += new['time']
+
+    # if we dont fill missing values, then don't bin and scale. Simply return the data frame. This is used only
+    # for the purpose of training DFAs.
+    if not fill:
+        return time_vals_df
 
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
@@ -1631,7 +1636,7 @@ def get_inter_arrival_times_stats():
     return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
-def process(data, name, bins, binning, scale=True, binner_path=None):
+def process(data, name, bins, binning, scale=True, binner_path=None, registers=most_used, fill=True):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
@@ -1686,7 +1691,7 @@ def process(data, name, bins, binning, scale=True, binner_path=None):
         return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
                                binner_path=binner_path, load_binner=True)
     elif name == 'v3':
-        return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
+        return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, fill=fill)
     elif name == 'v3_2':
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
     else:
