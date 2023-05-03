@@ -547,7 +547,7 @@ def equal_frequency_discretization(df, col_name, n_bins, path=None):
 # ---------------------------------------------------------------------------------------------------------------------------#
 # construct the data. each entry saves the time passed from the last packet and registers values
 # works on data from a group of PLCs.
-def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True, binner_path=None):
+def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True, binner_path=None,  get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
 
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
@@ -556,6 +556,8 @@ def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
     cols = np.concatenate((['time'], registers))
+    if get_cols:
+        return cols
 
     IPs = list(pkt_df['src_ip'].unique())
     avgs_dict = {IP: None for IP in IPs}
@@ -697,7 +699,7 @@ def make_entry_v2(src_port, curr, registers, new, prev_entry, i, avgs, prev, las
 # save inter-arrival time, values of registers ,
 # time since registers got those values, similarity score to previous known state
 def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None,
-                    load_binner=False):
+                    load_binner=False, get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -706,6 +708,8 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 
     times = ['time_' + str(r_num) for r_num in registers]
     cols = np.concatenate((['time'], registers, times))
+    if get_cols:
+        return cols
 
     time_vals_df = pd.DataFrame(columns=cols)
 
@@ -862,7 +866,7 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 # ---------------------------------------------------------------------------------------------------------------------------
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
-def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None, fill=True):
+def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None, fill=True, get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -872,6 +876,8 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
     regs_copy = registers.copy()
     cols = np.concatenate((['time', 'time_in_state'], regs_copy))
     time_vals_df = pd.DataFrame(columns=cols)
+    if get_cols:
+        return cols
 
     for i in range(1, len(pkt_df)):
         # entries from the original data frame
@@ -1636,7 +1642,7 @@ def get_inter_arrival_times_stats():
     return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
-def process(data, name, bins, binning, scale=True, binner_path=None, registers=most_used, fill=True):
+def process(data, name, bins, binning, scale=True, binner_path=None, registers=most_used, fill=True, get_cols=False):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
@@ -1681,19 +1687,19 @@ def process(data, name, bins, binning, scale=True, binner_path=None, registers=m
                             binner_path=binner_path)
     elif name == 'v1_1':
         return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v1, scale=scale,
-                               binner_path=binner_path)
+                               binner_path=binner_path, get_cols=get_cols)
     elif name == 'v1_2':
         return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2, scale=scale,
                                binner_path=binner_path)
     elif name == 'v2':
-        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
+        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, get_cols=get_cols)
     elif name == 'v2_abstract':
         return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
                                binner_path=binner_path, load_binner=True)
     elif name == 'v3':
         return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, fill=fill)
     elif name == 'v3_2':
-        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path)
+        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, get_cols=get_cols)
     else:
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
                                  binner_path=binner_path, load_binner=True)

@@ -62,7 +62,7 @@ RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'ma
 OCSVM_cols = ['data version', 'binning', '# bins', '# std count', 'window size', 'nu', 'kernel',
               'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 
-DFA_cols = {'binning', '# bins', 'injection length', 'step over', 'percentage', 'precision',
+DFA_cols = {'binning', '# bins', '# std count', 'injection length', 'step over', 'percentage', 'precision',
             'recall', 'auc', 'f1', 'prc'}
 
 LSTM_detection_cols = ['data version', 'binning', '# bins', '# std count', 'window size', 'injection length',
@@ -91,8 +91,8 @@ test_LSTM_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\l
 test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
 test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
 test_LSTM_STD_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
-
-LSTM_validation = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation\\LSTM\\'
+val_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation'
+LSTM_validation = val_base + '\\LSTM\\'
 
 
 def get_models_folders_data_folders(train_config):
@@ -156,9 +156,9 @@ def train_automaton(group=None):
     :return:
     """
     if group is not None:
-        pkts = data.load(data.datasets_path, "MODBUS_TCP_TRAIN_{}".format(group))
+        pkts = data.load(data.datasets_path, "TRAIN_{}".format(group))
     else:
-        pkts = data.load(data.datasets_path, "MODBUS_TCP_TRAIN")
+        pkts = data.load(data.datasets_path, "TRAIN")
 
     bins, binning_methods, names = get_DFA_params()
 
@@ -177,8 +177,6 @@ def train_automaton(group=None):
                 if col_name in registers:
                     binner = binning_methods[binning_method]
                     binner_full_path = 'DFA//{}_{}'.format(names[binning_method], b)
-                    if not os.path.exists(binner_full_path):
-                        Path(binners_base + '//' + binner_full_path).mkdir(parents=True, exist_ok=True)
                     train_data[col_name] = binner(train_data, col_name, b, binner_full_path)
 
             with open(DFA_log, mode='a') as log:
@@ -619,58 +617,76 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
 
 
 ##########################################################################################
-# process the raw data using some method without binning but with scaling. Then split the data, convert to csv and save.
-# The csv file is formatted by the requirements of HTM.
-def create_data_for_HTM(HTM_input_creation_config, many=False, g_ids=None):
-    """
-    open file, for each data version:
-                    go over all bins, methods combinations and apply data processing.
-                    save the train and test sets.
-    """
-    if not many:
-        pkt_df = data.load(data.datasets_path, "modbus")
-        helper(HTM_input_creation_config, pkt_df)
-    else:
-        for g in g_ids:
-            with open(group_df_base + '_' + g, mode='rb') as group_df_path:
-                g_df = pickle.load(group_df_path)
-                helper(HTM_input_creation_config, g_df, g)
+def create_train_sets_HTM(train_config):
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+    # lstm params.
+    methods, bins, data_versions = get_LSTM_params(train_config)
+
+    for data_version in data_versions:
+        folder_name = data_version['name']
+        for number_of_bins in bins:
+            for method in methods:
+                method_folder = folders[method]
+                version_desc = data_version['desc']
+                data_folder_path = data.datasets_path + '//{}_{}'.format(method_folder, folder_name)
+                dataset_name = 'X_train_{}_{}_{}'.format(version_desc, method, number_of_bins)
+                with open(data_folder_path + '//' + dataset_name, mode='rb') as data_f:
+                    train_df = pickle.load(data_f)
+                y_train_path = 'y_train_{}_{}_{}'.format(version_desc, method, number_of_bins)
+                with open(data_folder_path + '//' + y_train_path, mode='rb') as y_f:
+                    y_train = pickle.load(y_f)
+                train_df = np.concatenate([train_df[0], y_train])
+                htm_df_base_path = HTM_base + '//datasets//' + '{}_{}'.format(method_folder, folder_name)
+                htm_df_name = dataset_name
+                if not os.path.exists(htm_df_base_path):
+                    Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
+                                    registers=data.most_used, fill=True, get_cols=True)
+                write_df_to_csv(train_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
 
 
-# run with x_val to create validation sets.
-def helper(HTM_input_creation_config, pkt_df, g='', df_type='train'):
-    with open(HTM_input_creation_config, mode='r') as input_config:
-        params = yaml.load(input_config, Loader=yaml.FullLoader)
-        versions_dicts = params['processing_config']
-        for version_dict in versions_dicts:
-            data_version = version_dict['name']
-            use = version_dict['use']
-            if not use:
-                pass
-            else:
-                # X_train will be used to train the HTM network.
-                X_train = data.process(pkt_df, data_version, None, None)
-                # 1. write column names.
-                # 2. write columns data types.
-                # 3. write df to csv without the columns names.
-                folder = HTM_base + '\\datasets\\' + '{}'.format(data_version)
+def write_df_to_csv(df_arr, cols, path):
+    with open(path, 'w', newline='') as train_file:
+        train_writer = csv.writer(train_file)
+        # write the field names.
+        train_cols = cols
+        train_writer.writerow(train_cols)
+        # write the field types.
+        train_cols_types = ['float'] * len(train_cols)
+        train_writer.writerow(train_cols_types)
+        # use no flags.
+        train_writer.writerow([None] * len(train_cols))
+    pd.DataFrame(df_arr).to_csv(path_or_buf=path, index=False, header=False, mode='a')
 
-                train_path_str = folder + '\\' + "X_" + df_type + "_" + g + '_' + data_version + ".csv"
-                train_path = Path(train_path_str)
 
-                train_path.parent.mkdir(parents=True, exist_ok=True)
+def create_val_sets_htm(train_config):
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+    # lstm params.
+    methods, bins, data_versions = get_LSTM_params(train_config)
 
-                with open(train_path_str, 'w', newline='') as train_file:
-                    train_writer = csv.writer(train_file)
-                    # write the field names.
-                    train_cols = list(X_train.columns)
-                    train_writer.writerow(train_cols)
-                    # write the field types.
-                    train_cols_types = ['float'] * len(train_cols)
-                    train_writer.writerow(train_cols_types)
-                    # use no flags.
-                    train_writer.writerow([])
-                X_train.to_csv(path_or_buf=train_path, index=False, header=False, mode='a')
+    for data_version in data_versions:
+        folder_name = data_version['name']
+        for number_of_bins in bins:
+            for method in methods:
+                method_folder = folders[method]
+                version_desc = data_version['desc']
+                data_folder_path = val_base + '//LSTM//{}_{}'.format(folder_name, method_folder)
+                dataset_name = 'X_{}_{}_{}'.format(version_desc, method, number_of_bins)
+                with open(data_folder_path + '//' + dataset_name, mode='rb') as data_f:
+                    val_df = pickle.load(data_f)
+                y_val_path = 'y_{}_{}_{}'.format(version_desc, method, number_of_bins)
+                with open(data_folder_path + '//' + y_val_path, mode='rb') as y_f:
+                    y_val = pickle.load(y_f)
+                val_df = np.concatenate([val_df[0], y_val])
+                htm_df_base_path = val_base + '//HTM//' + '{}_{}'.format(method_folder, folder_name)
+                htm_df_name = dataset_name
+                if not os.path.exists(htm_df_base_path):
+                    Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
+                                    registers=data.most_used, fill=True, get_cols=True)
+                write_df_to_csv(val_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
 
 
 """
@@ -679,75 +695,53 @@ Use configuration file to create them.
 """
 
 
-def create_test_files_HTM(raw_test_data_df, data_versions_config, injection_config, group_id=''):
-    """
-    grid over injection params, for each combination : inject anomalies and then process the dataset using all methods.
-    when doing this for many PLCs, need to do this for every group separately.
-    """
-    test_data = data.load(test_sets_base_folder, raw_test_data_df)
-    lim = 0.2  # don't allow more than 20 percent of malicious packets in the data set.
-    with open(injection_config, mode='r') as anomalies_config:
-        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
+def create_test_sets_for_HTM(injection_config, train_config):
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
+    methods, bins, data_versions = get_LSTM_params(train_config)
+    HTM_test_sets_base = test_sets_base_folder + '//HTM'
 
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['percentage']
-    epsilons = injection_params['Epsilon']
-    # first ,inject anomalies. and create the test set.
     for injection_length in injection_lengths:
         for step_over in step_overs:
-            anomaly_percentage = injection_length / (injection_length + step_over)
-            if anomaly_percentage > lim:
-                pass
-            else:
-                for percentage in percentages:
-                    for epsilon in epsilons:
-                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                    percentage,
-                                                                    epsilon)
-                        #  process the data using the different versions
-                        with open(data_versions_config, mode='r') as processing_config:
-                            config = yaml.load(processing_config, Loader=yaml.FullLoader)
+            for percentage in percentages:
+                for epsilon in epsilons:
+                    for method in methods:
+                        for number_of_bins in bins:
+                            for data_version in data_versions:
+                                test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}//'.format(
+                                    data_version['name'], method, number_of_bins)
 
-                        data_versions = config['processing_config']
-
-                        for data_version in data_versions:
-                            to_use = data_version['use']
-                            if not to_use:
-                                pass
-                            else:
-                                name = data_version['name']
-
-                                # same thing but for HTM. no need to save y_test because HTM predicts anomaly scores.
-                                # no binning for HTM, only scaling.
-                                test_df = data.process(anomalous_data, name, None, None)
-                                suffix = '_{}_{}_{}_{}'.format(
-                                    name, injection_length,
+                                p_suffix = '{}_{}_{}_{}_{}_{}'.format(
+                                    data_version['desc'], method, number_of_bins, injection_length,
                                     step_over, percentage)
-                                if group_id != '':
-                                    suffix = group_id + suffix
-                                p_x_test_HTM = test_sets_base_folder + '\\HTM\\X_test_' + suffix + '.csv'
-                                p_labels_HTM = test_sets_base_folder + '\\HTM\\labels_' + suffix
 
-                                if not os.path.exists(test_sets_base_folder + '\\HTM'):
-                                    Path(test_sets_base_folder + '\\HTM').mkdir(parents=True,
-                                                                                exist_ok=True)
+                                X_test_path = test_sets_folder + 'X_test_' + p_suffix
+                                y_test_path = test_sets_folder + 'y_test_' + p_suffix
+                                labels_path = test_sets_folder + 'labels_' + p_suffix
 
-                                with open(p_x_test_HTM, mode='w', newline='') as test_file:
-                                    writer = csv.writer(test_file)
-                                    test_cols = list(test_df.columns)
-                                    # write columns names
-                                    writer.writerow(test_cols)
-                                    # write columns types
-                                    columns_types = ['float'] * len(test_cols)
-                                    # no flags
-                                    writer.writerow(columns_types)
-                                    writer.writerow([])
-                                test_df.to_csv(path_or_buf=p_x_test_HTM, index=False, header=False,
-                                               mode='a')
+                                with open(X_test_path, mode='rb') as X_f:
+                                    X_test = pickle.load(X_f)
+                                with open(y_test_path, mode='rb') as y_f:
+                                    y_test = pickle.load(y_f)
+                                with open(labels_path, mode='rb') as labels_f:
+                                    test_labels = pickle.load(labels_f)
 
-                                with open(p_labels_HTM, mode='wb') as labels_path:
-                                    pickle.dump(labels, labels_path)
+                                test_df = np.concatenate([X_test[0], y_test])
+                                htm_test_sets_folder = HTM_test_sets_base + '//{}_{}_{}//'.format(
+                                    data_version['name'], method, number_of_bins)
+
+                                if not os.path.exists(htm_test_sets_folder):
+                                    Path(htm_test_sets_folder).mkdir(exist_ok=True, parents=True)
+
+                                HTM_X_test_path = htm_test_sets_folder + 'X_test_' + p_suffix
+                                HTM_labels_path = htm_test_sets_folder + 'labels_' + p_suffix
+
+                                cols = data.process(None, data_version['name'], None, None, scale=True,
+                                                    binner_path=None, registers=data.most_used, fill=True,
+                                                    get_cols=True)
+                                write_df_to_csv(test_df, cols, HTM_X_test_path + '.csv')
+
+                                with open(HTM_labels_path, mode='wb') as labels_f:
+                                    pickle.dump(test_labels, labels_f)
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
@@ -1531,6 +1525,25 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
 
 #################################IRRELEVANT FOR NOW#####################################################
 
+def load_val_data_and_dict(binning_method, bins):
+    val_path = val_base + '//DFA'
+    with open(val_path + '//X_{}_{}'.format(binning_method, bins), mode='rb') as df_f:
+        val_data = pickle.load(df_f)
+    with open(val_path + '//dict_{}_{}'.format(binning_method, bins), mode='rb') as dict_f:
+        val_pkts_to_states_dict = pickle.load(dict_f)
+    return val_data, val_pkts_to_states_dict
+
+
+def paramterize_dfa_detections(val_decisions, w, pkts_to_states_dict):
+    counts = []
+    for i in range(len(val_decisions) - w + 1):
+        window_start_state = pkts_to_states_dict[i]
+        window_end_state = pkts_to_states_dict[i + w - 1]
+        count = sum(val_decisions[window_start_state: window_end_state])
+        counts.append(count)
+    return calc_MLE_mean(counts), cal_MLE_std(counts)
+
+
 def test_DFA(injection_config, group=''):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
@@ -1538,35 +1551,41 @@ def test_DFA(injection_config, group=''):
     injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
 
     results_df = pd.DataFrame(columns=excel_cols)
-    labels_df = pd.DataFrame(columns=['binning', '# bins', 'injection length', 'step over', 'percentage', 'window size',
-                                      '# window', 'model label', 'true label'])
+    labels_df = pd.DataFrame(
+        columns=['binning', '# bins', '# std count', 'injection length', 'step over', 'percentage', 'window size',
+                 '# window', 'model label', 'true label'])
 
     if group is '':
-        middle = '\\DFA'
+        middle = '//DFA'
     else:
-        middle = '\\DFA_{}'.format(group)
-    for injection_length in injection_lengths:
-        for step_over in step_overs:
-            anomaly_percentage = injection_length / (injection_length + step_over)
-            if anomaly_percentage > 0.2:
-                continue
-            for percentage in percentages:
-                for epsilon in epsilons:
-                    for binner in binners:
-                        for bins in n_bins:
-                            p_x_test = test_sets_base_folder + middle + '\\X_test_{}_{}_{}_{}_{}'.format(
+        middle = '//DFA_{}'.format(group)
+
+    for binner in binners:
+        for bins in n_bins:
+            val_data, val_pkts_to_states_dict = load_val_data_and_dict(binner, bins)
+
+            val_decisions = models.automaton.detect(DFA, val_data, val_data.columns[2::])
+
+            for injection_length in injection_lengths:
+                for step_over in step_overs:
+                    anomaly_percentage = injection_length / (injection_length + step_over)
+                    if anomaly_percentage > 0.2:
+                        continue
+                    for percentage in percentages:
+                        for epsilon in epsilons:
+                            p_x_test = test_sets_base_folder + middle + '//X_test_{}_{}_{}_{}_{}'.format(
                                 names[binner],
                                 bins,
                                 injection_length,
                                 step_over,
                                 percentage)
-                            p_labels = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
+                            p_labels = test_sets_base_folder + middle + '//labels_{}_{}_{}_{}_{}'.format(
                                 names[binner],
                                 bins,
                                 injection_length,
                                 step_over,
                                 percentage)
-                            p_pkt_dict = test_sets_base_folder + middle + '\\labels_{}_{}_{}_{}_{}'.format(
+                            p_pkt_dict = test_sets_base_folder + middle + '//labels_{}_{}_{}_{}_{}'.format(
                                 names[binner], bins, injection_length,
                                 step_over,
                                 percentage)
@@ -1578,7 +1597,7 @@ def test_DFA(injection_config, group=''):
                             with open(p_pkt_dict, mode='rb') as pkts_to_stats_p:
                                 pkts_to_states_dict = pickle.load(pkts_to_stats_p)
 
-                            with open(data.automaton_path + middle + "\\DFA_{}_{}".format(folders[names[binner]], bins),
+                            with open(data.automaton_path + middle + "//DFA_{}_{}".format(folders[names[binner]], bins),
                                       mode='rb') as dfa_path:
                                 DFA = pickle.load(dfa_path)
 
@@ -1592,63 +1611,71 @@ def test_DFA(injection_config, group=''):
                             avg_elapsed = elapsed / len(test_labels)
 
                             for w in window_sizes:
-                                true_windows_labels, dfa_window_labels = DFA_window_labels(decisions, test_labels, w,
-                                                                                           pkts_to_states_dict)
-                                precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
-                                    y_true=true_windows_labels, y_pred=dfa_window_labels)
+                                mean, std = paramterize_dfa_detections(val_decisions, w, val_pkts_to_states_dict)
+                                for num_std in nums_std:
+                                    count_threshold = mean + num_std * std
+                                    true_windows_labels, dfa_window_labels = DFA_window_labels(decisions, test_labels,
+                                                                                               w,
+                                                                                               pkts_to_states_dict,
+                                                                                               count_threshold)
+                                    precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                                        y_true=true_windows_labels, y_pred=dfa_window_labels)
 
-                                result = {'binning': names[binner],
-                                          '# bins': bins,
-                                          'injection length': injection_length,
-                                          'step over': step_over,
-                                          'percentage': percentage,
-                                          'precision': precision,
-                                          'recall': recall,
-                                          'auc': auc_score,
-                                          'f1': f1,
-                                          'prc': prc_auc_score}
+                                    result = {'binning': names[binner],
+                                              '# bins': bins,
+                                              '# std count': num_std,
+                                              'injection length': injection_length,
+                                              'step over': step_over,
+                                              'percentage': percentage,
+                                              'precision': precision,
+                                              'recall': recall,
+                                              'auc': auc_score,
+                                              'f1': f1,
+                                              'prc': prc_auc_score}
 
-                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
-                                labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
-                                labels_test_df['window size'] = w
-                                labels_test_df['model label'] = dfa_window_labels
-                                labels_test_df['true label'] = true_windows_labels
-                                labels_test_df['binning'] = folders[names[binner]]
-                                labels_test_df['# bins'] = bins
-                                labels_test_df['injection length'] = injection_length
-                                labels_test_df['step over'] = step_over
-                                labels_test_df['percentage'] = percentage
-                                with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
-                                                    if_sheet_exists="overlay") as writer:
-                                    row = 0
-                                    if 'DFA windows labels' in writer.sheets.keys():
-                                        row = writer.sheets['DFA windows labels'].max_row
-                                    labels_test_df.to_excel(writer, sheet_name='DFA windows labels', startrow=row)
+                                    """labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                    labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
+                                    labels_test_df['window size'] = w
+                                    labels_test_df['model label'] = dfa_window_labels
+                                    labels_test_df['true label'] = true_windows_labels
+                                    labels_test_df['binning'] = folders[names[binner]]
+                                    labels_test_df['# bins'] = bins
+                                    labels_test_df['# std count'] = num_std
+                                    labels_test_df['injection length'] = injection_length
+                                    labels_test_df['step over'] = step_over
+                                    labels_test_df['percentage'] = percentage
+                                    with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
+                                                        if_sheet_exists="overlay") as writer:
+                                        row = 0
+                                        if 'DFA windows labels' in writer.sheets.keys():
+                                            row = writer.sheets['DFA windows labels'].max_row
+                                        labels_test_df.to_excel(writer, sheet_name='DFA windows labels', startrow=row)"""
 
-                                for col_name in excel_cols:
-                                    if col_name not in DFA_cols:
-                                        result[col_name] = '-'
-                                results_df = pd.concat(
-                                    [results_df,
-                                     pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols, orient='index')],
-                                    axis=0, ignore_index=True)
-                                with open(test_DFA_log, mode='a') as test_log:
-                                    test_log.write('recorded DFA results for injection with parameters:\n')
-                                    test_log.write(
-                                        'inference: {}, avg inference: {}, binning: {}, # bins: {}'.format(elapsed,
-                                                                                                           avg_elapsed,
-                                                                                                           names[
-                                                                                                               binner],
-                                                                                                           bins))
-                                    test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
-                                                                                       percentage))
-                                    test_log.write(
-                                        'scores: precision: {}, recall: {}, auc: {}, f1: {}, prc:{}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
-                                            result['precision'],
-                                            result['recall'],
-                                            result['auc'],
-                                            result['f1'], result['prc'], result['tn'], result['fn'], result['tp'],
-                                            result['fp']))
+                                    for col_name in excel_cols:
+                                        if col_name not in DFA_cols:
+                                            result[col_name] = '-'
+                                    results_df = pd.concat(
+                                        [results_df,
+                                         pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
+                                                                orient='index')],
+                                        axis=0, ignore_index=True)
+                                    with open(test_DFA_log, mode='a') as test_log:
+                                        test_log.write('recorded DFA results for injection with parameters:\n')
+                                        test_log.write(
+                                            'inference: {}, avg inference: {}, binning: {}, # bins: {}'.format(elapsed,
+                                                                                                               avg_elapsed,
+                                                                                                               names[
+                                                                                                                   binner],
+                                                                                                               bins))
+                                        test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
+                                                                                           percentage))
+                                        test_log.write(
+                                            'scores: precision: {}, recall: {}, auc: {}, f1: {}, prc:{}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
+                                                result['precision'],
+                                                result['recall'],
+                                                result['auc'],
+                                                result['f1'], result['prc'], tn, fn, tp,
+                                                fp))
 
     # write to excel.
     with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
@@ -2008,6 +2035,7 @@ def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
                             folder_name = folders[method_name]
                             # folder_name: name of binning method in the folders (KMeans), method_name: name of binning method in files (kmeans)
                             for data_version in data_versions:
+                                file_name = data_version['desc']
                                 name = data_version['name']
                                 desc = data_version['desc']
                                 if not data_version['reprocess']:
@@ -2479,7 +2507,7 @@ def LSTM_preds_to_window_preds(model_detections, true_labels, window_size, count
     return true_windows_labels, model_windows_labels
 
 
-def DFA_window_labels(decisions, true_labels, window_size, pkts_to_states_dict):
+def DFA_window_labels(decisions, true_labels, window_size, pkts_to_states_dict, threshold):
     dfa_windows_labels = []
     true_windows_labels = []
     length = len(true_labels)  # true labels is labels of PACKETS (injected / benign).
@@ -2487,7 +2515,7 @@ def DFA_window_labels(decisions, true_labels, window_size, pkts_to_states_dict):
         true_window_label = max(true_labels[i: i + window_size])
         window_start_state = pkts_to_states_dict[i]
         window_end_state = pkts_to_states_dict[i + window_size - 1]
-        dfa_window_label = max(decisions[window_start_state: window_end_state + 1])
+        dfa_window_label = 1 if sum(decisions[window_start_state: window_end_state]) > threshold else 0
         true_windows_labels.append(true_window_label)
         dfa_windows_labels.append(dfa_window_label)
 
@@ -2709,3 +2737,46 @@ def count_outliers(svm_classification, window_size):
         counts.append(count)
 
     return calc_MLE_mean(counts), cal_MLE_std(counts)
+
+
+def create_val_for_DFA(group=None):
+    if group is not None:
+        pkts = data.load(data.datasets_path, "VAL_{}".format(group))
+    else:
+        pkts = data.load(data.datasets_path, "VAL")
+
+    bins, binning_methods, names = get_DFA_params()
+
+    processed = data.process(pkts, 'v3_2_abstract', None, None, False, registers=DFA_regs, fill=False)
+    registers = processed.columns[2:]
+
+    # save the data set.
+    val_path = val_base + '//DFA'
+    if not os.path.exists(val_path):
+        Path(val_path).mkdir(parents=True, exist_ok=True)
+
+    for b in bins:
+        for binning_method in binning_methods.keys():
+            val_data = processed.copy()
+            for col_name in processed.columns:
+                if col_name in registers:
+                    # load binner.
+                    binner_path = binners_base + '//DFA//{}_{}_{}'.format(
+                        names[binning_method], bins, col_name)
+                    with open(binner_path, mode='rb') as binner_p:
+                        col_binner = pickle.load(binner_p)
+                    val_data[col_name] = col_binner.transform(
+                        val_data[col_name].to_numpy().reshape(-1, 1))
+
+            val_data = squeeze(val_data)
+
+            with open(val_path + '//X_{}_{}'.format(binning_method, b), mode='wb') as df_f:
+                pickle.dump(val_data, df_f)
+
+            transitions_labels, pkts_to_states = get_transitions_labels(pkts, [0] * len(pkts), val_data)
+
+            with open(val_path + '//dict_{}_{}'.format(binning_method, b), mode='wb') as dict_f:
+                pickle.dump(pkts_to_states, dict_f)
+
+            with open(val_path + '//labels_{}_{}'.format(binning_method, b), mode='wb') as labels_f:
+                pickle.dump(transitions_labels, labels_f)
