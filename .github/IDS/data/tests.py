@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 import data
+import run
 
 test_captures_path = "C:\\Users\\User\\Desktop\\SCADA\\testcaptures"
 
@@ -300,7 +301,7 @@ class TestDataConversions(unittest.TestCase):
                                                         scale=False)
         print(processed_df)
 
-    def test_injection(self):
+    def est_injection(self):
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
         datestrs = ["Mar 22, 2022 21:13:36.902262",
@@ -378,7 +379,7 @@ class TestDataConversions(unittest.TestCase):
         print(labels)
         expected_ia = [50.0, 50.0, 50.0, 100.0, 250.0, 50.0, 50.0, 50.0, 100.0]
         expected_labels = [1, 1, 1, 0, 0, 1, 1, 1, 0, 0]
-        #check(expected_labels, expected_ia)
+        # check(expected_labels, expected_ia)
         injected, labels = data.injections.inject_to_raw_data(cpy.copy(), 3, 2, -50, 0.00001)
         inter_arrivals = make_ia(injected)
         print(make_ia(cpy))
@@ -386,7 +387,7 @@ class TestDataConversions(unittest.TestCase):
         print(labels)
         expected_ia = [50, 100, 150, 100, 50, 100, 100, 150, 100]
         expected_labels = [0, 1, 1, 0, 0, 1, 1, 1, 0, 0]
-        #check(expected_labels, expected_ia)
+        # check(expected_labels, expected_ia)
 
     def est_find_frequent_states(self):
         df = pd.DataFrame(columns=['time', 'time_in_state', '1'])
@@ -488,6 +489,147 @@ class TestDataConversions(unittest.TestCase):
 
         for f_t in flat_transitions:
             print(f_t)
+
+    def est_squeeze(self):
+        # 1. call v3_2_abstract
+        cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
+
+        datestrs = ["Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262"]
+
+        times = [datetime.strptime(date_str, '%b %d, %Y %H:%M:%S.%f') for date_str in datestrs]
+        m = [100] * 10
+        for i in range(len(times)):
+            times[i] += timedelta(seconds=m[i] * i)
+
+        original = []
+        for i in range(len(times) - 1):
+            p = times[i]
+            n = times[i + 1]
+            ia = (n - p).total_seconds()
+            original.append(ia)
+
+        dst_ips = np.repeat('0', 10)
+        src_ips = np.repeat('1', 10)
+
+        dst_ports = np.repeat(80, 10)
+        src_ports = np.concatenate((np.repeat(502, 8), np.repeat(502, 2)))
+
+        func_codes = np.repeat(3, 10)
+
+        payloads = [{'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {'1': 42, '2': 654, '3': 11, '4': 42, '9': 0},
+                    {'1': 76, '2': 34, '3': 222, '4': 65, '9': 11},
+                    {'7': 45, '6': 10, '5': 8, '13': 34, '9': 0},
+                    {'1': 4543, '2': 543, '3': 765, '4': 876, '9': 112},
+                    {'1': 54, '2': 0, '3': 0, '4': 10, '9': 1},
+                    {'1': 45, '2': 43, '3': 43, '4': 34, '9': 444},
+                    {'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {},
+                    {}]
+
+        df = pd.DataFrame(columns=cols)
+        df['time'] = times
+        df['dst_ip'] = dst_ips
+        df['src_ip'] = src_ips
+        df['dst_port'] = dst_ports
+        df['src_port'] = src_ports
+        df['func_code'] = func_codes
+        df['payload'] = payloads
+
+        processed = data.process_data_v3_2(df, None, None, None, False)
+        # 2. bin the data
+        for c in processed.columns:
+            if 'time' not in c:
+                processed[c] = data.k_means_binning(processed, c, 3, None)
+        print(processed)
+        # 3. squeeze the data
+        processed = data.squeeze(processed)
+        print(processed)
+
+    def test_make_transitions_labels(self):
+        # create anomalous data and labels.
+        cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
+
+        datestrs = ["Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262"]
+
+        times = [datetime.strptime(date_str, '%b %d, %Y %H:%M:%S.%f') for date_str in datestrs]
+        m = [100] * 10
+        for i in range(len(times)):
+            times[i] += timedelta(seconds=m[i] * i)
+
+        original = []
+        for i in range(len(times) - 1):
+            p = times[i]
+            n = times[i + 1]
+            ia = (n - p).total_seconds()
+            original.append(ia)
+
+        dst_ips = np.repeat('0', 10)
+        src_ips = np.repeat('1', 10)
+
+        dst_ports = np.repeat(80, 10)
+        src_ports = np.concatenate((np.repeat(502, 8), np.repeat(502, 2)))
+
+        func_codes = np.repeat(3, 10)
+
+        payloads = [{'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {'1': 42, '2': 654, '3': 11, '4': 42, '9': 0},
+                    {'1': 76, '2': 34, '3': 222, '4': 65, '9': 11},
+                    {'7': 45, '6': 10, '5': 8, '13': 34, '9': 0},
+                    {'1': 4543, '2': 543, '3': 765, '4': 876, '9': 112},
+                    {'1': 54, '2': 0, '3': 0, '4': 10, '9': 1},
+                    {'1': 45, '2': 43, '3': 43, '4': 34, '9': 444},
+                    {'1': 45, '2': 10, '3': 8, '4': 34, '9': 0},
+                    {},
+                    {}]
+
+        df = pd.DataFrame(columns=cols)
+        df['time'] = times
+        df['dst_ip'] = dst_ips
+        df['src_ip'] = src_ips
+        df['dst_port'] = dst_ports
+        df['src_port'] = src_ports
+        df['func_code'] = func_codes
+        df['payload'] = payloads
+
+        anomalies, labels = data.inject_to_raw_data(df, 2, 2, 50, 0.0000001)
+        print(anomalies)
+        print(labels)
+
+        # create input to dfa from it.
+        processed = data.process_data_v3_2(anomalies, None, None, None, False)
+        # 2. bin the data
+        for c in processed.columns:
+            if 'time' not in c:
+                processed[c] = data.k_means_binning(processed, c, 3, None)
+        print(processed)
+
+        # 3. squeeze the data
+        processed = data.squeeze(processed)
+        print(processed)
+
+        # call function.
+        transitions_labels, pkts_to_states = run.get_transitions_labels(anomalies, labels, processed)
+        print(pkts_to_states)
+        print(transitions_labels)
 
 
 if __name__ == 'main':

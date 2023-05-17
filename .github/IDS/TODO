@@ -1,5 +1,6 @@
 # TODO: KLSTM- validation, testing, detection.
 # TODO: FSTM- validation, testing, detection.
+# TODO: 1 = std in DFA training, 3 = std count.
 
 # EXPERIMENTS:
 train LSTM.
@@ -9,7 +10,7 @@ test LSTM based detectors.
 
 train DFA.
 create test sets.
-test DFA.
+test DFA. 1 std in DFA training
 
 train HTM.
 train HTM based classifiers.

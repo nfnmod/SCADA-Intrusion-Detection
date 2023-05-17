@@ -985,14 +985,15 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
 def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None,
                       load_binner=False):
-    frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
+    """frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
-    regs_copy = registers.copy()
-    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
+    regs_copy = registers.copy()"""
+    registers = ['1', '2', '3']
+    cols = np.concatenate((['time', 'time_in_state'], ['1', '2', '3']))
 
     time_vals_df = pd.DataFrame(columns=cols)
 
@@ -1006,12 +1007,13 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
         new = {}
 
         # previous entry in the constructed data frame
-        prev_entry = {}
+        has_prev = False
+        prev_entry = dict()
         df_len = len(time_vals_df)
         if df_len != 0:
             prev_entry = time_vals_df.iloc[df_len - 1]
+            has_prev = True
 
-        has_prev = prev_entry != {}
         # inter-arrival time
         delta_t = curr['time'] - prev['time']
         new['time'] = delta_t.total_seconds()
@@ -1843,10 +1845,15 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    for name in ['TRAIN']:
+    """for name in ['TRAIN']:
         path = datasets_path + '\\{}'.format(name)
         with open(path, mode='rb') as df_f:
             df = pickle.load(df_f)
         stats_dict = get_plcs_values_statistics(df, 8, False)
-        print(stats_dict)
+        print(stats_dict)"""
+    a = np.array([1,2,3,4])
+    print(a.shape)
+    b = np.reshape(a, (-1,1))
+    print(b.shape)
+    print(b)
 

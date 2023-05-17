@@ -55,7 +55,7 @@ excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', '
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
-              'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
+              'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal VS', 'max gap',
               'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
@@ -397,29 +397,169 @@ def train_RF_OCSVM_from_transition_algo_LSTM(classifier_config, group='', RF=Tru
                                       RF_only=False, OCSVM_only=True)
 
 
+# TRAIN DATA
 def make_input_for_KL(TIRP_config_file_path):
     pkt_df = data.load(data.datasets_path, "TRAIN")
-    IP = data.plc
 
     # consider only response packets from the PLC.
-    plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
+    # plc_df = pkt_df.loc[(pkt_df['src_ip'] == IP)]
     with open(TIRP_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
 
     discovery_params = params['TIRP_discovery_params']
-    binning = discovery_params['binning']
     binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
                        'EqualWidth': TIRP.equal_width_discretization}
-    number_of_bins = discovery_params['number_of_bins']
-    windows = window_sizes
-    bins_window_options = itertools.product(number_of_bins, windows)
-    options = itertools.product(binning, bins_window_options)
+    numbers_of_bins = discovery_params['number_of_bins']
 
-    for option in options:
-        b = binning_methods[option[0]]
-        k = option[1][0]
-        w = option[1][1]
-        TIRP.make_input(plc_df, b, k, w, regs_to_use=data.most_used, consider_last=True)
+    for window in window_sizes:
+        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used, consider_last=True)
+
+
+# VALIDATION DATA
+def make_validation_input_for_KL(TIRP_config_file_path):
+    pkt_df = data.load(data.datasets_path, "VAL")
+
+    with open(TIRP_config_file_path, mode='r') as train_config:
+        params = yaml.load(train_config, Loader=yaml.FullLoader)
+
+    discovery_params = params['TIRP_discovery_params']
+    binning_methods = {'KMeans': TIRP.k_means_binning, 'EqualFreq': TIRP.equal_frequency_discretization,
+                       'EqualWidth': TIRP.equal_width_discretization}
+
+    numbers_of_bins = discovery_params['number_of_bins']
+
+    binning_methods_inv = {TIRP.k_means_binning: 'KMeans', TIRP.equal_frequency_discretization: 'EqualFreq',
+                           TIRP.equal_width_discretization: 'EqualWidth'}
+
+    binning = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
+               TIRP.equal_width_discretization: 'equal_width'}
+
+
+    for window in window_sizes:
+        ready_symbols = {}
+        ready_entities = {}
+
+        for b in binning_methods.values():
+            for k in numbers_of_bins:
+                suffix = '//{}_{}_{}'.format(binning[b], k, window)
+                path_sym = TIRP.KL_symbols + suffix
+
+                with open(path_sym, mode='wb') as symbols_path:
+                    symbols = pickle.load(symbols_path)
+
+                path_ent = TIRP.KL_entities + suffix
+                with open(path_ent, mode='wb') as entities_path:
+                    entities = pickle.load(entities_path)
+
+                ready_symbols[(binning_methods_inv[b], k)] = symbols
+                ready_entities[(binning_methods_inv[b], k)] = entities
+
+        val_path = val_base + '//KL//events'
+
+        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used, consider_last=True, ready_symbols=ready_symbols, ready_entities=ready_entities, test_path=val_path)
+
+
+# TEST DATA
+def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
+    """
+    make test data sets for KL.
+    for each input creation option: create TIRP with all possible injection options.
+    """
+    name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
+                   'KMeans': TIRP.k_means_binning}
+    func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
+                   TIRP.equal_width_discretization: 'equal_width'}
+
+    raw_test_data = data.load(data.datasets_path, raw_test_data_df)
+
+    # first, grid over injection params.
+    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
+
+    with open(input_creation_config, mode='r') as TIRP_creation_config:
+        TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
+
+    binning = TIRP_params['binning']
+    bins = TIRP_params['number_of_bins']
+
+    for injection_length in injection_lengths:
+        for step_over in step_overs:
+            anomaly_percentage = injection_length / (injection_length + step_over)
+            if anomaly_percentage > lim:
+                pass
+            else:
+                for percentage in percentages:
+                    for epsilon in epsilons:
+                        # inject in each possible way.
+                        # labels will be used for creation of expected labels for the RF.
+                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
+                                                                                        percentage)
+                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
+                                                                                              step_over,
+                                                                                              percentage)
+                        with open(df_path, mode='rb') as df_f:
+                            anomalous_data = pickle.load(df_f)
+                        with open(labels_path, mode='rb') as labels_f:
+                            labels = pickle.load(labels_f)
+
+                        for method in binning:
+                            for number_of_bins in bins:
+                                for window_size in window_sizes:
+                                    # discover events in separate windows.
+                                    test_path_sliding_windows = test_sets_base_folder + '//KL//test_events//{}_{}_{}_{}_{}_{}'.format(
+                                        method, number_of_bins, window_size, injection_length, step_over,
+                                        percentage)
+
+                                    # make sure dirs exists.
+                                    dir_path = test_sets_base_folder + '//KL//test_events'
+                                    if not os.path.exists(dir_path):
+                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                    # discover TIRPs.
+                                    # pass symbols and entities that were previously found.
+                                    suffix = '//{}_{}_{}'.format(func_2_name[name_2_func[method]],
+                                                                 number_of_bins, window_size)
+
+                                    symbols_path = TIRP.input.KL_symbols + suffix
+                                    entities_path = TIRP.input.KL_entities + suffix
+
+                                    with open(symbols_path, mode='rb') as syms_path:
+                                        ready_symbols = pickle.load(syms_path)
+                                    with open(entities_path, mode='rb') as ent_path:
+                                        ready_entities = pickle.load(ent_path)
+
+                                    TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
+                                                    window_size, consider_last=True, regs_to_use=data.most_used,
+                                                    test_path=test_path_sliding_windows,
+                                                    ready_symbols=ready_symbols, ready_entities=ready_entities)
+
+                                    # create the labels for the detection.
+                                    # for each window: [start, end]
+                                    test_labels = []
+                                    for i in range(len(anomalous_data) - window_size + 1):
+                                        # get the labels for the windows' packets.
+                                        window_labels = labels[i, i + window_size]
+
+                                        # the label is 0 for a benign packet and 1 for an anomalous packets.
+                                        # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
+                                        window_label = max(window_labels)
+
+                                        # add label.
+                                        test_labels.append(window_label)
+
+                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}'.format(
+                                        method,
+                                        number_of_bins,
+                                        window_size,
+                                        injection_length,
+                                        step_over,
+                                        percentage)
+
+                                    dir_path = test_sets_base_folder + '\\KL\\test_labels'
+                                    if not os.path.exists(dir_path):
+                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+                                    with open(path, mode='wb') as labels_path:
+                                        pickle.dump(test_labels, labels_path)
 
 
 def filter_TIRPs(KL_config_file_path):
@@ -919,102 +1059,6 @@ def create_test_files_DFA(injection_config, group=''):
                                     pickle.dump(transitions_labels, p_labels)
                                 with open(p_pkt_dict, mode='wb') as p_pkts_dict:
                                     pickle.dump(pkts_to_states, p_pkts_dict)
-
-
-def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
-    """
-    make test data sets for KL.
-    for each input creation option: create TIRP with all possible injection options.
-    """
-    name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
-                   'KMeans': TIRP.k_means_binning}
-    func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
-                   TIRP.equal_width_discretization: 'equal_width'}
-
-    raw_test_data = data.load(data.datasets_path, raw_test_data_df)
-
-    # first, grid over injection params.
-    injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
-
-    with open(input_creation_config, mode='r') as TIRP_creation_config:
-        TIRP_params = yaml.load(TIRP_creation_config, Loader=yaml.FullLoader)
-
-    binning = TIRP_params['binning']
-    bins = TIRP_params['number_of_bins']
-
-    for injection_length in injection_lengths:
-        for step_over in step_overs:
-            anomaly_percentage = injection_length / (injection_length + step_over)
-            if anomaly_percentage > lim:
-                pass
-            else:
-                for percentage in percentages:
-                    for epsilon in epsilons:
-                        # inject in each possible way.
-                        # labels will be used for creation of expected labels for the RF.
-                        test_data = raw_test_data.copy()
-                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                    percentage,
-                                                                    epsilon)
-                        for method in binning:
-                            for number_of_bins in bins:
-                                for window_size in window_sizes:
-                                    # discover events in separate windows.
-                                    test_path_sliding_windows = test_sets_base_folder + '\\KL\\test_events\\{}_{}_{}_{}_{}_{}'.format(
-                                        method, number_of_bins, window_size, injection_length, step_over,
-                                        percentage)
-
-                                    # make sure dirs exists.
-                                    dir_path = test_sets_base_folder + '\\KL\\test_events'
-                                    if not os.path.exists(dir_path):
-                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
-
-                                    # discover TIRPs.
-                                    # pass symbols and entities that were previously found.
-                                    suffix = '\\{}_{}_{}'.format(func_2_name[name_2_func[method]],
-                                                                 number_of_bins, window_size)
-
-                                    symbols_path = TIRP.input.KL_symbols + suffix
-                                    entities_path = TIRP.input.KL_entities + suffix
-
-                                    with open(symbols_path, mode='rb') as syms_path:
-                                        ready_symbols = pickle.load(syms_path)
-                                    with open(entities_path, mode='rb') as ent_path:
-                                        ready_entities = pickle.load(ent_path)
-
-                                    TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
-                                                    window_size, consider_last=True, regs_to_use=data.most_used,
-                                                    test_path=test_path_sliding_windows,
-                                                    ready_symbols=ready_symbols, ready_entities=ready_entities)
-
-                                    # create the labels for the detection.
-                                    # for each window: [start, end]
-                                    test_labels = []
-                                    for i in range(len(anomalous_data) - window_size + 1):
-                                        # get the labels for the windows' packets.
-                                        window_labels = labels[i, i + window_size]
-
-                                        # the label is 0 for a benign packet and 1 for an anomalous packets.
-                                        # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
-                                        window_label = max(window_labels)
-
-                                        # add label.
-                                        test_labels.append(window_label)
-
-                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}'.format(
-                                        method,
-                                        number_of_bins,
-                                        window_size,
-                                        injection_length,
-                                        step_over,
-                                        percentage)
-
-                                    dir_path = test_sets_base_folder + '\\KL\\test_labels'
-                                    if not os.path.exists(dir_path):
-                                        Path(dir_path).mkdir(parents=True, exist_ok=True)
-
-                                    with open(path, mode='wb') as labels_path:
-                                        pickle.dump(test_labels, labels_path)
 
 
 # 1. after running KL on the test_events, filter TIRPs by support.
@@ -1624,6 +1668,7 @@ def test_DFA(injection_config, group=''):
                                     result = {'binning': names[binner],
                                               '# bins': bins,
                                               '# std count': num_std,
+                                              'window size': w,
                                               'injection length': injection_length,
                                               'step over': step_over,
                                               'percentage': percentage,

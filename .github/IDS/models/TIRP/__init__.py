@@ -5,3 +5,6 @@ from .input import make_input
 from .output import parse_line
 from .output import get_number_of_instances
 from .output import parse_output
+from .input import KL_symbols
+from .input import KL_events
+from .input import KL_entities

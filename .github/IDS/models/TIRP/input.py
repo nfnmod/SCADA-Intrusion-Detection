@@ -1,5 +1,7 @@
 # this class is responsible for preparing the input for the KarmaLego algorithm.
+import copy
 import csv
+import itertools
 import os.path
 import pickle
 from pathlib import Path
@@ -104,7 +106,8 @@ def get_pkt_entities(pkt):
 
 
 # compute the events in the sliding windows.
-def define_events_in_sliding_windows(df, b, k, w, regs_to_use, consider_last=True, bin=True, ready_symbols=None,
+def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, regs_to_use, consider_last=True, bin=True,
+                                     ready_symbols=None,
                                      ready_entites=None):
     """
 
@@ -114,20 +117,40 @@ def define_events_in_sliding_windows(df, b, k, w, regs_to_use, consider_last=Tru
     :param bin: bin or not (used for testing)
     :param regs_to_use: registers to consider
     :param df:
-    :param b: binning method.
-    :param k: number of bins.
+    :param binning_methods: binning methods to use.
+    :param numbers_of_bins: numbers of bins to use.
     :param w: window size.
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
+
+    binning_methods_inv = {k_means_binning: 'KMeans', equal_frequency_discretization: 'EqualFreq',
+                           equal_width_discretization: 'EqualWidth'}
+
+    sw_events_single = {sw_num: [] for sw_num in range(len(df) - w + 1)}
+    sw_events_dict = {(binning_methods_inv[b], k): copy.deepcopy(sw_events_single) for (b, k) in
+                      itertools.product(binning_methods, numbers_of_bins)}
+
     if ready_symbols == dict():
         df = process_payload(df, regs_to_use)
         entities = define_entities(df)
+        symbols_single = ready_symbols
+        symbol_counter_single = len(symbols_single.keys())
+
+        symbols_counter_dict = {(binning_methods_inv[b], k): symbol_counter_single for (b, k) in
+                                itertools.product(binning_methods, numbers_of_bins)}
+
+        entities_dict = {(binning_methods_inv[b], k): entities for (b, k) in
+                         itertools.product(binning_methods, numbers_of_bins)}
+
+        symbols_dict = {(binning_methods_inv[b], k): copy.deepcopy(symbols_single) for (b, k) in
+                        itertools.product(binning_methods, numbers_of_bins)}
     else:
-        entities = ready_entites
-    sw_events = {sw_num: [] for sw_num in range(len(df) - w)}
-    symbols = ready_symbols
-    symbol_counter = len(symbols.keys())
+        entities_dict = ready_entites
+        symbols_dict = ready_symbols
+        symbols_counter_dict = {(binning_methods_inv[b], k): len(ready_symbols[(binning_methods_inv[b], k)].keys()) for (b, k) in
+                                itertools.product(binning_methods, numbers_of_bins)}
+
     # per window
     prev_entities = []
 
@@ -148,7 +171,9 @@ def define_events_in_sliding_windows(df, b, k, w, regs_to_use, consider_last=Tru
             prev_entities = prev_entities[len(to_remove):]
             prev_entities += list(get_pkt_entities(window.iloc[-1]))
             window_entities = set(prev_entities)
-        entities_events = {e: [] for e in window_entities}
+        entities_events_single = {e: [] for e in window_entities}
+        entities_events_dict = {(binning_methods_inv[b], k): copy.deepcopy(entities_events_single) for (b, k) in
+                                itertools.product(binning_methods, numbers_of_bins)}
 
         for j in range(w):
             pkt = window.iloc[j]
@@ -184,166 +209,185 @@ def define_events_in_sliding_windows(df, b, k, w, regs_to_use, consider_last=Tru
                         # bin using all options to avoid reprocessing
 
                         if bin:
-                            values = b(values, k)  # bin.
-                        n = 0
-                        if len(values) > 0:
-                            # all but last value-time pair.
-                            while n < len(values) - 1:
-                                value = values[n]
-                                s_t = times[n]
-                                n += 1  # avoid infinite loop if all values are different.
-                                while n < len(values) and value == values[n]:
-                                    n += 1
-                                f_t = times[min(n, len(values) - 1)]
-                                symbol = (entities[entity], value,)
-                                if symbols.get(symbol, None) is None:
-                                    symbols[symbol] = symbol_counter
-                                    symbol_counter += 1
-                                event = (s_t, f_t, symbols[symbol],)
-                                entities_events[entity].append(event)
-                            if consider_last and i + w < len(df):
-                                # the last value-time pair. the symbol "holds" until the first packet of the next
-                                v = values[len(values) - 1]
-                                finish = df.iloc[i + w]['time']
-                                if len(values) > 1:
-                                    # there have been more than 1 value changes.
-                                    # last event
-                                    event = entities_events[entity][-1]
-                                    event_symbol_number = event[2]
-                                    vals = list(symbols.values())
-                                    keys = list(symbols.keys())
-                                    position = vals.index(event_symbol_number)
-                                    # get symbol of event in the tuple form.
-                                    sym = keys[position]
-                                    # the value the entity received in the last event recorded
-                                    event_value = sym[1]
-                                    # same value then extend the last event
-                                    if event_value == v:
-                                        new_finish = round((finish - start_time).total_seconds())
-                                        # same start time and same symbol number only new finish time.
-                                        new_event = (event[0], new_finish, event[2],)
-                                        entities_events[entity][-1] = new_event
-                                    else:
-                                        # different value, add new event until the beginning of the next sliding window.
-                                        sym_event = (entities[entity], v,)
-                                        if symbols.get(sym_event, None) is None:
-                                            symbols[sym_event] = symbol_counter
+                            for (b, k) in itertools.product(binning_methods, numbers_of_bins):
+                                values = b(values, k)  # bin.
+
+                                symbols = symbols_dict[(binning_methods_inv[b], k)]
+                                symbol_counter = symbols_counter_dict[(binning_methods_inv[b], k)]
+                                entities_events = entities_events_dict[(binning_methods_inv[b], k)]
+                                entities = entities_dict[(binning_methods_inv[b], k)]
+
+                                n = 0
+                                if len(values) > 0:
+                                    # all but last value-time pair.
+                                    while n < len(values) - 1:
+                                        value = values[n]
+                                        s_t = times[n]
+                                        n += 1  # avoid infinite loop if all values are different.
+                                        while n < len(values) and value == values[n]:
+                                            n += 1
+                                        f_t = times[min(n, len(values) - 1)]
+                                        symbol = (entities[entity], value,)
+                                        if symbols.get(symbol, None) is None:
+                                            symbols[symbol] = symbol_counter
                                             symbol_counter += 1
-                                        # until the start of the next window.
-                                        new_finish = round((finish - start_time).total_seconds())
-                                        # create event
-                                        last_event = (times[-1], new_finish, symbols[sym_event],)
-                                        # add the event
-                                        entities_events[entity].append(last_event)
-                                elif len(values) == 1:
-                                    # len(values) = 1, only 1 value was received for the entity.
-                                    # create new event for the duration of the entire window and add.
-                                    new_finish = round((finish - start_time).total_seconds())
-                                    sym_event = (entities[entity], values[0],)
-                                    if symbols.get(sym_event, None) is None:
-                                        symbols[sym_event] = symbol_counter
-                                        symbol_counter += 1
-                                    event = (times[0], new_finish, symbols[sym_event],)
-                                    entities_events[entity].append(event)
-                            elif consider_last and i + w == len(df):
-                                # more than 1 value: compare last 2 and extend events or add event accordingly
-                                # 1 value: make event for the whole window.
-                                v = values[len(values) - 1]
-                                finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds())
-                                if len(values) > 1:
-                                    # they are different, add new event for the last value.
-                                    # there have been more than 1 value changes.
-                                    # last event
-                                    event = entities_events[entity][-1]
-                                    event_symbol_number = event[2]
-                                    vals = list(symbols.values())
-                                    keys = list(symbols.keys())
-                                    position = vals.index(event_symbol_number)
-                                    # get symbol of event in the tuple form.
-                                    sym = keys[position]
-                                    # the value the entity received in the last event recorded
-                                    event_value = sym[1]
-                                    if event_value == v:
-                                        # same start time and same symbol number only new finish time.
-                                        new_event = (event[0], finish_time, event[2],)
-                                        entities_events[entity][-1] = new_event
-                                    else:
-                                        event_start = times[-1]
-                                        event_finish = finish_time
-                                        sym_event = (entities[entity], v,)
-                                        if symbols.get(sym_event, None) is None:
-                                            symbols[sym_event] = symbol_counter
-                                            symbol_counter += 1
-                                        new_event = (event_start, event_finish, symbols[sym_event],)
-                                        entities_events[entity].append(new_event)
-                                elif len(values) == 1:
-                                    # a single value was received, add an event for the duration of the entire window.
-                                    sym_event = (entities[entity], values[0],)
-                                    if symbols.get(sym_event, None) is None:
-                                        symbols[sym_event] = symbol_counter
-                                        symbol_counter += 1
-                                    entities_events[entity].append((times[0], finish_time, symbols[sym_event],))
+                                        event = (s_t, f_t, symbols[symbol],)
+                                        entities_events[entity].append(event)
+                                    if consider_last and i + w < len(df):
+                                        # the last value-time pair. the symbol "holds" until the first packet of the next
+                                        v = values[len(values) - 1]
+                                        finish = df.iloc[i + w]['time']
+                                        if len(values) > 1:
+                                            # there have been more than 1 value changes.
+                                            # last event
+                                            event = entities_events[entity][-1]
+                                            event_symbol_number = event[2]
+                                            vals = list(symbols.values())
+                                            keys = list(symbols.keys())
+                                            position = vals.index(event_symbol_number)
+                                            # get symbol of event in the tuple form.
+                                            sym = keys[position]
+                                            # the value the entity received in the last event recorded
+                                            event_value = sym[1]
+                                            # same value then extend the last event
+                                            if event_value == v:
+                                                new_finish = round((finish - start_time).total_seconds())
+                                                # same start time and same symbol number only new finish time.
+                                                new_event = (event[0], new_finish, event[2],)
+                                                entities_events[entity][-1] = new_event
+                                            else:
+                                                # different value, add new event until the beginning of the next sliding window.
+                                                sym_event = (entities[entity], v,)
+                                                if symbols.get(sym_event, None) is None:
+                                                    symbols[sym_event] = symbol_counter
+                                                    symbol_counter += 1
+                                                # until the start of the next window.
+                                                new_finish = round((finish - start_time).total_seconds())
+                                                # create event
+                                                last_event = (times[-1], new_finish, symbols[sym_event],)
+                                                # add the event
+                                                entities_events[entity].append(last_event)
+                                        elif len(values) == 1:
+                                            # len(values) = 1, only 1 value was received for the entity.
+                                            # create new event for the duration of the entire window and add.
+                                            new_finish = round((finish - start_time).total_seconds())
+                                            sym_event = (entities[entity], values[0],)
+                                            if symbols.get(sym_event, None) is None:
+                                                symbols[sym_event] = symbol_counter
+                                                symbol_counter += 1
+                                            event = (times[0], new_finish, symbols[sym_event],)
+                                            entities_events[entity].append(event)
+                                    elif consider_last and i + w == len(df):
+                                        # more than 1 value: compare last 2 and extend events or add event accordingly
+                                        # 1 value: make event for the whole window.
+                                        v = values[len(values) - 1]
+                                        finish_time = round((window.iloc[-1]['time'] - start_time).total_seconds())
+                                        if len(values) > 1:
+                                            # they are different, add new event for the last value.
+                                            # there have been more than 1 value changes.
+                                            # last event
+                                            event = entities_events[entity][-1]
+                                            event_symbol_number = event[2]
+                                            vals = list(symbols.values())
+                                            keys = list(symbols.keys())
+                                            position = vals.index(event_symbol_number)
+                                            # get symbol of event in the tuple form.
+                                            sym = keys[position]
+                                            # the value the entity received in the last event recorded
+                                            event_value = sym[1]
+                                            if event_value == v:
+                                                # same start time and same symbol number only new finish time.
+                                                new_event = (event[0], finish_time, event[2],)
+                                                entities_events[entity][-1] = new_event
+                                            else:
+                                                event_start = times[-1]
+                                                event_finish = finish_time
+                                                sym_event = (entities[entity], v,)
+                                                if symbols.get(sym_event, None) is None:
+                                                    symbols[sym_event] = symbol_counter
+                                                    symbol_counter += 1
+                                                new_event = (event_start, event_finish, symbols[sym_event],)
+                                                entities_events[entity].append(new_event)
+                                        elif len(values) == 1:
+                                            # a single value was received, add an event for the duration of the entire window.
+                                            sym_event = (entities[entity], values[0],)
+                                            if symbols.get(sym_event, None) is None:
+                                                symbols[sym_event] = symbol_counter
+                                                symbol_counter += 1
+                                            entities_events[entity].append((times[0], finish_time, symbols[sym_event],))
+        for (b, k) in itertools.product(binning_methods, numbers_of_bins):
+            entities_events = entities_events_dict[(binning_methods_inv[b], k)]
+            sw_events = sw_events_dict[(binning_methods_inv[b], k)]
+            entities = entities_dict[(binning_methods_inv[b], k)]
+            # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
+            converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
+            sw_events[i] = converted_events
+    return sw_events_dict, symbols_dict, entities_dict
 
-        # the key has to be the entity id and not the tuple of (PLC IP, register number). make the switch here.
-        converted_events = {entities[entity]: entities_events[entity] for entity in entities_events.keys()}
-        sw_events[i] = converted_events
-    return sw_events, symbols, entities
 
-
-def make_input(pkt_df, b, k, w, regs_to_use, consider_last=True, test_path=None, ready_symbols=None,
+def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, consider_last=True, test_path=None,
+               ready_symbols=None,
                ready_entities=None):
     if ready_symbols is None:
         ready_symbols = dict()
         ready_entities = dict()
     binning = {k_means_binning: 'kmeans', equal_frequency_discretization: 'equal_frequency',
                equal_width_discretization: 'equal_width'}
+    binning_methods_inv = {k_means_binning: 'KMeans', equal_frequency_discretization: 'EqualFreq',
+                           equal_width_discretization: 'EqualWidth'}
     # get a dictionary mapping from sw_number to the events in it.
-    sw_events, symbols, entities = define_events_in_sliding_windows(pkt_df, b, k, w, regs_to_use, consider_last,
-                                                                    ready_symbols=ready_symbols,
-                                                                    ready_entites=ready_entities)
-    base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_bins_{}_window_{}'.format(k, w)
-    if test_path is not None:
-        base_path = test_path
-    if not os.path.exists(base_path):
-        Path(base_path).mkdir(parents=True, exist_ok=True)
+    sw_events_dict, symbols_dict, entities_dict = define_events_in_sliding_windows(pkt_df, binning_methods,
+                                                                                   numbers_of_bins, w, regs_to_use,
+                                                                                   consider_last,
+                                                                                   ready_symbols=ready_symbols,
+                                                                                   ready_entites=ready_entities)
+    for b in binning_methods.values():
+        for k in numbers_of_bins:
+            base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_{}_{}'.format(k, w)
+            if test_path is not None:
+                base_path = test_path + '//' + binning[b] + '_{}_{}'.format(k, w)
+            if not os.path.exists(base_path):
+                Path(base_path).mkdir(parents=True, exist_ok=True)
+            sw_events = sw_events_dict[(binning_methods_inv[b], k)]
 
-    # keys are the window number.
-    entity_index = 0
-    entity_to_idx = {}
-    for sw_num in sorted(sw_events.keys()):
-        # hold the events of all the entities in that window.
-        window_events = sw_events[sw_num]
-        writeable = {}
-        entity_counter = 0
-        # counter number of entities which had some events. if there are none then there is nothing to
-        # run the algorithm on so just pass on to the next window.
-        for entity_id in sorted(window_events.keys()):
-            entity_events = window_events[entity_id]
-            if len(entity_events) > 0:
-                entity_counter += 1
-                writeable[entity_id] = entity_events
-        if entity_counter == 0:
-            continue
-        else:
-            window_path = base_path + '\\#window_{}.csv'.format(sw_num)
-            with open(window_path, 'w', newline='') as window_file:
-                # now write the events of each entity to the file.
-                writer = csv.writer(window_file)
-                writer.writerow(['startToncepts'])
-                writer.writerow(['numberOfEntities,', entity_counter])
-                for writeable_entity in writeable.keys():
-                    events_to_write = writeable[writeable_entity]
-                    if entity_to_idx.get(writeable_entity, -1) == -1:
-                        entity_to_idx[writeable_entity] = entity_index
-                        entity_index += 1
-                    writer.writerow(['{},{};'.format(str(writeable_entity), str(entity_to_idx[writeable_entity]))])
-                    events_row = []
-                    for event in events_to_write:
-                        start = event[0]
-                        finish = event[1]
-                        symbol_number = event[2]
-                        events_row += ['{},{},{};'.format(start, finish, symbol_number)]
-                    writer.writerow(events_row)
+            # keys are the window number.
+            entity_index = 0
+            entity_to_idx = {}
+            for sw_num in sorted(sw_events.keys()):
+                # hold the events of all the entities in that window.
+                window_events = sw_events[sw_num]
+                writeable = {}
+                entity_counter = 0
+                # counter number of entities which had some events. if there are none then there is nothing to
+                # run the algorithm on so just pass on to the next window.
+                for entity_id in sorted(window_events.keys()):
+                    entity_events = window_events[entity_id]
+                    if len(entity_events) > 0:
+                        entity_counter += 1
+                        writeable[entity_id] = entity_events
+                if entity_counter == 0:
+                    continue
+                else:
+                    window_path = base_path + '\\#window_{}.csv'.format(sw_num)
+                    with open(window_path, 'w', newline='') as window_file:
+                        # now write the events of each entity to the file.
+                        writer = csv.writer(window_file)
+                        writer.writerow(['startToncepts'])
+                        writer.writerow(['numberOfEntities,', entity_counter])
+                        for writeable_entity in writeable.keys():
+                            events_to_write = writeable[writeable_entity]
+                            if entity_to_idx.get(writeable_entity, -1) == -1:
+                                entity_to_idx[writeable_entity] = entity_index
+                                entity_index += 1
+                            writer.writerow(
+                                ['{},{};'.format(str(writeable_entity), str(entity_to_idx[writeable_entity]))])
+                            events_row = []
+                            for event in events_to_write:
+                                start = event[0]
+                                finish = event[1]
+                                symbol_number = event[2]
+                                events_row += ['{},{},{};'.format(start, finish, symbol_number)]
+                            writer.writerow(events_row)
 
     if test_path is None:
         # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
@@ -355,19 +399,24 @@ def make_input(pkt_df, b, k, w, regs_to_use, consider_last=True, test_path=None,
         if not os.path.exists(KL_events):
             Path(KL_events).mkdir(exist_ok=True, parents=True)
 
-        suffix = '\\{}_{}_{}'.format(binning[b], k, w)
-        path_sym = KL_symbols + suffix
+        for b in binning_methods.values():
+            for k in numbers_of_bins:
+                suffix = '\\{}_{}_{}'.format(binning[b], k, w)
+                path_sym = KL_symbols + suffix
 
-        with open(path_sym, mode='wb') as symbols_path:
-            pickle.dump(symbols, symbols_path)
+                sw_events = sw_events_dict[(binning_methods_inv[b], k)]
+                entities = entities_dict[(binning_methods_inv[b], k)]
+                symbols = symbols_dict[(binning_methods_inv[b], k)]
+                with open(path_sym, mode='wb') as symbols_path:
+                    pickle.dump(symbols, symbols_path)
 
-        path_ent = KL_entities + suffix
-        with open(path_ent, mode='wb') as entities_path:
-            pickle.dump(entities, entities_path)
+                path_ent = KL_entities + suffix
+                with open(path_ent, mode='wb') as entities_path:
+                    pickle.dump(entities, entities_path)
 
-        path_events = KL_events + suffix
-        with open(path_events, mode='wb') as events_p:
-            pickle.dump(sw_events, events_p)
+                path_events = KL_events + suffix
+                with open(path_events, mode='wb') as events_p:
+                    pickle.dump(sw_events, events_p)
 
 
 # split the raw data set into train and test. train classifier on train set.
@@ -385,4 +434,3 @@ def load_events_in_sliding_windows(b, k, w):
     with open(path_events, mode='rb') as events_p:
         events = pickle.load(events_p)
     return events, symbols, entities
-
