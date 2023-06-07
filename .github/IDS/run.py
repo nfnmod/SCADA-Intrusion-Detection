@@ -416,8 +416,8 @@ def make_input_for_KL(TIRP_config_file_path):
 
 
 # VALIDATION DATA
-def make_validation_input_for_KL(TIRP_config_file_path):
-    pkt_df = data.load(data.datasets_path, "VAL")
+def make_validation_or_test_input_for_KL(TIRP_config_file_path, dataset="VAL"):
+    pkt_df = data.load(data.datasets_path, dataset)
 
     with open(TIRP_config_file_path, mode='r') as train_config:
         params = yaml.load(train_config, Loader=yaml.FullLoader)
@@ -453,11 +453,33 @@ def make_validation_input_for_KL(TIRP_config_file_path):
                 ready_symbols[(binning_methods_inv[b], k)] = symbols
                 ready_entities[(binning_methods_inv[b], k)] = entities
 
-        val_path = val_base + '//KL//events'
-
+        if dataset is "VAL":
+            data_path = val_base + '//KL//events'
+        else:
+            data_path = test_sets_base_folder + "//KLSTM//events"
+        if not os.path.exists(data_path):
+            Path(data_path).mkdir(exist_ok=True, parents=True)
         TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used,
                         consider_last=True, ready_symbols=ready_symbols, ready_entities=ready_entities,
-                        test_path=val_path)
+                        test_path=data_path)
+
+
+def create_benign_test_input_files_for_KLSTM(input_creation_config):
+    """
+
+    :param input_creation_config: configuration file for creating test files.
+    :return:None
+    """
+    make_validation_or_test_input_for_KL(input_creation_config, "TEST")
+
+
+def create_validation_input_files_for_KLSTM(input_creation_config):
+    """
+
+    :param input_creation_config: configuration file for creating test files.
+    :return:None
+    """
+    make_validation_or_test_input_for_KL(input_creation_config, "VAL")
 
 
 # TEST DATA
@@ -1098,13 +1120,13 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
                             binning = window_binning_bins[1][0]
                             bins = window_binning_bins[1][1]
                             # \\{0}_{1}_{2}_{3}_{4}_{5}_{6}", method, num_bins, windowSize, length, step, percentage);
-                            windows_folders_folder = KL_test_sets_base + "\\{}_{}_{}_{}_{}_{}".format(binning, bins,
+                            windows_folders_folder = KL_test_sets_base + "//{}_{}_{}_{}_{}_{}".format(binning, bins,
                                                                                                       window,
                                                                                                       injection_length,
                                                                                                       step_over,
                                                                                                       percentage)
 
-                            max_gaps_times_k_values= itertools.product(max_gaps, k_values)
+                            max_gaps_times_k_values = itertools.product(max_gaps, k_values)
                             KL_hyperparams = itertools.product(epsilons, max_gaps_times_k_values)
 
                             # parameters of KL.
@@ -1114,9 +1136,9 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
                                 k = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, k, max_gap)
+                                dest_path_suffix = "//{}_{}_{}".format(epsilon, k, max_gap)
                                 # path to read the whole set of TIRPs from.
-                                src_path_suffix = "\\{}_{}_{}".format(epsilon, default_supp, max_gap)
+                                src_path_suffix = "//{}_{}_{}".format(epsilon, default_supp, max_gap)
 
                                 windows_outputs_destination_folder_path = windows_folders_folder + dest_path_suffix
                                 windows_outputs_src_folder_path = windows_folders_folder + src_path_suffix
@@ -1156,7 +1178,7 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                             binning = window_binning_bins[1][0]
                             bins = window_binning_bins[1][1]
 
-                            test_windows_folders_folder = KL_test_sets_base + "\\{}_{}_{}_{}_{}_{}".format(binning,
+                            test_windows_folders_folder = KL_test_sets_base + "//{}_{}_{}_{}_{}_{}".format(binning,
                                                                                                            bins,
                                                                                                            window,
                                                                                                            injection_length,
@@ -1173,28 +1195,28 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                 k = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                test_path_suffix = "\\{}_{}_{}".format(epsilon, k, max_gap)
+                                test_path_suffix = "//{}_{}_{}".format(epsilon, k, max_gap)
 
                                 # folder of tirps text files.
                                 test_windows_outputs_folder_path = test_windows_folders_folder + test_path_suffix
 
                                 # need to get the file of the TIRPs in the matching train set. pass it as tirps path.
 
-                                TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window,
+                                TIRP_path = TIRPs_base + '//{}_{}_{}_{}_{}_{}'.format(binning, bins, window,
                                                                                       epsilon,
-                                                                                      k,
+                                                                                      default_supp,
                                                                                       max_gap)
                                 # call parse outout and save.
                                 test_df = TIRP.output.parse_output(test_windows_outputs_folder_path,
                                                                    tirps_path=TIRP_path, train=False)
 
                                 # save df.
-                                test_df_path_dir = test_sets_base_folder + '\\KL\\KL_LSTM'
+                                test_df_path_dir = test_sets_base_folder + '//KL//KL_LSTM'
 
                                 if not os.path.exists(test_df_path_dir):
                                     Path(test_df_path_dir).mkdir(parents=True, exist_ok=True)
 
-                                test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
+                                test_df_path = test_df_path_dir + '//{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
                                                                                                         bins, window,
                                                                                                         k,
                                                                                                         epsilon,
@@ -1205,6 +1227,110 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
 
                                 with open(test_df_path, mode='wb') as test_f:
                                     pickle.dump(test_df, test_f)
+
+
+def create_KLSTM_test_files(KL_config_path):
+    # 1. go over kl params
+    binning_methods, bins, windows, epsilons, max_gaps, k_values, default_supp = get_KL_params(KL_config_path)
+
+    """
+    String windows_folder = input_base + "//" + method + String.Format("_{0}_{1}", number_of_bins, window_size);
+                                    String separated_output_folder = windows_folder + "_out";
+    String outFile = separated_output_folder + "//" + String.Format("eps_{0}_minHS_{1}_maxGap_{2}",
+                                                        epsilon, minHSup, maxGap) + "//" + String.Format("window#_{0}.txt", window_number);
+    String input_base = test_sets_base_folder + "//KLSTM//events"
+    """
+    input_base = test_sets_base_folder + "//KLSTM//events"
+    for binning_method in binning_methods:
+        for number_of_bins in bins:
+            for window_size in windows:
+                for KL_epsilon in epsilons:
+                    for max_gap in max_gaps:
+                        windows_folder = input_base + "//" + binning_method + "_{}_{}".format(number_of_bins,
+                                                                                              window_size)
+                        separated_output_folder = windows_folder + "_out"
+
+                        for k_val in k_values:
+                            TIRP_path = TIRPs_base + '//{}_{}_{}_{}_{}_{}'.format(binning_method, bins, window_size,
+                                                                                  KL_epsilon,
+                                                                                  k_val,
+                                                                                  max_gap)
+
+                            # for each configuration: call parse_output.
+                            TIRP_test_df = TIRP.output.parse_output(separated_output_folder, train=False,
+                                                                    tirps_path=TIRP_path)
+                            X_test, y_test = models.custom_train_test_split(TIRP_test_df, 20, 42, 1)
+                            suffix = "{}_{}_{}_{}_{}_{}".format(binning_method, bins,
+                                                                window_size, KL_epsilon,
+                                                                k_val, max_gap)
+                            x_test_p = test_sets_base_folder + "//KLSTM//X_test_" + suffix
+                            y_test_p = test_sets_base_folder + "//KLSTM//y_test_" + suffix
+
+                            with open(x_test_p, mode='wb') as x_f:
+                                pickle.dump(X_test, x_f)
+                            with open(y_test_p, mode='wb') as y_f:
+                                pickle.dump(y_test, y_f)
+
+
+def test_KLSTM_prediction(KL_config_path):
+    """
+
+    :param KL_config_path: configuration file for the KLSTM parameters.
+    :return:
+    """
+
+    # go over the parameters:
+    # get model and data
+    # predict
+    # log
+    # go over all KL configurations:
+    binning, bins, windows, epsilons, max_gaps, k_values, default_supp = get_KL_params(KL_config_path)
+    look_back = [20]
+
+    results = pd.DataFrame(columns=['binning', '# bins', 'window size', 'epsilon', 'max gap', 'k', 'mse', 'r2'])
+
+    for binning_method in binning:
+        for number_of_bins in bins:
+            for window_size in windows:
+                for KL_epsilon in epsilons:
+                    for max_gap in max_gaps:
+                        for k_val in k_values:
+                            # train LSTM.
+                            for series_len in look_back:
+                                model_name = '{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
+                                                                        KL_epsilon, max_gap,
+                                                                        k_val)
+                                test_data_path = KL_base + 'KL_LSTM'
+                                models_path = data.modeles_path + '//KL_LSTM'
+                                LSTM = keras.models.load_model(models_path + "//" + model_name)
+                                suffix = "{}_{}_{}_{}_{}_{}".format(binning_method, bins,
+                                                                    window_size,
+                                                                    KL_epsilon,
+                                                                    k_val, max_gap)
+                                x_test_p = test_sets_base_folder + "//KLSTM//X_train_" + suffix
+                                y_test_p = test_sets_base_folder + "//KLSTM//y_train_" + suffix
+
+                                with open(x_test_p, mode='rb') as x_f:
+                                    X_test = pickle.load(x_f)
+                                with open(y_test_p, mode='rb') as y_f:
+                                    y_test = pickle.load(y_f)
+
+                                prediction = LSTM.predict(X_test)
+                                mse = mean_squared_error(y_test, prediction)
+                                r2 = r2_score(y_test, prediction)
+                                result = {'binning': binning_method,
+                                           '# bins': number_of_bins,
+                                           'window size': window_size,
+                                           'epsilon': KL_epsilon,
+                                           'max gap': max_gap,
+                                           'k': k_val,
+                                           'mse': mse, 'r2': r2}
+                                result_df = pd.DataFrame.from_dict(data={'0': result}, orient='index', columns=results.columns)
+                                results = pd.concat([results, result_df], axis=0, ignore_index=True)
+
+    with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        results.to_excel(writer, sheet_name='KLSTM predictions results')
 
 
 # WAIT WITH THIS. NEED TO DETERMINE THE DETECTION METHOD.
