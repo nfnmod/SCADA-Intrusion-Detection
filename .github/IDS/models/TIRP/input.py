@@ -390,7 +390,8 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
                             writer.writerow(events_row)
 
     if test_path is None:
-        # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
+        # this means we are not testing/creating validation or test sets.
+        # so, we are training and we need to save the symbols to avoid a redefinition of them
         # when testing and discovering.
         if not os.path.exists(KL_symbols):
             Path(KL_symbols).mkdir(exist_ok=True, parents=True)

@@ -1845,12 +1845,11 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    """for name in ['TRAIN']:
+    for name in ['TRAIN']:
         path = datasets_path + '\\{}'.format(name)
         with open(path, mode='rb') as df_f:
             df = pickle.load(df_f)
-        stats_dict = get_plcs_values_statistics(df, 8, False)
-        print(stats_dict)"""
+        print(len(df))
     a = np.array([1,2,3,4])
     print(a.shape)
     b = np.reshape(a, (-1,1))

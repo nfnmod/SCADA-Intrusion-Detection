@@ -1,6 +1,24 @@
 # TODO: KLSTM- validation, testing, detection.
 # TODO: FSTM- validation, testing, detection.
-# TODO: 1 = std in DFA training, 3 = std count.
+
+# Test parameters:
+injection % : 40, 60, 80.
+# bins: 3, 4, 5.
+features: v1_1, v2, v3_2.
+binning: start with k-means only.
+
+# KLSTM Training:
+1. create events files for train, validation and test sets - IMPLEMENTED.
+2. run KL on train, validation and test sets - IMPLEMENTED.
+3. filter the TIRPs - IMPLEMENTED.
+4. train LSTM on TIRPs in the train sets - IMPLEMENTED.
+5. train OCSVM on the differences - IMPLEMENTED.
+6. add default value of HS to the run of KL on all 3 sets- IMPLEMENTED.
+
+# KLSTM-OCSVM Testing:
+1. evaluate KLSTM predictions on benign data.
+2. create test sets for KLSTM from the TIRPs found in the anomalous data.
+3. test the full pipeline. get TIRP df of an injection -> predict -> get delta -> ocsvm -> count in the window.
 
 # EXPERIMENTS:
 train LSTM.
@@ -10,7 +28,7 @@ test LSTM based detectors.
 
 train DFA.
 create test sets.
-test DFA. 1 std in DFA training
+test DFA.
 
 train HTM.
 train HTM based classifiers.
@@ -21,7 +39,6 @@ train KLSTM.
 test KLSTM.
 train KLSTM based classifiers.
 test KLSTM based classifiers.
-
 
 train FSTM.
 test FSTM.

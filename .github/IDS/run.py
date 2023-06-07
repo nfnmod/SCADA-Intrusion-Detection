@@ -39,7 +39,6 @@ group_df_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\dataset
 binners_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\binners'
 scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
 DFA_regs = ['30', '120', '15']
-default_supp = 15
 KL_OCSVM_datasets = models.SCADA_base + '\\KL_OCSVM datasets'
 KL_OCSVM_base = models.SCADA_base + '\\KL_OCSVM'
 KL_test_sets_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\test sets\\KL\\KL out"
@@ -412,7 +411,8 @@ def make_input_for_KL(TIRP_config_file_path):
     numbers_of_bins = discovery_params['number_of_bins']
 
     for window in window_sizes:
-        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used, consider_last=True)
+        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used,
+                        consider_last=True)
 
 
 # VALIDATION DATA
@@ -433,7 +433,6 @@ def make_validation_input_for_KL(TIRP_config_file_path):
 
     binning = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
                TIRP.equal_width_discretization: 'equal_width'}
-
 
     for window in window_sizes:
         ready_symbols = {}
@@ -456,21 +455,22 @@ def make_validation_input_for_KL(TIRP_config_file_path):
 
         val_path = val_base + '//KL//events'
 
-        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used, consider_last=True, ready_symbols=ready_symbols, ready_entities=ready_entities, test_path=val_path)
+        TIRP.make_input(pkt_df, binning_methods, numbers_of_bins, window, regs_to_use=data.most_used,
+                        consider_last=True, ready_symbols=ready_symbols, ready_entities=ready_entities,
+                        test_path=val_path)
 
 
 # TEST DATA
-def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, input_creation_config):
+def create_test_input_TIRP_files_for_KL(injection_config, input_creation_config):
     """
     make test data sets for KL.
     for each input creation option: create TIRP with all possible injection options.
     """
-    name_2_func = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
-                   'KMeans': TIRP.k_means_binning}
-    func_2_name = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
-                   TIRP.equal_width_discretization: 'equal_width'}
+    binning_methods = {'EqualFreq': TIRP.equal_frequency_discretization, 'EqualWidth': TIRP.equal_width_discretization,
+                       'KMeans': TIRP.k_means_binning}
 
-    raw_test_data = data.load(data.datasets_path, raw_test_data_df)
+    binning_methods_inv = {TIRP.k_means_binning: 'kmeans', TIRP.equal_frequency_discretization: 'equal_frequency',
+                           TIRP.equal_width_discretization: 'equal_width'}
 
     # first, grid over injection params.
     injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
@@ -489,8 +489,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
             else:
                 for percentage in percentages:
                     for epsilon in epsilons:
-                        # inject in each possible way.
-                        # labels will be used for creation of expected labels for the RF.
+                        # load injected data.
                         df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
                                                                                         percentage)
                         labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
@@ -516,18 +515,27 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
 
                                     # discover TIRPs.
                                     # pass symbols and entities that were previously found.
-                                    suffix = '//{}_{}_{}'.format(func_2_name[name_2_func[method]],
+                                    suffix = '//{}_{}_{}'.format(binning_methods_inv[binning_methods[method]],
                                                                  number_of_bins, window_size)
 
                                     symbols_path = TIRP.input.KL_symbols + suffix
                                     entities_path = TIRP.input.KL_entities + suffix
 
                                     with open(symbols_path, mode='rb') as syms_path:
-                                        ready_symbols = pickle.load(syms_path)
+                                        symbols = pickle.load(syms_path)
                                     with open(entities_path, mode='rb') as ent_path:
-                                        ready_entities = pickle.load(ent_path)
+                                        entities = pickle.load(ent_path)
 
-                                    TIRP.make_input(anomalous_data, name_2_func[method], number_of_bins,
+                                    b = binning_methods[method]
+                                    k = number_of_bins
+
+                                    ready_symbols = dict()
+                                    ready_entities = dict()
+
+                                    ready_symbols[(binning_methods_inv[b], k)] = symbols
+                                    ready_entities[(binning_methods_inv[b], k)] = entities
+
+                                    TIRP.make_input(anomalous_data, {method: binning_methods[method]}, [number_of_bins],
                                                     window_size, consider_last=True, regs_to_use=data.most_used,
                                                     test_path=test_path_sliding_windows,
                                                     ready_symbols=ready_symbols, ready_entities=ready_entities)
@@ -537,7 +545,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                     test_labels = []
                                     for i in range(len(anomalous_data) - window_size + 1):
                                         # get the labels for the windows' packets.
-                                        window_labels = labels[i, i + window_size]
+                                        window_labels = labels[i: i + window_size]
 
                                         # the label is 0 for a benign packet and 1 for an anomalous packets.
                                         # so a set of packets has an anomaly in it iff the max of its corresponding labels is 1.
@@ -546,7 +554,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         # add label.
                                         test_labels.append(window_label)
 
-                                    path = test_sets_base_folder + '\\KL\\test_labels\\{}_{}_{}_{}_{}_{}'.format(
+                                    path = test_sets_base_folder + '//KL//test_labels//{}_{}_{}_{}_{}_{}'.format(
                                         method,
                                         number_of_bins,
                                         window_size,
@@ -554,7 +562,7 @@ def create_test_input_TIRP_files_for_KL(raw_test_data_df, injection_config, inpu
                                         step_over,
                                         percentage)
 
-                                    dir_path = test_sets_base_folder + '\\KL\\test_labels'
+                                    dir_path = test_sets_base_folder + '//KL//test_labels'
                                     if not os.path.exists(dir_path):
                                         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
@@ -570,7 +578,7 @@ def filter_TIRPs(KL_config_file_path):
     :return:
     """
     # 1. get to the file containing the mined TIRPs with very low support.
-    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_file_path)
+    binning, bins, windows, epsilons, max_gaps, K_values, default_supp = get_KL_params(KL_config_file_path)
 
     binning_times_bins = itertools.product(binning, bins)
     parent_folders = itertools.product(windows, binning_times_bins)
@@ -583,17 +591,17 @@ def filter_TIRPs(KL_config_file_path):
 
         windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning, bins, window)
 
-        max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps)
-        KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+        max_gaps_times_ks = itertools.product(max_gaps, K_values)
+        KL_hyperparams = itertools.product(epsilons, max_gaps_times_ks)
 
         # parameters of KL.
         for eps_gap_supp in KL_hyperparams:
             epsilon = eps_gap_supp[0]
             max_gap = eps_gap_supp[1][0]
-            horizontal_supp = eps_gap_supp[1][1]
+            k = eps_gap_supp[1][1]
 
             # we will save the filtered TIRPs here.
-            dest_path_suffix = "\\eps_{0}_minHS%_{1}_maxGap_{2}".format(epsilon, horizontal_supp, max_gap)
+            dest_path_suffix = "\\eps_{0}_k_{1}_maxGap_{2}".format(epsilon, k, max_gap)
             # path to read the whole set of TIRPs from.
             src_path_suffix = "\\eps_{0}_minHS_{1}_maxGap_{2}".format(epsilon, default_supp, max_gap)
 
@@ -604,11 +612,11 @@ def filter_TIRPs(KL_config_file_path):
                 Path(windows_outputs_destination_folder_path).mkdir(parents=True)
 
             # call helper function to finish.
-            filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp)
+            filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, k)
 
 
 # switch to filtering by a percentile!
-def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, horizontal_supp):
+def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destination_folder_path, k):
     # iterate over the TIRPs in the windows files in the src folder.
     # read every TIRP line in the file and check for the HS. if it's high enough write it to the destination file.
     for TIRPs_in_window in os.listdir(windows_outputs_src_folder_path):
@@ -619,13 +627,13 @@ def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destinatio
             tirp = TIRP.parse_line(TIRP_line)
             numbers_of_instances.append(TIRP.get_number_of_instances(tirp.instances))
 
-        percentile_hs = np.percentile(numbers_of_instances, horizontal_supp)
+        min_num_instances = sorted(numbers_of_instances)[k]
 
         for TIRP_line in window_file:
             # parse into TIRP object
             tirp = TIRP.parse_line(TIRP_line)
             # filter by horizontal support.
-            if TIRP.get_number_of_instances(tirp.instances) >= percentile_hs:
+            if TIRP.get_number_of_instances(tirp.instances) >= min_num_instances:
                 if not os.path.exists(dst_window_file):
                     Path(dst_window_file).mkdir(parents=True)
                 # write TIRP.
@@ -635,26 +643,26 @@ def filter_and_write(windows_outputs_src_folder_path, windows_outputs_destinatio
 
 def train_LSTMs_from_KL(KL_config_file_path):
     # go over all KL configurations:
-    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps = get_KL_params(KL_config_file_path)
+    binning, bins, windows, epsilons, max_gaps, k_values, default_supp = get_KL_params(KL_config_file_path)
     look_back = [20]
 
     for binning_method in binning:
         for number_of_bins in bins:
             for window_size in windows:
 
-                windows_folders_folder = KL_base + "{}_bins_{}_window_{}_out".format(binning_method, number_of_bins,
-                                                                                     window_size)
+                windows_folders_folder = KL_base + "{}_{}_{}_out".format(binning_method, number_of_bins,
+                                                                         window_size)
 
                 for epsilon in epsilons:
                     for max_gap in max_gaps:
-                        for min_horizontal_supp_percentile in min_horizontal_supps:
+                        for k in k_values:
 
-                            path_suffix = "\\eps_{0}_minHS%_{1}_maxGap_{2}".format(epsilon,
-                                                                                   min_horizontal_supp_percentile,
-                                                                                   max_gap)
+                            path_suffix = "//eps_{0}_k_{1}_maxGap_{2}".format(epsilon,
+                                                                              k,
+                                                                              max_gap)
                             windows_outputs_folder_path = windows_folders_folder + path_suffix
-                            TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window_size, epsilon,
-                                                                                  min_horizontal_supp_percentile,
+                            TIRP_path = TIRPs_base + '//{}_{}_{}_{}_{}_{}'.format(binning, bins, window_size, epsilon,
+                                                                                  k,
                                                                                   max_gap)
 
                             # for each configuration: call parse_output.
@@ -664,13 +672,13 @@ def train_LSTMs_from_KL(KL_config_file_path):
                             for series_len in look_back:
                                 model_name = '{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
                                                                         epsilon, max_gap,
-                                                                        min_horizontal_supp_percentile)
+                                                                        k)
                                 train_data_path = KL_base + 'KL_LSTM'
-                                models_path = data.modeles_path + '\\KL_LSTM'
+                                models_path = data.modeles_path + '//KL_LSTM'
                                 with open(KL_LSTM_log, mode='a') as log:
                                     log.write('Training: {}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins,
                                                                                    window_size, epsilon, max_gap,
-                                                                                   min_horizontal_supp_percentile))
+                                                                                   k))
 
                                 start = time.time()
                                 models.simple_LSTM(TIRP_df, series_len, 42, model_name, train=1,
@@ -680,8 +688,6 @@ def train_LSTMs_from_KL(KL_config_file_path):
                                     log.write("trained, time elapsed: {}".format(end - start))
 
 
-##########################################################################################
-# IRRELEVANT FOR NOW.
 def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
     # go over all KL-LSTM configurations:
     # for each configuration: train RF, all the labels are 0.
@@ -694,7 +700,7 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_horizontal_supps = KL_params['MinVerSups']
+    k_values = KL_params['Ks']
     look_back = [20, 30]
     OCSVM_params = params['OCSVM']
     nus = OCSVM_params['nu']
@@ -705,11 +711,11 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
             for window_size in windows:
                 for epsilon in epsilons:
                     for max_gap in max_gaps:
-                        for min_horizontal_supp in min_horizontal_supps:
+                        for k in k_values:
                             # get LSTM and LSTM data.
                             for series_len in look_back:
                                 model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
-                                                                           epsilon, max_gap, min_horizontal_supp,
+                                                                           epsilon, max_gap, k,
                                                                            series_len)
                                 train_data_folder_path = KL_base
                                 models_path = data.modeles_path + '\\KL_LSTM'
@@ -721,7 +727,7 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
 
                                 predictions = LSTM.predict(X_train)
                                 predictions_path = KL_OCSVM_datasets + '\\X_train_{}_{}_{}_{}_{}_{}_{}'.format(
-                                    binning_method, number_of_bins, window_size, epsilon, max_gap, min_horizontal_supp,
+                                    binning_method, number_of_bins, window_size, epsilon, max_gap, k,
                                     series_len)
                                 with open(predictions_path, mode='wb') as pred_f:
                                     pickle.dump(predictions, pred_f)
@@ -735,12 +741,12 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
                                                                                                        number_of_bins,
                                                                                                        window_size,
                                                                                                        epsilon, max_gap,
-                                                                                                       min_horizontal_supp,
+                                                                                                       k,
                                                                                                        series_len,
                                                                                                        kernel, nu))
                                         ocsvm = OneClassSVM(kernel=kernel, nu=nu)
                                         start = time.time()
-                                        ocsvm.fit(predictions)
+                                        ocsvm.fit(abs(predictions - X_train))
                                         end = time.time()
                                         with open(KL_based_OCSVM_log, mode='a') as log:
                                             log.write('Trained, time elapsed: {}'.format(end - start))
@@ -750,13 +756,12 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
                                                                                                          window_size,
                                                                                                          epsilon,
                                                                                                          max_gap,
-                                                                                                         min_horizontal_supp,
+                                                                                                         k,
                                                                                                          series_len,
                                                                                                          kernel, nu)
                                         keras.models.save_model(ocsvm, model_path)
 
 
-##########################################################################################
 def create_train_sets_HTM(train_config):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
@@ -1072,7 +1077,7 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
     """
     # 1. get to the file containing the mined TIRPs with very low support.
     # get params for kl and injections.
-    binning, bins, windows, epsilons, max_gaps, min_horizontal_supps_percentiles = get_KL_params(KL_config_file_path)
+    binning, bins, windows, epsilons, max_gaps, k_values, default_supp = get_KL_params(KL_config_file_path)
 
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
 
@@ -1099,17 +1104,17 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
                                                                                                       step_over,
                                                                                                       percentage)
 
-                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps_percentiles)
-                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+                            max_gaps_times_k_values= itertools.product(max_gaps, k_values)
+                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_k_values)
 
                             # parameters of KL.
                             for eps_gap_supp in KL_hyperparams:
                                 epsilon = eps_gap_supp[0]
                                 max_gap = eps_gap_supp[1][0]
-                                horizontal_supp_percentile = eps_gap_supp[1][1]
+                                k = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp_percentile, max_gap)
+                                dest_path_suffix = "\\{}_{}_{}".format(epsilon, k, max_gap)
                                 # path to read the whole set of TIRPs from.
                                 src_path_suffix = "\\{}_{}_{}".format(epsilon, default_supp, max_gap)
 
@@ -1121,13 +1126,13 @@ def filter_TIRPs_test_files(KL_config_file_path, injection_config):
 
                                 # call helper function to finish.
                                 filter_and_write(windows_outputs_src_folder_path,
-                                                 windows_outputs_destination_folder_path, horizontal_supp_percentile)
+                                                 windows_outputs_destination_folder_path, k)
 
 
 # 2. after filtering, make dfs for the LSTM.
 def create_test_sets_KLSTM(KL_config_path, injections_config_path):
     # 1. go over kl params
-    binning_methods, bins, windows, epsilons, max_gaps, min_horizontal_supps_percentiles = get_KL_params(KL_config_path)
+    binning_methods, bins, windows, epsilons, max_gaps, k_values, default_supp = get_KL_params(KL_config_path)
 
     # 2. go over injection paras
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injections_config_path)
@@ -1158,17 +1163,17 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
                                                                                                            step_over,
                                                                                                            percentage)
 
-                            max_gaps_times_supports = itertools.product(max_gaps, min_horizontal_supps_percentiles)
-                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_supports)
+                            max_gaps_times_k_values = itertools.product(max_gaps, k_values)
+                            KL_hyperparams = itertools.product(epsilons, max_gaps_times_k_values)
 
                             # parameters of KL.
                             for eps_gap_supp in KL_hyperparams:
                                 epsilon = eps_gap_supp[0]
                                 max_gap = eps_gap_supp[1][0]
-                                horizontal_supp_percentile = eps_gap_supp[1][1]
+                                k = eps_gap_supp[1][1]
 
                                 # we will save the filtered TIRPs here.
-                                test_path_suffix = "\\{}_{}_{}".format(epsilon, horizontal_supp_percentile, max_gap)
+                                test_path_suffix = "\\{}_{}_{}".format(epsilon, k, max_gap)
 
                                 # folder of tirps text files.
                                 test_windows_outputs_folder_path = test_windows_folders_folder + test_path_suffix
@@ -1177,7 +1182,7 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
 
                                 TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(binning, bins, window,
                                                                                       epsilon,
-                                                                                      horizontal_supp_percentile,
+                                                                                      k,
                                                                                       max_gap)
                                 # call parse outout and save.
                                 test_df = TIRP.output.parse_output(test_windows_outputs_folder_path,
@@ -1191,7 +1196,7 @@ def create_test_sets_KLSTM(KL_config_path, injections_config_path):
 
                                 test_df_path = test_df_path_dir + '\\{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning,
                                                                                                         bins, window,
-                                                                                                        horizontal_supp_percentile,
+                                                                                                        k,
                                                                                                         epsilon,
                                                                                                         max_gap,
                                                                                                         injection_length,
@@ -2609,8 +2614,9 @@ def get_KL_params(KL_config_path):
     windows = KL_params['Windows']
     epsilons = KL_params['Epsilons']
     max_gaps = KL_params['MaxGaps']
-    min_h_percentile_sups = KL_params['MinHorizontalSups']
-    return binning_methods, bins, windows, epsilons, max_gaps, min_h_percentile_sups
+    k_values = KL_params['MinHorizontalSups']
+    default_hs = KL_params['defaulths']
+    return binning_methods, bins, windows, epsilons, max_gaps, k_values, default_hs
 
 
 def get_DFA_params():
