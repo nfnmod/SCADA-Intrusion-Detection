@@ -1319,13 +1319,14 @@ def test_KLSTM_prediction(KL_config_path):
                                 mse = mean_squared_error(y_test, prediction)
                                 r2 = r2_score(y_test, prediction)
                                 result = {'binning': binning_method,
-                                           '# bins': number_of_bins,
-                                           'window size': window_size,
-                                           'epsilon': KL_epsilon,
-                                           'max gap': max_gap,
-                                           'k': k_val,
-                                           'mse': mse, 'r2': r2}
-                                result_df = pd.DataFrame.from_dict(data={'0': result}, orient='index', columns=results.columns)
+                                          '# bins': number_of_bins,
+                                          'window size': window_size,
+                                          'epsilon': KL_epsilon,
+                                          'max gap': max_gap,
+                                          'k': k_val,
+                                          'mse': mse, 'r2': r2}
+                                result_df = pd.DataFrame.from_dict(data={'0': result}, orient='index',
+                                                                   columns=results.columns)
                                 results = pd.concat([results, result_df], axis=0, ignore_index=True)
 
     with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
