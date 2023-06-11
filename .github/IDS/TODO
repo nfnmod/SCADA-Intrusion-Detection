@@ -1,4 +1,4 @@
-# TODO: KLSTM- validation, testing, detection.
+# TODO: KLSTM- finish detection pipeline, optimize events mining, file names for injected test labels and files.
 # TODO: FSTM- validation, testing, detection.
 
 # Test parameters:
@@ -19,6 +19,7 @@ binning: start with k-means only.
 1. evaluate KLSTM predictions on benign data.
 2. create test sets for KLSTM from the TIRPs found in the anomalous data.
 3. test the full pipeline. get TIRP df of an injection -> predict -> get delta -> ocsvm -> count in the window.
+
 
 # EXPERIMENTS:
 train LSTM.
