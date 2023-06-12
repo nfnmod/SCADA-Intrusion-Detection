@@ -50,11 +50,11 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'window size',
+excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'window size', 'likelihood_threshold',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
-              'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal VS', 'max gap',
+              'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal K', 'max gap',
               'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
@@ -69,7 +69,7 @@ LSTM_detection_cols = ['data version', 'binning', '# bins', '# std count', 'wind
                        'precision',
                        'recall', 'auc', 'f1', 'prc']
 
-KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
+KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal K', 'max gap',
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
 
@@ -91,6 +91,7 @@ test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log file
 test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
 test_LSTM_STD_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
 val_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation'
+KLSTM_test_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\KLSTM detection test.txt'
 LSTM_validation = val_base + '\\LSTM\\'
 
 
@@ -1505,6 +1506,14 @@ def test_KLSTM_detection(KL_config_path, injection_config):
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
     look_back = [20]
 
+    folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
+               "equal_width": 'EqualWidth'}
+
+    results_df = pd.DataFrame(columns=excel_cols)
+    labels_df = pd.DataFrame(columns=['binning', '# bins', 'window size', 'KL epsilon', 'minimal K', 'max gap',
+                                      'injection length', 'step over', 'percentage', '# window', 'model label',
+                                      'true label'])
+
     # 4. detect and set threshold on validation set.
     # 5. for each window, std count -> detect.
     for binning_method in binning:
@@ -1515,6 +1524,10 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                         for k_val in k_values:
                             # get LSTM and LSTM data.
                             for series_len in look_back:
+                                with open(KLSTM_test_log, mode='a') as log:
+                                    log.write('testing KLSTM with parameters:\n')
+                                    log.write('binning:{}, # bins:{}, window:{}, kl eps:{}, max gap:{}, k_val:{}\n'.format(binning_method, number_of_bins, window_size, KL_epsilon, max_gap, k_val))
+
                                 model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
                                                                            KL_epsilon, max_gap, k_val,
                                                                            series_len)
@@ -1537,6 +1550,9 @@ def test_KLSTM_detection(KL_config_path, injection_config):
 
                                 for kernel in kernels:
                                     for nu in nus:
+                                        with open(KLSTM_test_log, mode='a') as log:
+                                            log.write('testing with OCSVM with parameters:\n')
+                                            log.write("kernel:{}, nu:{}\n".format(kernel, nu))
                                         # load model.
                                         model_path = KL_OCSVM_base + '{}_{}_{}_{}_{}_{}_{}_{}_{}'.format(binning_method,
                                                                                                          number_of_bins,
@@ -1588,9 +1604,78 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                                                             for std_count in num_stds_count:
                                                                 count_threshold = mean + std_count * std
                                                                 true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
-                                                                    OCSVM_classification, true_labels, window_size)
+                                                                    OCSVM_classification, true_labels, window_size,
+                                                                    count_threshold)
 
                                                                 # calculate metrics and log everything.
+                                                                precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                                                                    y_true=true_windows_labels,
+                                                                    y_pred=model_windows_labels)
+
+                                                                result = {'binning': binning_method,
+                                                                          '# bins': bins,
+                                                                          'KL epsilon': KL_epsilon,
+                                                                          'max gap': max_gap,
+                                                                          'minimal K': k_val,
+                                                                          '# std count': std_count,
+                                                                          'window size': window_size,
+                                                                          'injection length': injection_length,
+                                                                          'step over': step_over,
+                                                                          'percentage': percentage,
+                                                                          'precision': precision,
+                                                                          'recall': recall,
+                                                                          'auc': auc_score,
+                                                                          'f1': f1,
+                                                                          'prc': prc_auc_score}
+
+                                                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                                                labels_test_df['# window'] = [i for i in range(
+                                                                    len(true_windows_labels))]
+                                                                labels_test_df['window size'] = window_size
+                                                                labels_test_df['model label'] = model_windows_labels
+                                                                labels_test_df['true label'] = true_windows_labels
+                                                                labels_test_df['binning'] = folders[binning_method]
+                                                                labels_test_df['# bins'] = bins
+                                                                labels_test_df['# std count'] = std_count
+                                                                labels_test_df['injection length'] = injection_length
+                                                                labels_test_df['step over'] = step_over
+                                                                labels_test_df['percentage'] = percentage
+                                                                labels_test_df['KL epsilon'] = KL_epsilon
+                                                                labels_test_df['minimal K'] = k_val
+                                                                labels_test_df['max gap'] = max_gap
+
+                                                                with pd.ExcelWriter(xl_path, mode="a",
+                                                                                    engine="openpyxl",
+                                                                                    if_sheet_exists="overlay") as writer:
+                                                                    row = 0
+                                                                    if 'KLSTM windows labels' in writer.sheets.keys():
+                                                                        row = writer.sheets[
+                                                                            'DFA windows labels'].max_row
+                                                                    labels_test_df.to_excel(writer,
+                                                                                            sheet_name='KLSTM windows labels',
+                                                                                            startrow=row)
+
+                                                                for col_name in excel_cols:
+                                                                    if col_name not in DFA_cols:
+                                                                        result[col_name] = '-'
+                                                                results_df = pd.concat(
+                                                                    [results_df,
+                                                                     pd.DataFrame.from_dict(data={'0': result},
+                                                                                            columns=excel_cols,
+                                                                                            orient='index')],
+                                                                    axis=0, ignore_index=True)
+                                                                with open(KLSTM_test_log, mode='a') as log:
+                                                                    log.write('scores for injection with %:{}, len:{}, step over:{}\n'.format(percentage, injection_length, step_over))
+                                                                    log.write(
+                                                                        'auc:{}, f1:{}, prc:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
+                                                                            auc_score, f1,
+                                                                            prc_auc_score,
+                                                                            precision,
+                                                                            recall, tn, fp, fn, tp))
+    with pd.ExcelWriter(xl_path, mode="a",
+                        engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        results_df.to_excel(writer, sheet_name='KLSTM scores')
 
 
 def make_best(results_df):
@@ -2206,154 +2291,6 @@ def many_PLC_DFAs(groups_ids, injection_config):
     with pd.ExcelWriter(xl_path) as writer:
         sheet = 'DFA, many PLCs, best scores'
         best_df.to_excel(writer, sheet_name=sheet)
-
-
-######################IRRELEVANT FOR NOW########################################
-def test_KL_based_RF(KL_config_path, injection_config_path):
-    results_df = pd.DataFrame(columns=excel_cols)
-    with open(KL_config_path, mode='r') as KL_params_path:
-        params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
-        KL_params = params['KarmaLegoParams']
-        RF_params = params['RF']
-
-    binning_methods = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    KL_epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    min_ver_sups = KL_params['MinVerSups']
-    with open(injection_config_path, mode='r') as anomalies_config:
-        injection_params = yaml.load(anomalies_config, Loader=yaml.FullLoader)
-    injection_lengths = injection_params['InjectionLength']
-    step_overs = injection_params['StepOver']
-    percentages = injection_params['Percentage']
-    epsilons = injection_params['Epsilon']
-
-    number_of_estimators = RF_params['n_estimators']
-    criterions = RF_params['criterion']
-    max_features = RF_params['max_features']
-
-    models_base_path = KL_RF_base
-    for binning_method in binning_methods:
-        for number_of_bins in bins:
-            for window in windows:
-                TIRP_level = "\\{}_bins_{}_window{}".format(binning_method, number_of_bins, window)
-                for KL_epsilon in KL_epsilons:
-                    for max_gap in max_gaps:
-                        for min_ver_sup in min_ver_sups:
-                            path_suffix = "\\eps_{0}_minVS_{1}_maxGap_{2}_HS_true".format(KL_epsilon, min_ver_sup,
-                                                                                          max_gap)
-                            models_folder = models_base_path + TIRP_level + path_suffix
-                            for estimators in number_of_estimators:
-                                for criterion in criterions:
-                                    for max_feature in max_features:
-                                        RF_level = 'estimators_{}_'.format(
-                                            estimators) + 'criterion{}_'.format(
-                                            criterion) + 'features_{}.sav'.format(max_feature)
-                                        RF_classifier_path = models_folder + '\\' + RF_level
-                                        with open(RF_classifier_path, mode='rb') as path:
-                                            RF_classifier = pickle.load(path)
-                                        input_base = data.datasets_path + '\\KL\\'
-                                        for injection_length in injection_lengths:
-                                            for step_over in step_overs:
-                                                anomaly_percentage = injection_length / (injection_length + step_over)
-                                                if anomaly_percentage > 0.2:
-                                                    continue
-                                                for percentage in percentages:
-                                                    for injection_epsilon in epsilons:
-                                                        desc = "\\{0}_{1}_{2}_{3}_{4}_{5}_{6}".format(binning_method,
-                                                                                                      number_of_bins,
-                                                                                                      window,
-                                                                                                      injection_length,
-                                                                                                      step_over,
-                                                                                                      percentage,
-                                                                                                      injection_epsilon)
-                                                        outDir = KL_output_base + desc
-                                                        # the path to the dir containing the output of the specific KL for the specific injection.
-                                                        # the inputs were the events of the sliding windows in the injected data.
-                                                        # call parse output and replace anomaly = 0 with labels.
-                                                        windows_outputs_dir = outDir + "\\{0}_{1}_{2}_true".format(
-                                                            KL_epsilon,
-                                                            min_ver_sup,
-                                                            max_gap)
-                                                        # call parse_output, get the tirps in the train set for the indexing.
-                                                        TIRP_path = TIRPs_base + '\\{}_{}_{}_{}_{}_{}'.format(
-                                                            binning_method,
-                                                            bins,
-                                                            window,
-                                                            injection_epsilon,
-                                                            min_ver_sup,
-                                                            max_gap)
-                                                        test_df = models.TIRP.output.parse_output(windows_outputs_dir,
-                                                                                                  TIRP_path,
-                                                                                                  train=False)
-
-                                                        path_to_labels = test_sets_base_folder + '\\KL\\RF\\test_labels\\{}_{}_{}_{}_{}_{}_{}'.format(
-                                                            binning_method,
-                                                            number_of_bins,
-                                                            window,
-                                                            injection_length,
-                                                            step_over,
-                                                            percentage,
-                                                            injection_epsilon)
-                                                        with open(path_to_labels, mode='rb') as labels_path:
-                                                            test_labels = pickle.load(labels_path)
-
-                                                        classifications = RF_classifier.predict(test_df)
-
-                                                        # calculate metrics.
-                                                        precision, recalls, thresholds = precision_recall_curve(
-                                                            y_true=test_labels,
-                                                            probas_pred=classifications)
-                                                        precision = precision[0]
-                                                        recall = recalls[0]
-                                                        auc_score = roc_auc_score(y_true=test_labels,
-                                                                                  y_score=classifications)
-
-                                                        f1 = f1_score(y_true=test_labels, y_pred=classifications)
-                                                        result = {'binning': binning_method,
-                                                                  '# bins': number_of_bins,
-                                                                  'window size': window,
-                                                                  'KL epsilon': KL_epsilon,
-                                                                  'minimal VS': min_ver_sup,
-                                                                  'max gap': max_gap,
-                                                                  'injection length': injection_length,
-                                                                  'step over': step_over,
-                                                                  'percentage': percentage,
-                                                                  'precision': precision,
-                                                                  'recall': recall,
-                                                                  'auc': auc_score,
-                                                                  'f1': f1}
-                                                        for col_name in excel_cols.difference(KL_based_RF_cols):
-                                                            result[col_name] = '-'
-                                                        temp_df = pd.DataFrame.from_dict(columns=excel_cols,
-                                                                                         data={'0': result},
-                                                                                         orient='index')
-                                                        results_df = pd.concat([results_df, temp_df], axis=0,
-                                                                               ignore_index=True)
-                                                        with open(test_KL_RF_log, mode='a') as test_log:
-                                                            test_log.write(
-                                                                'recorded results for KL-RF for injection with parameters:\n')
-                                                            test_log.write('len: {}, step: {}, %: {}, eps: {}\n'.format(
-                                                                injection_length, step_over, percentage,
-                                                                injection_epsilon))
-                                                            test_log.write('model parameters:\n')
-                                                            test_log.write(
-                                                                'binning: {}, # bins: {}, window size: {}, KL epsilon: {}, minimal VS: {}, max gap: {}\n'.format(
-                                                                    binning_method, number_of_bins, window,
-                                                                    KL_epsilon, min_ver_sup, max_gap))
-                                                            test_log.write(
-                                                                'scores: precision: {}, recall: {}, auc: {}, f1: {}\n'.format(
-                                                                    result['precision'], result['recall'],
-                                                                    result['auc scores'], result['f1']))
-
-    best_df = make_best(results_df)
-
-    with pd.ExcelWriter(xl_path) as writer:
-        best_df['name'] = 'KL-RF'
-        results_df['name'] = 'KL-RF'
-        best_df.to_excel(excel_writer=writer, sheet_name='KL based RF best scores')
-        results_df.to_excel(excel_writer=writer, sheet_name='KL based RF performance')
 
 
 ######################IRRELEVANT FOR NOW########################################

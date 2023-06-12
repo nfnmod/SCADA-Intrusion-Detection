@@ -343,7 +343,7 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
                                                                                    ready_entites=ready_entities)
     for b in binning_methods.values():
         for k in numbers_of_bins:
-            base_path = data.datasets_path + '\\KL' + '\\' + binning[b] + '_{}_{}'.format(k, w)
+            base_path = data.datasets_path + '//KL' + '//' + binning[b] + '_{}_{}'.format(k, w)
             if test_path is not None:
                 base_path = test_path + '//' + binning[b] + '_{}_{}'.format(k, w)
             if not os.path.exists(base_path):
