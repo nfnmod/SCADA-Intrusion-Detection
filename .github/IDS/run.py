@@ -548,7 +548,7 @@ def create_test_input_TIRP_files_for_KL(injection_config, input_creation_config)
                                 # add label.
                                 test_labels.append(window_label)
 
-                            for method in binning:
+                            for b in binning_methods.values():
                                 for number_of_bins in bins:
                                     # discover events in separate windows.
 
@@ -559,25 +559,24 @@ def create_test_input_TIRP_files_for_KL(injection_config, input_creation_config)
 
                                     # discover TIRPs.
                                     # pass symbols and entities that were previously found.
-                                    suffix = '//{}_{}_{}'.format(binning_methods_inv[binning_methods[method]],
+                                    suffix = '//{}_{}_{}'.format(binning_methods_inv[b],
                                                                  number_of_bins, window_size)
 
-                                    symbols_path = TIRP.input.KL_symbols + suffix
-                                    entities_path = TIRP.input.KL_entities + suffix
+                                    symbols_path = TIRP.KL_symbols + suffix
+                                    entities_path = TIRP.KL_entities + suffix
 
                                     with open(symbols_path, mode='rb') as syms_path:
                                         symbols = pickle.load(syms_path)
                                     with open(entities_path, mode='rb') as ent_path:
                                         entities = pickle.load(ent_path)
 
-                                    b = binning_methods[method]
                                     k = number_of_bins
 
                                     ready_symbols[(binning_methods_inv[b], k)] = symbols
                                     ready_entities[(binning_methods_inv[b], k)] = entities
 
                                     path = test_sets_base_folder + '//KL//test_labels//{}_{}_{}_{}_{}_{}'.format(
-                                        method,
+                                        binning_methods_inv[b],
                                         number_of_bins,
                                         window_size,
                                         injection_length,

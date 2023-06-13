@@ -191,19 +191,22 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                     # no need to consider previous packets because the entity doesn't appear in them. If it were to appear in them
                     # then it wouldn't be unchecked.
                     if entity not in checked_entities:
-                        reg_num = entity[1]
-                        values = [float(payload[str(reg_num)])]
-                        times = [round((pkt['time'] - start_time).total_seconds())]
-                        for k_w in range(j + 1, w):
-                            w_pkt = window.iloc[k_w]
-                            # check for the entity in the payload.
-                            if w_pkt['src_port'] == data.plc_port:
-                                w_IP = w_pkt['src_ip']
-                                w_reg_val = w_pkt['payload'].get(str(reg_num), None)
-                                if w_IP == IP and w_reg_val is not None and (
-                                        len(values) == 0 or values[-1] != w_reg_val):
-                                    values.append(float(w_reg_val))
-                                    times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                        if j == 0:
+                            reg_num = entity[1]
+                            values = [float(payload[str(reg_num)])]
+                            times = [round((pkt['time'] - start_time).total_seconds())]
+                            for k_w in range(j + 1, w):
+                                w_pkt = window.iloc[k_w]
+                                # check for the entity in the payload.
+                                if w_pkt['src_port'] == data.plc_port:
+                                    w_IP = w_pkt['src_ip']
+                                    w_reg_val = w_pkt['payload'].get(str(reg_num), None)
+                                    if w_IP == IP and w_reg_val is not None and (
+                                            len(values) == 0 or values[-1] != w_reg_val):
+                                        values.append(float(w_reg_val))
+                                        times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                        else:
+                            pass
                         # mark as checked.
                         checked_entities.append(entity)
                         # bin using all options to avoid reprocessing
