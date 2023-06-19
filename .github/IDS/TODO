@@ -1,11 +1,13 @@
-# TODO: KLSTM- optimize events mining, file names for injected test labels and files.
+# TODO: KLSTM- file names for injected test labels and files.
 # TODO: FSTM- validation, testing, detection.
 
 # Test parameters:
 injection % : 40, 60, 80.
-# bins: 3, 4, 5.
+# bins: 3, 4, 5, 6.
 features: v1_1, v2, v3_2.
 binning: start with k-means only.
+
+# DONT FORGET: CHANGE N_WINDOWS, DEBUG BINNING (?)
 
 # KLSTM Training:
 1. create events files for train, validation and test sets - IMPLEMENTED.

@@ -143,7 +143,8 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
-    n_windows = len(df) - w + 1
+    # n_windows = len(df) - w + 1
+    n_windows = 1000
     binning_methods_inv = {k_means_binning: 'KMeans', equal_frequency_discretization: 'EqualFreq',
                            equal_width_discretization: 'EqualWidth'}
     binners = load_binners(numbers_of_bins, binning_methods.keys(), regs_to_use)
@@ -177,7 +178,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
     # save for each (entity, binning method, number of bins) -> # window last seen in
     # save for each (entity, binning method, number of bins) -> values and times sequences and idx from the last window seen in
     # save for each (entity, binning method, number of bins) -> sequence of all (idx,value) of packets in the window the entity was seen in
-    entities_strs = entities_dict[(binning_methods_inv[binning_methods.values()[0]], numbers_of_bins[0])].keys()
+    entities_strs = entities_dict[(binning_methods_inv[list(binning_methods.values())[0]], numbers_of_bins[0])].keys()
     last_window_info_dict = {e: None for e in entities_strs}
 
     # per window
@@ -229,6 +230,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                         first_appearances_curr_window = [j]
                         idx_vals_seq_curr_window = [(j, values[0])]
                         times = [round((pkt['time'] - start_time).total_seconds())]
+                        times_wo_round = [(pkt['time'] - start_time).total_seconds()]  # all w.o rounding
                         start_idx = j + 1
 
                         # if window # 0  -> do full calculation.
@@ -242,10 +244,10 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
 
                             window_num_delta = i - entity_info['last_window_num']
                             idx_vals_seq = entity_info['idx,value']
-                            first_appearance = idx_vals_seq[0] - window_num_delta
+                            first_appearance = idx_vals_seq[0][0] - window_num_delta
                             first_appearances = entity_info['first_appearances_idx']
 
-                            time_delta = (window[0]['time'] - df.iloc[entity_info['last_window_num']][
+                            time_delta = (window.iloc[0]['time'] - df.iloc[entity_info['last_window_num']][
                                 'time']).total_seconds()
 
                             if first_appearance in range(w):
@@ -253,9 +255,14 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                 # take everything from the last one and continue from where it stops.
                                 start_idx = idx_vals_seq[-1][0] + 1 - window_num_delta
                                 values = entity_info['values']
-                                times = round(entity_info['times'] - time_delta)
-                                first_appearances_curr_window = first_appearances
-                                idx_vals_seq_curr_window = idx_vals_seq
+                                times = [round(t - time_delta) for t in
+                                         entity_info['times_wo_round']]  # round(entity_info['times'] - time_delta)
+                                # print('window # {}\n no bin search, entity {}'.format(i, entity))
+                                first_appearances_curr_window = [first_appearance - window_num_delta for
+                                                                 first_appearance in first_appearances]
+                                idx_vals_seq_curr_window = [(idx - window_num_delta, val) for (idx, val) in
+                                                            idx_vals_seq]
+                                times_wo_round = [t - time_delta for t in entity_info['times_wo_round']]
                             else:
                                 # take times and values from first idx greater than current one.
                                 # subtract the time difference.
@@ -269,28 +276,32 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
 
                                 while l <= r:
                                     middle = round((l + r) / 2)
-                                    idx = first_appearances[middle]
+                                    idx = first_appearances[middle] - window_num_delta
 
                                     if idx == j:
                                         first_gt = middle + 1
                                         break
                                     elif idx < j:
                                         l = middle + 1
-                                        if first_appearance[middle + 1] > j:
+                                        if first_appearances[middle + 1] > j:
                                             first_gt = middle + 1
                                             break
                                     else:
                                         r = middle - 1
-                                        if first_appearance[middle - 1] <= j:
+                                        if first_appearances[middle - 1] <= j:
                                             first_gt = middle
                                             break
                                 if first_gt == -1 or first_gt >= num_fa:
                                     start_idx = j + 1
                                 else:
                                     values += entity_info['values'][first_gt:]
-                                    times += (round(entity_info['times'][first_gt:] - time_delta))
-                                    first_appearances_curr_window += first_appearances[first_gt:]
+                                    times += [round(t - time_delta) for t in entity_info['times_wo_round'][
+                                                                             first_gt:]]  # (round(entity_info['times'][first_gt:] - time_delta))
+                                    # print('window # {}\n bin search, entity {}'.format(i, entity))
+                                    first_appearances_curr_window += [fa - window_num_delta for fa in
+                                                                      first_appearances[first_gt:]]
                                     start_idx = idx_vals_seq[-1][0] + 1 - window_num_delta
+                                    times_wo_round += [t - time_delta for t in entity_info['times_wo_round'][first_gt:]]
 
                                     l = 0
                                     r = len(idx_vals_seq)
@@ -298,7 +309,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
 
                                     while l <= r:
                                         middle = round((l + r) / 2)
-                                        idx = idx_vals_seq[middle][0]
+                                        idx = idx_vals_seq[middle][0] - window_num_delta
                                         if idx == j:
                                             from_idx = middle
                                             break
@@ -307,7 +318,8 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                         else:
                                             r = middle - 1
 
-                                    idx_vals_seq_curr_window = idx_vals_seq[from_idx:]
+                                    idx_vals_seq_curr_window = [(idx - window_num_delta, val) for (idx, val) in
+                                                                idx_vals_seq[from_idx:]]
 
                         for k_w in range(start_idx, w):
                             w_pkt = window.iloc[k_w]
@@ -323,13 +335,16 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                 if ip_and_in_payload and (len(values) == 0 or values[-1] != w_reg_val):
                                     values.append(float(w_reg_val))
                                     times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                                    times_wo_round.append((w_pkt['time'] - start_time).total_seconds())
                                     first_appearances_curr_window.append(k_w)
                         # mark as checked.
                         checked_entities.append(entity)
                         last_window_info_dict[entity] = {'last_window_num': i,
                                                          'idx,value': idx_vals_seq_curr_window,
                                                          'values': values,
-                                                         'times': times,
+                                                         # 'times': times,
+                                                         'time_wo_round': times_wo_round,
+                                                         'first_appearances_idx': first_appearances_curr_window,
                                                          'idx_vals_seq_curr_window': first_appearances_curr_window}
                         # bin using all options to avoid reprocessing
 
