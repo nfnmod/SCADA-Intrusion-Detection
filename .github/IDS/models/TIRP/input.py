@@ -16,6 +16,9 @@ payload_col_number = 6
 KL_symbols = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL symbols'
 KL_entities = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL entities'
 KL_events = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL events'
+binners_base = '//sise//home//zaslavsm//SCADA//binners'
+folder_name = 'v1_1'
+file_name = 'v1_single_plc_make_entry_v1_20_packets'
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -105,6 +108,23 @@ def get_pkt_entities(pkt):
     return packet_entities
 
 
+def load_binners(numbers_of_bins, binning_methods_folders_names, regs):
+    binners = dict()
+    folders = {'KMeans': 'k_means', 'EqualFreq': 'equal_frequency',
+               'EqualWidth': 'equal_width'}
+    for number_of_bins in numbers_of_bins:
+        for binning_methods_folder_name in binning_methods_folders_names:
+            model_name = '{}_{}_{}'.format(file_name, folders[binning_methods_folder_name], number_of_bins)
+            suffix = '//{}_{}'.format(binning_methods_folder_name, folder_name) + '//{}'.format(
+                model_name)
+            for reg in regs:
+                with open(binners_base + suffix + '_{}'.format(reg),
+                          mode='rb') as binner_p:
+                    binner = pickle.load(binner_p)
+                    binners[(number_of_bins, binning_methods_folder_name, reg)] = binner
+    return binners
+
+
 # compute the events in the sliding windows.
 def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, regs_to_use, consider_last=True, bin=True,
                                      ready_symbols=None,
@@ -123,38 +143,49 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
     :param consider_last: make the last event last until the start of the next window.
     :return:
     """
-
+    n_windows = len(df) - w + 1
     binning_methods_inv = {k_means_binning: 'KMeans', equal_frequency_discretization: 'EqualFreq',
                            equal_width_discretization: 'EqualWidth'}
-
-    sw_events_single = {sw_num: [] for sw_num in range(len(df) - w + 1)}
+    binners = load_binners(numbers_of_bins, binning_methods.keys(), regs_to_use)
+    sw_events_single = {sw_num: [] for sw_num in range(n_windows)}
     sw_events_dict = {(binning_methods_inv[b], k): copy.deepcopy(sw_events_single) for (b, k) in
-                      itertools.product(binning_methods, numbers_of_bins)}
+                      itertools.product(binning_methods.values(), numbers_of_bins)}
+    folders = {'KMeans': "k_means", 'EqualFreq': 'equal_frequency',
+               'EqualWidth': "equal_width"}
+    df = process_payload(df, regs_to_use)
 
     if ready_symbols == dict():
-        df = process_payload(df, regs_to_use)
         entities = define_entities(df)
         symbols_single = ready_symbols
         symbol_counter_single = len(symbols_single.keys())
 
         symbols_counter_dict = {(binning_methods_inv[b], k): symbol_counter_single for (b, k) in
-                                itertools.product(binning_methods, numbers_of_bins)}
+                                itertools.product(binning_methods.values(), numbers_of_bins)}
 
         entities_dict = {(binning_methods_inv[b], k): entities for (b, k) in
-                         itertools.product(binning_methods, numbers_of_bins)}
+                         itertools.product(binning_methods.values(), numbers_of_bins)}
 
         symbols_dict = {(binning_methods_inv[b], k): copy.deepcopy(symbols_single) for (b, k) in
-                        itertools.product(binning_methods, numbers_of_bins)}
+                        itertools.product(binning_methods.values(), numbers_of_bins)}
     else:
         entities_dict = ready_entites
         symbols_dict = ready_symbols
-        symbols_counter_dict = {(binning_methods_inv[b], k): len(ready_symbols[(binning_methods_inv[b], k)].keys()) for (b, k) in
-                                itertools.product(binning_methods, numbers_of_bins)}
+        symbols_counter_dict = {(binning_methods_inv[b], k): len(ready_symbols[(binning_methods_inv[b], k)].keys()) for
+                                (b, k) in
+                                itertools.product(binning_methods.values(), numbers_of_bins)}
+
+    # save for each (entity, binning method, number of bins) -> # window last seen in
+    # save for each (entity, binning method, number of bins) -> values and times sequences and idx from the last window seen in
+    # save for each (entity, binning method, number of bins) -> sequence of all (idx,value) of packets in the window the entity was seen in
+    entities_strs = entities_dict[(binning_methods_inv[binning_methods.values()[0]], numbers_of_bins[0])].keys()
+    last_window_info_dict = {e: None for e in entities_strs}
 
     # per window
     prev_entities = []
+    for i in range(n_windows):
+        # with open('//sise//home//zaslavsm//SCADA//log files//TIRP log.txt', mode='a') as f:
+        # f.write('window #{}\n'.format(i))
 
-    for i in range(len(df) - w + 1):
         checked_entities = []
         window = df.iloc[i: i + w]
         start_time = (window.iloc[0])['time']
@@ -173,7 +204,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
             window_entities = set(prev_entities)
         entities_events_single = {e: [] for e in window_entities}
         entities_events_dict = {(binning_methods_inv[b], k): copy.deepcopy(entities_events_single) for (b, k) in
-                                itertools.product(binning_methods, numbers_of_bins)}
+                                itertools.product(binning_methods.values(), numbers_of_bins)}
 
         for j in range(w):
             pkt = window.iloc[j]
@@ -190,30 +221,124 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                     # mark the entity as checked.
                     # no need to consider previous packets because the entity doesn't appear in them. If it were to appear in them
                     # then it wouldn't be unchecked.
+
                     if entity not in checked_entities:
-                        if j == 0:
-                            reg_num = entity[1]
-                            values = [float(payload[str(reg_num)])]
-                            times = [round((pkt['time'] - start_time).total_seconds())]
-                            for k_w in range(j + 1, w):
-                                w_pkt = window.iloc[k_w]
-                                # check for the entity in the payload.
-                                if w_pkt['src_port'] == data.plc_port:
-                                    w_IP = w_pkt['src_ip']
-                                    w_reg_val = w_pkt['payload'].get(str(reg_num), None)
-                                    if w_IP == IP and w_reg_val is not None and (
-                                            len(values) == 0 or values[-1] != w_reg_val):
-                                        values.append(float(w_reg_val))
-                                        times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                        entity_info = last_window_info_dict[entity]
+                        reg_num = entity[1]
+                        values = [float(payload[str(reg_num)])]
+                        first_appearances_curr_window = [j]
+                        idx_vals_seq_curr_window = [(j, values[0])]
+                        times = [round((pkt['time'] - start_time).total_seconds())]
+                        start_idx = j + 1
+
+                        # if window # 0  -> do full calculation.
+                        if entity_info is None:
+                            start_idx = j + 1
+                        # (#last window - # current window + j) >= window size -> do full calculation.
+                        elif (i - entity_info['last_window_num'] + j) >= w:
+                            start_idx = j + 1
                         else:
-                            pass
+                            # they intersect.
+
+                            window_num_delta = i - entity_info['last_window_num']
+                            idx_vals_seq = entity_info['idx,value']
+                            first_appearance = idx_vals_seq[0] - window_num_delta
+                            first_appearances = entity_info['first_appearances_idx']
+
+                            time_delta = (window[0]['time'] - df.iloc[entity_info['last_window_num']][
+                                'time']).total_seconds()
+
+                            if first_appearance in range(w):
+                                # first appearance in last window is in this window as well.
+                                # take everything from the last one and continue from where it stops.
+                                start_idx = idx_vals_seq[-1][0] + 1 - window_num_delta
+                                values = entity_info['values']
+                                times = round(entity_info['times'] - time_delta)
+                                first_appearances_curr_window = first_appearances
+                                idx_vals_seq_curr_window = idx_vals_seq
+                            else:
+                                # take times and values from first idx greater than current one.
+                                # subtract the time difference.
+                                # set the range to begin from the last index of the idx sequences.
+
+                                # find the first next first appearance of a different value.
+                                l = 0
+                                r = len(first_appearances)
+                                num_fa = len(first_appearances)
+                                first_gt = -1
+
+                                while l <= r:
+                                    middle = round((l + r) / 2)
+                                    idx = first_appearances[middle]
+
+                                    if idx == j:
+                                        first_gt = middle + 1
+                                        break
+                                    elif idx < j:
+                                        l = middle + 1
+                                        if first_appearance[middle + 1] > j:
+                                            first_gt = middle + 1
+                                            break
+                                    else:
+                                        r = middle - 1
+                                        if first_appearance[middle - 1] <= j:
+                                            first_gt = middle
+                                            break
+                                if first_gt == -1 or first_gt >= num_fa:
+                                    start_idx = j + 1
+                                else:
+                                    values += entity_info['values'][first_gt:]
+                                    times += (round(entity_info['times'][first_gt:] - time_delta))
+                                    first_appearances_curr_window += first_appearances[first_gt:]
+                                    start_idx = idx_vals_seq[-1][0] + 1 - window_num_delta
+
+                                    l = 0
+                                    r = len(idx_vals_seq)
+                                    from_idx = -1
+
+                                    while l <= r:
+                                        middle = round((l + r) / 2)
+                                        idx = idx_vals_seq[middle][0]
+                                        if idx == j:
+                                            from_idx = middle
+                                            break
+                                        elif idx < j:
+                                            l = middle + 1
+                                        else:
+                                            r = middle - 1
+
+                                    idx_vals_seq_curr_window = idx_vals_seq[from_idx:]
+
+                        for k_w in range(start_idx, w):
+                            w_pkt = window.iloc[k_w]
+                            # check for the entity in the payload.
+                            if w_pkt['src_port'] == data.plc_port:
+                                w_IP = w_pkt['src_ip']
+                                w_reg_val = w_pkt['payload'].get(str(reg_num), None)
+                                ip_and_in_payload = (w_IP == IP and w_reg_val is not None)
+
+                                if ip_and_in_payload:
+                                    idx_vals_seq_curr_window.append((k_w, float(w_reg_val)))
+
+                                if ip_and_in_payload and (len(values) == 0 or values[-1] != w_reg_val):
+                                    values.append(float(w_reg_val))
+                                    times.append(round((w_pkt['time'] - start_time).total_seconds()))
+                                    first_appearances_curr_window.append(k_w)
                         # mark as checked.
                         checked_entities.append(entity)
+                        last_window_info_dict[entity] = {'last_window_num': i,
+                                                         'idx,value': idx_vals_seq_curr_window,
+                                                         'values': values,
+                                                         'times': times,
+                                                         'idx_vals_seq_curr_window': first_appearances_curr_window}
                         # bin using all options to avoid reprocessing
 
                         if bin:
-                            for (b, k) in itertools.product(binning_methods, numbers_of_bins):
-                                values = b(values, k)  # bin.
+                            for (b, k) in itertools.product(binning_methods.values(), numbers_of_bins):
+                                values = np.array(values).reshape(-1, 1)
+                                values = (binners[k, binning_methods_inv[b], str(entity[1])].transform(
+                                    values)).tolist()  # bin.
+                                values = [vlist[0] for vlist in values]
 
                                 symbols = symbols_dict[(binning_methods_inv[b], k)]
                                 symbol_counter = symbols_counter_dict[(binning_methods_inv[b], k)]
@@ -234,6 +359,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                         if symbols.get(symbol, None) is None:
                                             symbols[symbol] = symbol_counter
                                             symbol_counter += 1
+                                            symbols_counter_dict[(binning_methods_inv[b], k)] += 1
                                         event = (s_t, f_t, symbols[symbol],)
                                         entities_events[entity].append(event)
                                     if consider_last and i + w < len(df):
@@ -264,6 +390,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                                 if symbols.get(sym_event, None) is None:
                                                     symbols[sym_event] = symbol_counter
                                                     symbol_counter += 1
+                                                    symbols_counter_dict[(binning_methods_inv[b], k)] += 1
                                                 # until the start of the next window.
                                                 new_finish = round((finish - start_time).total_seconds())
                                                 # create event
@@ -278,6 +405,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                             if symbols.get(sym_event, None) is None:
                                                 symbols[sym_event] = symbol_counter
                                                 symbol_counter += 1
+                                                symbols_counter_dict[(binning_methods_inv[b], k)] += 1
                                             event = (times[0], new_finish, symbols[sym_event],)
                                             entities_events[entity].append(event)
                                     elif consider_last and i + w == len(df):
@@ -309,6 +437,7 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                                 if symbols.get(sym_event, None) is None:
                                                     symbols[sym_event] = symbol_counter
                                                     symbol_counter += 1
+                                                    symbols_counter_dict[(binning_methods_inv[b], k)] += 1
                                                 new_event = (event_start, event_finish, symbols[sym_event],)
                                                 entities_events[entity].append(new_event)
                                         elif len(values) == 1:
@@ -317,8 +446,9 @@ def define_events_in_sliding_windows(df, binning_methods, numbers_of_bins, w, re
                                             if symbols.get(sym_event, None) is None:
                                                 symbols[sym_event] = symbol_counter
                                                 symbol_counter += 1
+                                                symbols_counter_dict[(binning_methods_inv[b], k)] += 1
                                             entities_events[entity].append((times[0], finish_time, symbols[sym_event],))
-        for (b, k) in itertools.product(binning_methods, numbers_of_bins):
+        for (b, k) in itertools.product(binning_methods.values(), numbers_of_bins):
             entities_events = entities_events_dict[(binning_methods_inv[b], k)]
             sw_events = sw_events_dict[(binning_methods_inv[b], k)]
             entities = entities_dict[(binning_methods_inv[b], k)]
@@ -371,12 +501,12 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
                 if entity_counter == 0:
                     continue
                 else:
-                    window_path = base_path + '\\#window_{}.csv'.format(sw_num)
+                    window_path = base_path + '//#window_{}.csv'.format(sw_num)
                     with open(window_path, 'w', newline='') as window_file:
                         # now write the events of each entity to the file.
                         writer = csv.writer(window_file)
                         writer.writerow(['startToncepts'])
-                        writer.writerow(['numberOfEntities,', entity_counter])
+                        writer.writerow(['numberOfEntities,{}'.format(entity_counter)])
                         for writeable_entity in writeable.keys():
                             events_to_write = writeable[writeable_entity]
                             if entity_to_idx.get(writeable_entity, -1) == -1:
@@ -393,8 +523,7 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
                             writer.writerow(events_row)
 
     if test_path is None:
-        # this means we are not testing/creating validation or test sets.
-        # so, we are training and we need to save the symbols to avoid a redefinition of them
+        # this means we are not testing. so, we are training and we need to save the symbols to avoid a redefinition of them
         # when testing and discovering.
         if not os.path.exists(KL_symbols):
             Path(KL_symbols).mkdir(exist_ok=True, parents=True)
@@ -405,7 +534,7 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
 
         for b in binning_methods.values():
             for k in numbers_of_bins:
-                suffix = '\\{}_{}_{}'.format(binning[b], k, w)
+                suffix = '//{}_{}_{}'.format(binning[b], k, w)
                 path_sym = KL_symbols + suffix
 
                 sw_events = sw_events_dict[(binning_methods_inv[b], k)]
@@ -427,7 +556,7 @@ def make_input(pkt_df, binning_methods, numbers_of_bins, w, regs_to_use, conside
 # when injecting anomalies change the times in the raw data and then make input for the classifier.
 # important to keep track of the malicious packets' indices.
 def load_events_in_sliding_windows(b, k, w):
-    suffix = '\\{}_{}_{}'.format(b, k, w)
+    suffix = '//{}_{}_{}'.format(b, k, w)
     path_sym = KL_symbols + suffix
     with open(path_sym, mode='rb') as symbols_path:
         symbols = pickle.load(symbols_path)
