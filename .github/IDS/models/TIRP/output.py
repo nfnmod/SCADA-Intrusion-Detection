@@ -57,7 +57,7 @@ def parse_raw_instances(raw_instances, size):
             # loop over instances.
             start = -1
             finish = -1
-            for part_num in range(2 * size - 1):
+            for part_num in range(size + 1):
                 # each instance is split into a list of size 2 * |TIRP| + 1.
                 # each part that starts with [ stands for the starting time of an event.
                 # each part that starts with a number and has no ] in it stands for the finish time of one event and

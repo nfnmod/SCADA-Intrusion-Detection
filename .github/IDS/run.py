@@ -1092,7 +1092,7 @@ def create_test_files_DFA(injection_config, group=''):
                                     pickle.dump(pkts_to_states, p_pkts_dict)
 
 
-# 1. after running KL on the test_events, filter TIRPs by support.
+# 1. after running KL on the test_events, filter TIRPs by support. REDUNDANT.
 def filter_TIRPs_test_files(KL_config_file_path, injection_config):
     """
     we discover all the TIRPs with a very low support threshold and then filter out the ones having higher support
@@ -2920,17 +2920,18 @@ def FSTM_window_labels(model_windows_labels, true_labels, window_size, pkts_to_s
 # functions to get parameters from files. refactored.
 def get_KL_params(KL_config_path):
     with open(KL_config_path, mode='r') as KL_params_path:
-        KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)['KarmaLegoParams']
+        KL_params = yaml.load(KL_params_path, Loader=yaml.FullLoader)
 
-    binning_methods = KL_params['BinningMethods']
-    bins = KL_params['Bins']
-    windows = KL_params['Windows']
-    epsilons = KL_params['Epsilons']
-    max_gaps = KL_params['MaxGaps']
-    k_values = KL_params['MinHorizontalSups']
+    binning_methods = KL_params['binningmethods']
+    bins = KL_params['bins']
+    windows = KL_params['windows']
+    epsilons = KL_params['epsilons']
+    max_gaps = KL_params['maxgaps']
+    k_values = KL_params['minhorizontalsups']
     default_hs = KL_params['defaulths']
     kernels = KL_params['kernel']
     nus = KL_params['nu']
+
     return binning_methods, bins, windows, epsilons, max_gaps, k_values, default_hs, kernels, nus
 
 

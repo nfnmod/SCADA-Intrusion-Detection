@@ -105,7 +105,23 @@ class TestInputPreparation(unittest.TestCase):
         print('parsed instances: {}'.format(res))
 
     def test_parse_line(self):
+        res = output.parse_line('1 1- -. 1 1 1 [0-8] 1 [20-24] 1 [56-60] 1 [76-84] 1 [94-96] 1 [100-104] 1 [134-136] 1 [192-196] 1 [208-212] 1 [332-336] 1 [348-352] 1 [360-364] 1 [388-396]')
+        print('tirp size is {}\n'.format(res.size))
+        print('tirp symbols are {}\n'.format(res.symbols))
+        print('tirp relations are {}\n'.format(res.relations))
+        print('tirp instances are {}\n'.format(res.instances))
+        print('tirp has {} supporting entites, {} instances'.format(res.supporting_entities, get_number_of_instances(res.instances)))
+
+    def test_parse_line_second(self):
         res = output.parse_line(line)
+        print('tirp size is {}\n'.format(res.size))
+        print('tirp symbols are {}\n'.format(res.symbols))
+        print('tirp relations are {}\n'.format(res.relations))
+        print('tirp instances are {}\n'.format(res.instances))
+        print('tirp has {} supporting entites, {} instances'.format(res.supporting_entities, get_number_of_instances(res.instances)))
+
+    def test_parse_line_third(self):
+        res = output.parse_line('3 3-2-3- m.m.s. 1 10 1 [8-20][20-24][24-28] 1 [32-40][40-44][44-48] 1 [58-64][64-68][68-72] 1 [184-192][192-196][196-200] 1 [204-212][212-216][216-224] 1 [216-224][224-228][228-232] 1 [264-272][272-276][276-284] 1 [276-284][284-288][288-304] 1 [364-380][380-384][384-392] 1 [384-392][392-397][397-400]')
         print('tirp size is {}\n'.format(res.size))
         print('tirp symbols are {}\n'.format(res.symbols))
         print('tirp relations are {}\n'.format(res.relations))
