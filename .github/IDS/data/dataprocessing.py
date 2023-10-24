@@ -27,6 +27,7 @@ scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
 plc = '132.72.249.42'
 to_bin = ['13', '26', '25', '24', '23', '22', '21', '20']
 most_used = ['13', '26', '25', '24', '23', '22', '21', '20']
+active_ips = ['132.72.249.42', '132.72.155.245', '132.72.216.62', '132.72.75.40', '132.72.248.211', '132.72.35.161']
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -547,7 +548,7 @@ def equal_frequency_discretization(df, col_name, n_bins, path=None):
 # ---------------------------------------------------------------------------------------------------------------------------#
 # construct the data. each entry saves the time passed from the last packet and registers values
 # works on data from a group of PLCs.
-def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True, binner_path=None,  get_cols=False):
+def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True, binner_path=None, get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
 
     # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
@@ -866,7 +867,8 @@ def process_data_v2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=Fa
 # ---------------------------------------------------------------------------------------------------------------------------
 # save inter-arrival time, values of registers ,time being in this state,
 # number of packets received while being in this state and the similarity score to previous known state
-def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None, fill=True, get_cols=False):
+def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_vals=None, binner_path=None, fill=True,
+                    get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
@@ -874,10 +876,15 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
         registers = np.concatenate([registers, PLCs_registers[PLC]])
 
     regs_copy = registers.copy()
-    cols = np.concatenate((['time', 'time_in_state'], regs_copy))
+    cols = np.concatenate((['time', 'time_in_state'], [str(i) for i in range(len(regs_copy))]))
     time_vals_df = pd.DataFrame(columns=cols)
     if get_cols:
         return cols
+
+    registers_map = {}
+    for plc in PLCs_registers:
+        for reg in PLCs_registers[plc]:
+            registers_map[(plc, reg)] = len(registers_map.keys())
 
     for i in range(1, len(pkt_df)):
         # entries from the original data frame
@@ -907,23 +914,26 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
         if src_port == plc_port:
             payload = curr['payload']
             updated_regs = payload.keys()
+            plc_ip = curr['src_ip']
 
             # set the columns of the registers values received from the packet and calculate similarity
             for reg_num in registers:
+                register_key = (plc_ip, reg_num)
+                register_id = registers_map[register_key]
                 if reg_num in updated_regs:
-                    new[reg_num] = np.float64(payload[reg_num])
+                    new[register_id] = np.float64(payload[reg_num])
                     # compare to the packet before and update similarity accordingly
                     prev_reg = prev_entry.get(reg_num, np.nan)
-                    if prev_entry != {} and new[reg_num] == prev_reg:
+                    if prev_entry != {} and new[register_id] == prev_reg:
                         similarity += 1
                 else:
                     # the value of this register wasn't recorded in the packet. get the last value known
                     if prev_entry == {}:
-                        new[reg_num] = np.nan
+                        new[register_id] = np.nan
                         if frequent_vals is not None:
-                            new[reg_num] = np.float64(frequent_vals[reg_num])
+                            new[register_id] = np.float64(frequent_vals[reg_num])
                     else:
-                        new[reg_num] = np.float64(prev_entry[reg_num])
+                        new[register_id] = np.float64(prev_entry[reg_num])
                         # no known value change
                         similarity += 1
 
@@ -948,10 +958,13 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
         else:
             # a query packet
             if prev_entry == {}:
+                plc_ip = curr['dst_ip']
                 for reg_num in registers:
-                    new[reg_num] = np.nan
+                    register_key = (plc_ip, reg_num)
+                    register_id = registers_map[register_key]
+                    new[register_id] = np.nan
                     if frequent_vals is not None:
-                        new[reg_num] = np.float64(frequent_vals[reg_num])
+                        new[register_id] = np.float64(frequent_vals[reg_num])
 
                 new['time_in_state'] = new['time']  # due to the same reason below
                 temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
@@ -967,7 +980,7 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
     if not fill:
         return time_vals_df
 
-    for reg_num in registers:
+    for reg_num in [str(i) for i in range(len(regs_copy))]:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
         if binner is not None:
             time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
@@ -1694,14 +1707,17 @@ def process(data, name, bins, binning, scale=True, binner_path=None, registers=m
         return process_data_v1(data, 5, binner=names[binning], n_bins=bins, entry_func=make_entry_v2, scale=scale,
                                binner_path=binner_path)
     elif name == 'v2':
-        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, get_cols=get_cols)
+        return process_data_v2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path,
+                               get_cols=get_cols)
     elif name == 'v2_abstract':
         return process_data_v2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
                                binner_path=binner_path, load_binner=True)
     elif name == 'v3':
-        return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, fill=fill)
+        return process_data_v3(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path,
+                               fill=fill)
     elif name == 'v3_2':
-        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path, get_cols=get_cols)
+        return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path,
+                                 get_cols=get_cols)
     else:
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
                                  binner_path=binner_path, load_binner=True)
@@ -1716,72 +1732,42 @@ def bin_col(df, method, col, n_bins, path=None):
         df[col] = equal_width_discretization(df, col, n_bins, path)
 
 
-def naive_PLCs_grouping(pkt_df, groupings, base_path):
-    """
+def split_single_plcs(df):
+    dump_path = datasets_path + '//single_plc//'
 
-    :param pkt_df: a data set containing modbus/tcp packets.
-    :param groupings: the plc ips groupings.
-    :return: a dataset describing the traffic sent to each group.
-    """
-    cols = list(pkt_df.columns)
-    cols.append('group')
-    grouped_df = pd.DataFrame(columns=cols)
-    # map :group id -> dict for each plc in that group. the dict maps: register number -> register ID
-    groups_registers = {}
-    register_counter = 0
+    for active_ip in active_ips:
+        plc_df = df.loc[(df['src_ip'] == active_ip) | (df['dst_ip'] == active_ip)]
+        length = len(plc_df)
+        train_size = int(length * 0.8)
+        val_test_size = int(length * 0.1)
+        plc_df_train = plc[:train_size]
+        plc_df_val = plc_df[train_size: train_size + val_test_size]
+        plc_df_test = plc_df[train_size + val_test_size: train_size + 2 * val_test_size]
 
-    def find_group(ip):
-        for k in groupings:
-            if ip in groupings[k]:
-                return k
+        with open(dump_path + f'{active_ip}_train', mode='wb') as train_f:
+            pickle.dump(plc_df_train, train_f)
+        with open(dump_path + f'{active_ip}_val', mode='wb') as val_f:
+            pickle.dump(plc_df_val, val_f)
+        with open(dump_path + f'{active_ip}_test', mode='wb') as test_f:
+            pickle.dump(plc_df_test, test_f)
 
-    for i in range(len(pkt_df)):
-        p = pkt_df.iloc[i]
-        src_port = p['src_port']
-        if src_port == plc_port:
-            ip = p['src_ip']
-            group = find_group(ip)
-            group_dict = groups_registers[group]
-            plc_dict = group_dict.get(ip, None)
-            new_payload = {}
-            if plc_dict is None:
-                group_dict[ip] = {}
-            payload = p['payload']
-            for reg_num in payload.keys():
-                if reg_num in group_dict.keys():
-                    group_reg_num = group_dict[reg_num]
-                else:
-                    group_dict[reg_num] = register_counter
-                    group_reg_num = register_counter
-                    register_counter += 1
-                new_payload[group_reg_num] = payload[reg_num]
-            r = {}
-            for c in pkt_df.columns:
-                if c == 'payload':
-                    r[c] = new_payload
-                elif c != 'group':
-                    r[c] = p[c]
-                else:
-                    r[c] = group
-            r_df = pd.DataFrame.from_dict(data={'0': r}, columns=pkt_df.columns, orient='index')
-            grouped_df = pd.concat([grouped_df, r_df], ignore_index=True)
-        else:
-            group = find_group(p['dst_ip'])
-            q = {}
-            for c in pkt_df.columns:
-                if c != 'group':
-                    q[c] = p[c]
-                else:
-                    q[c] = group
 
-            q_df = pd.DataFrame.from_dict(data={'0': q}, columns=pkt_df.columns, orient='index')
-            grouped_df = pd.concat([grouped_df, q_df], ignore_index=True)
-    # save dataframe for each group.
-    for g_id in groupings.keys():
-        with open(base_path + '_' + g_id, mode='wb') as df_path:
-            g_df = grouped_df.loc[(grouped_df['group'] == g_id)]
-            dropped_df = g_df.drop(columns='group', axis=1)
-            pickle.dump(dropped_df, df_path)
+def split_all_plcs(df):
+    dump_path = datasets_path + '//all_plcs//'
+    plcs_df = df.loc[(df['src_ip'] in active_ips) | (df['dst_ip'] in active_ips)]
+    length = len(plcs_df)
+    train_size = int(length * 0.8)
+    val_test_size = int(length * 0.1)
+    plc_df_train = plcs_df[:train_size]
+    plc_df_val = plcs_df[train_size: train_size + val_test_size]
+    plc_df_test = plcs_df[train_size + val_test_size: train_size + 2 * val_test_size]
+
+    with open(dump_path + 'train', mode='wb') as train_f:
+        pickle.dump(plc_df_train, train_f)
+    with open(dump_path + 'val', mode='wb') as val_f:
+        pickle.dump(plc_df_val, val_f)
+    with open(dump_path + 'test', mode='wb') as test_f:
+        pickle.dump(plc_df_test, test_f)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------
@@ -1845,14 +1831,27 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    for name in ['TRAIN']:
-        path = datasets_path + '\\{}'.format(name)
-        with open(path, mode='rb') as df_f:
-            df = pickle.load(df_f)
-        print(len(df))
-    a = np.array([1,2,3,4])
-    print(a.shape)
-    b = np.reshape(a, (-1,1))
-    print(b.shape)
-    print(b)
+    df_path = datasets_path + '\\modbus12'
+    with open(df_path, mode='rb') as df_f:
+        modbus12 = pickle.load(df_f)
 
+    print(f'there are {len(modbus12)} packets')
+
+    responses = modbus12.loc[modbus12['src_port'] == plc_port]
+    plcs = responses['src_ip'].unique()
+
+    print(f"there are {len(plcs)} plcs")
+
+    for plc in plcs:
+        rs = modbus12.loc[(modbus12['src_ip'] == plc)]
+        qs = modbus12.loc[(modbus12['dst_ip']) == plc]
+
+        print(f'there are {len(rs)} responses from plc {plc}')
+        print(f'there are {len(qs)} queries from plc {plc}')
+
+    """stats_df = get_plcs_values_statistics(modbus12, 4)
+
+    with pd.ExcelWriter(excel_path + '\\modbus12_stats_4regs.xlsx', mode="a",
+                        engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        stats_df.to_excel(writer, sheet_name='PLCs stats')"""

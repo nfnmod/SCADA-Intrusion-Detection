@@ -2,6 +2,7 @@ import csv
 import itertools
 import os
 import pickle
+import re
 import time
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pandas as pd
 import scipy
 import yaml
 from scipy.spatial import distance
+from scipy.stats import stats
 from sklearn.metrics import precision_recall_curve, roc_auc_score, f1_score, r2_score, auc, precision_score, \
     recall_score, mean_squared_error, confusion_matrix
 from sklearn.svm import OneClassSVM
@@ -20,6 +22,7 @@ import models
 import models.TIRP as TIRP
 from data import squeeze, find_frequent_transitions_sequences
 from data.injections import inject_to_raw_data
+from models.models import LSTM_train_log
 
 KL_base = data.datasets_path + "\\KL\\"
 KL_RF_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\KL RF'
@@ -50,12 +53,18 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
                   'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
-excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'window size', 'likelihood_threshold',
+"""excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'window size', 'likelihood_threshold',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal K', 'max gap',
-              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
+              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']"""
+excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'likelihood_threshold', 'window size',
+              'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
+              'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn',
+              'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
+              'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal HS', 'max gap',
+              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'kernel', 'nu']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
 OCSVM_cols = ['data version', 'binning', '# bins', '# std count', 'window size', 'nu', 'kernel',
@@ -73,6 +82,17 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal K
                     'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
                     'f1', 'prc'}
 
+HTM_cols = ['data version', 'binning', '# bins', '# std count', 'likelihood_threshold', 'window size', 'ON bits',
+            'SDR size', 'columnCount',
+            'numActiveColumnsPerInhArea', 'potentialPct',
+            'synPermConnected',
+            'synPermActiveInc', 'synPermInactiveDec',
+            'boostStrength', 'cellsPerColumn', 'initialPerm', 'permanenceInc', 'permanenceDec',
+            'maxSynapsesPerSegment',
+            'maxSegmentsPerCell', 'minThreshold', 'activationThreshold', 'injection length', 'step over', 'percentage',
+            'precision',
+            'recall', 'auc', 'f1', 'prc']
+
 window_sizes = [400, 600, 800, 1000]
 p_values = [0.01, 0.03, 0.05]
 
@@ -82,6 +102,7 @@ num_stds_count = [0, 1, 2, 3]
 best_cols = DFA_cols.copy()
 lim = 0.2
 
+xl_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\"
 xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
 
 xl_labels_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\labels.xlsx'
@@ -1525,7 +1546,9 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                             for series_len in look_back:
                                 with open(KLSTM_test_log, mode='a') as log:
                                     log.write('testing KLSTM with parameters:\n')
-                                    log.write('binning:{}, # bins:{}, window:{}, kl eps:{}, max gap:{}, k_val:{}\n'.format(binning_method, number_of_bins, window_size, KL_epsilon, max_gap, k_val))
+                                    log.write(
+                                        'binning:{}, # bins:{}, window:{}, kl eps:{}, max gap:{}, k_val:{}\n'.format(
+                                            binning_method, number_of_bins, window_size, KL_epsilon, max_gap, k_val))
 
                                 model_name = '{}_{}_{}_{}_{}_{}_{}'.format(binning_method, number_of_bins, window_size,
                                                                            KL_epsilon, max_gap, k_val,
@@ -1627,7 +1650,7 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                                                                           'f1': f1,
                                                                           'prc': prc_auc_score}
 
-                                                                labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                                                """labels_test_df = pd.DataFrame(columns=labels_df.columns)
                                                                 labels_test_df['# window'] = [i for i in range(
                                                                     len(true_windows_labels))]
                                                                 labels_test_df['window size'] = window_size
@@ -1649,10 +1672,10 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                                                                     row = 0
                                                                     if 'KLSTM windows labels' in writer.sheets.keys():
                                                                         row = writer.sheets[
-                                                                            'DFA windows labels'].max_row
+                                                                             'KLSTM windows labels'].max_row
                                                                     labels_test_df.to_excel(writer,
                                                                                             sheet_name='KLSTM windows labels',
-                                                                                            startrow=row)
+                                                                                            startrow=row)"""
 
                                                                 for col_name in excel_cols:
                                                                     if col_name not in DFA_cols:
@@ -1664,7 +1687,9 @@ def test_KLSTM_detection(KL_config_path, injection_config):
                                                                                             orient='index')],
                                                                     axis=0, ignore_index=True)
                                                                 with open(KLSTM_test_log, mode='a') as log:
-                                                                    log.write('scores for injection with %:{}, len:{}, step over:{}\n'.format(percentage, injection_length, step_over))
+                                                                    log.write(
+                                                                        'scores for injection with %:{}, len:{}, step over:{}\n'.format(
+                                                                            percentage, injection_length, step_over))
                                                                     log.write(
                                                                         'auc:{}, f1:{}, prc:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
                                                                             auc_score, f1,
@@ -2293,10 +2318,8 @@ def many_PLC_DFAs(groups_ids, injection_config):
 
 
 ######################IRRELEVANT FOR NOW########################################
-
-
 # functions for training LSTMs.
-def train_LSTM(train_config):
+def train_LSTM(train_config, train_df=None, group_info=None):
     """
     for each data version * bins * binning method:
         process raw data
@@ -2308,7 +2331,11 @@ def train_LSTM(train_config):
                "equal_width": 'EqualWidth'}
     # lstm params.
     methods, bins, data_versions = get_LSTM_params(train_config)
-    raw_df = data.load(data.datasets_path, 'TRAIN')
+
+    if train_df is None:
+        raw_df = data.load(data.datasets_path, 'TRAIN')
+    else:
+        raw_df = train_df
 
     for data_version in data_versions:
         folder_name = data_version['name']
@@ -2322,7 +2349,10 @@ def train_LSTM(train_config):
                 method_name = data_version['desc']
 
                 model_name = '{}_{}_{}'.format(file_name, method_name, number_of_bins)
-                suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
+                if group_info is None:
+                    suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
+                else:
+                    suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(group_info, model_name)
                 binners_p = binners_base + '//{}_{}'.format(method_folder, folder_name)
                 scalers_p = scalers_base + '//{}_{}'.format(method_folder, folder_name)
 
@@ -2345,13 +2375,29 @@ def train_LSTM(train_config):
                             data.bin_col(lstm_input, method, col_name, number_of_bins, path=suffix)
                         lstm_input[col_name] = data.scale_col(lstm_input, col_name, path=suffix)
 
-                dump_model = data.modeles_path + '\\{}_{}'.format(method_folder, folder_name)
-                dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
+                if group_info is None:
+                    dump_model = data.modeles_path + '\\{}_{}'.format(method_folder, folder_name)
+                    dump_df = data.datasets_path + '\\{}_{}'.format(method_folder, folder_name)
+                else:
+                    dump_model = data.modeles_path + '\\{}_{}_{}'.format(group_info, method_folder, folder_name)
+                    dump_df = data.datasets_path + '\\{}_{}_{}'.format(group_info, method_folder, folder_name)
+
                 models.models.simple_LSTM(lstm_input, 20, 42, model_name, train=1.0, models_path=dump_model,
                                           data_path=dump_df)
 
 
-# for LSTM classifiers.
+def train_LSTM_single_PLCs(train_config):
+    load_path = data.datasets_path + '//single_plc//'
+    ips = data.active_ips
+
+    for ip in ips:
+        with open(load_path + f'{ip}_train', mode='rb') as train_f:
+            plc_df = pickle.load(train_f)
+        with open(LSTM_train_log, mode='a') as log:
+            log.write(f'training LSTMs, single PLCs split, PLC: {ip}')
+        train_LSTM(train_config, train_df=plc_df, group_info=f'single_plc_{ip}')
+
+
 # for LSTM classifiers.
 def create_test_sets_LSTMs(train_config, injection_config, raw_test_df):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
@@ -3147,3 +3193,529 @@ def create_val_for_DFA(group=None):
 
             with open(val_path + '//labels_{}_{}'.format(binning_method, b), mode='wb') as labels_f:
                 pickle.dump(transitions_labels, labels_f)
+
+
+def reorder(df):
+    kmeans = df.loc[df['binning'] == 'k_means']
+    freq = df.loc[df['binning'] == 'equal_frequency']
+    width = df.loc[df['binning'] == 'equal_width']
+    sorted_df = df.sort_values(by=['algorithm', 'data version', 'binning', '# bins', 'percentage'],
+                               ascending=[True, True, True, True, True])
+    # return pd.concat([kmeans, freq, width], ignore_index=True)
+    return sorted_df
+
+
+def get_lstm_sheets_df():
+    versions = ['v1_1', 'v2', 'v3_2']
+    df = pd.DataFrame()
+    for version in versions:
+        file_name = xl_base + f'LSTM {version} sheets.xlsx'
+        version_df = pd.read_excel(file_name, sheet_name='performance')
+        df = pd.concat([df, reorder(version_df)], ignore_index=True)
+    return df
+
+
+def get_htm_sheets_df():
+    versions = ['v1_1', 'v2', 'v3_2']
+    df = pd.DataFrame()
+    for version in versions:
+        file_name = xl_base + f'HTM {version} sheets.xlsx'
+        version_df = pd.read_excel(file_name, sheet_name='performance')
+        df = pd.concat([df, reorder(version_df)], ignore_index=True)
+    return df
+
+
+def get_dfa_sheet_df():
+    df = pd.read_excel(xl_base + 'DFA sheets.xlsx', sheet_name='performance')
+    return df.loc[(df['window size'] == 200) & (df['# bins'] != 3)]
+
+
+def create_performance_sheet():
+    lstm, htm, dfa = get_lstm_sheets_df(), get_htm_sheets_df(), get_dfa_sheet_df()
+    scores = pd.concat([lstm, htm, dfa], ignore_index=True)
+    scores_best = pd.concat([lstm.loc[lstm['binning'] == 'equal_width'], htm.loc[htm['binning'] == 'equal_width'],
+                             dfa.loc[dfa['binning'] == 'equal_frequency']], ignore_index=True)
+    with pd.ExcelWriter(xl_base + 'full results.xlsx', mode="a", engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        scores.to_excel(writer, sheet_name='results')
+        scores_best.to_excel(writer, sheet_name='best results')
+
+
+def stat_test_algos():
+    lstm = get_lstm_sheets_df()
+    htm = get_htm_sheets_df()
+    dfa = get_dfa_sheet_df()
+    lstm_v1_1, lstm_v2, lstm_v3_2 = lstm.loc[lstm['data version'] == 'v1_1'], lstm.loc[lstm['data version'] == 'v2'], \
+                                    lstm.loc[lstm['data version'] == 'v3_2']
+    htm_v1_1, htm_v2, htm_v3_2 = htm.loc[htm['data version'] == 'v1_1'], htm.loc[htm['data version'] == 'v2'], htm.loc[
+        htm['data version'] == 'v3_2']
+    do_test(lstm_v1_1, dfa, 'lstm v1_1', 'dfa')
+    do_test(lstm_v2, dfa, 'lstm v2', 'dfa')
+    do_test(lstm_v3_2, dfa, 'lstm v3_2', 'dfa')
+
+    do_test(htm_v1_1, dfa, 'htm v1_1', 'dfa')
+    do_test(htm_v2, dfa, 'htm v2', 'dfa')
+    do_test(htm_v3_2, dfa, 'htm v3_2', 'dfa')
+
+    do_test(lstm_v1_1, htm_v1_1, 'lstm v11', 'htm v11')
+    do_test(lstm_v2, htm_v2, 'lstm v2', 'htm v2')
+    do_test(lstm_v3_2, htm_v3_2, 'lstm v3_2', 'htm v3_2')
+
+    do_test(lstm_v3_2, lstm_v2, 'lstm v3_2', 'lstm v1_1')
+    do_test(lstm_v3_2, lstm_v2, 'lstm v3_2', 'lstm v2')
+
+    do_test(htm_v3_2, htm_v1_1, 'htm v3_2', 'htm v11')
+    do_test(htm_v3_2, htm_v2, 'htm v3_2', 'htm v2')
+
+
+def do_test(first, second, name1, name2):
+    t_stat, p_value = stats.ttest_ind(first['f1'], second['f1'], alternative='greater')
+    # Set the significance level (alpha)
+    alpha = 0.05
+
+    if p_value < alpha:
+        print(f"There is a significant difference between {name1} and {name2} (p < 0.05).")
+    else:
+        print(f"There is no significant difference between {name1} and {name2} (p >= 0.05).")
+
+
+def stat_test_feature_extraction():
+    lstm = get_lstm_sheets_df()
+    htm = get_htm_sheets_df()
+    lstm_v1_1, lstm_v2, lstm_v3_2 = lstm.loc[lstm['data version'] == 'v1_1'], lstm.loc[lstm['data version'] == 'v2'], \
+                                    lstm.loc[lstm['data version'] == 'v3_2']
+    htm_v1_1, htm_v2, htm_v3_2 = htm.loc[htm['data version'] == 'v1_1'], htm.loc[htm['data version'] == 'v2'], htm.loc[
+        htm['data version'] == 'v3_2']
+    test1(lstm_v1_1['f1'], lstm_v2['f1'], lstm_v3_2['f1'])
+    test1(htm_v1_1['f1'], htm_v2['f1'], htm_v3_2['f1'])
+
+
+def test1(v1_1, v2, v3_2):
+    # Perform a paired t-test between method3 and method1
+    t_stat1, p_value1 = stats.ttest_ind(v3_2, v1_1, alternative='greater')
+    t_stat2, p_value2 = stats.ttest_ind(v3_2, v2, alternative='greater')
+    # Set the significance level (alpha)
+    alpha = 0.05
+
+    if p_value1 < alpha:
+        print("There is a significant difference between Method 3 and Method 1 (p < 0.05).")
+    else:
+        print("There is no significant difference between Method 3 and Method 1 (p >= 0.05).")
+
+    if p_value2 < alpha:
+        print("There is a significant difference between Method 3 and Method 2 (p < 0.05).")
+    else:
+        print("There is no significant difference between Method 3 and Method 2 (p >= 0.05).")
+
+
+def test_number_of_bins():
+    lstm, htm, dfa = get_lstm_sheets_df(), get_htm_sheets_df(), get_dfa_sheet_df()
+    dfa = dfa.loc[dfa['binning'] == 'equal_width']
+    lstm_v3_2 = lstm.loc[(lstm['data version'] == 'v3_2') & (lstm['binning'] == 'equal_width')]
+    htm_v3_2 = htm.loc[(htm['data version'] == 'v3_2') & (htm['binning'] == 'equal_width')]
+    alpha = 0.05
+    for n_bins in range(4, 8):
+        res_lstm, res_htm, res_dfa = lstm_v3_2.loc[lstm_v3_2['# bins'] == n_bins]['f1'], \
+                                     htm_v3_2.loc[htm_v3_2['# bins'] == n_bins]['f1'], \
+                                     dfa.loc[dfa['# bins'] == n_bins]['f1']
+
+        t_stat, p_value = stats.ttest_ind(res_lstm, res_dfa, alternative='greater')
+
+        if p_value < alpha:
+            print(f"There is a significant difference between LSTM and DFA with {n_bins} bins (p < 0.05).")
+        else:
+            print(f"There is no significant difference between LSTM and DFA with {n_bins} bins (p >= 0.05).")
+
+        t_stat, p_value = stats.ttest_rel(res_htm, res_dfa)
+
+        if p_value < alpha:
+            print(f"There is a significant difference between HTM and DFA with {n_bins} bins (p < 0.05).")
+        else:
+            print(f"There is no significant difference between HTM and DFA with {n_bins} bins (p >= 0.05).")
+
+        t_stat, p_value = stats.ttest_rel(res_lstm, res_htm)
+
+        if p_value < alpha:
+            print(f"There is a significant difference between LSTM and HTM with {n_bins} bins (p < 0.05).")
+        else:
+            print(f"There is no significant difference between LSTM and HTM with {n_bins} bins (p >= 0.05).")
+
+
+def best_binning_for_algos():
+    lstm, htm, dfa = get_lstm_sheets_df(), get_htm_sheets_df(), get_dfa_sheet_df()
+    lstm_v3_2 = lstm.loc[lstm['data version'] == 'v3_2']
+    htm_v3_2 = htm.loc[htm['data version'] == 'v3_2']
+    alpha = 0.05
+    res_lstm_ef, res_htm_ef, res_dfa_ef = lstm_v3_2.loc[lstm_v3_2['binning'] == 'equal_frequency']['f1'], \
+                                          htm_v3_2.loc[htm_v3_2['binning'] == 'equal_frequency']['f1'], \
+                                          dfa.loc[dfa['binning'] == 'equal_frequency']['f1']
+
+    res_lstm_ew, res_htm_ew, res_dfa_ew = lstm_v3_2.loc[lstm_v3_2['binning'] == 'equal_width']['f1'], \
+                                          htm_v3_2.loc[htm_v3_2['binning'] == 'equal_width']['f1'], \
+                                          dfa.loc[dfa['binning'] == 'equal_width']['f1']
+
+    res_lstm_k, res_htm_k, res_dfa_k = lstm_v3_2.loc[lstm_v3_2['binning'] == 'k_means']['f1'], \
+                                       htm_v3_2.loc[htm_v3_2['binning'] == 'k_means']['f1'], \
+                                       dfa.loc[dfa['binning'] == 'k_means']['f1']
+
+    t_stat, p_value = stats.ttest_ind(res_lstm_ew, res_lstm_ef, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between LSTM: {'EW'}  {'EF'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_lstm_ew, res_lstm_k, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between LSTM: {'EW'}  {'K'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_htm_ew, res_htm_ef, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between HTM: {'EW'}  {'EF'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_htm_ew, res_htm_k, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between HTM: {'EW'}  {'K'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_dfa_ef, res_dfa_ew, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between dfa: {'EF'}  {'EW'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_dfa_ef, res_dfa_k, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between dfa: {'EF'}  {'K'} binning (p < 0.05).")
+    else:
+        print(f"There is no significant difference (p >= 0.05).")
+
+
+def test_best_binning_method():
+    lstm, htm, dfa = get_lstm_sheets_df(), get_htm_sheets_df(), get_dfa_sheet_df()
+    lstm_v3_2 = lstm.loc[lstm['data version'] == 'v3_2']
+    htm_v3_2 = htm.loc[htm['data version'] == 'v3_2']
+    alpha = 0.05
+    for binning_method in ['k_means', 'equal_frequency', 'equal_width']:
+        res_lstm, res_htm, res_dfa = lstm_v3_2.loc[lstm_v3_2['binning'] == binning_method]['f1'], \
+                                     htm_v3_2.loc[htm_v3_2['binning'] == binning_method]['f1'], \
+                                     dfa.loc[dfa['binning'] == binning_method]['f1']
+
+        t_stat, p_value = stats.ttest_ind(res_lstm, res_dfa, alternative='greater')
+
+        if p_value < alpha:
+            print(f"There is a significant difference between LSTM and DFA with {binning_method} binning (p < 0.05).")
+        else:
+            print(f"There is no significant difference between LSTM and DFA with {binning_method} binning (p >= 0.05).")
+
+        t_stat, p_value = stats.ttest_ind(res_htm, res_dfa, alternative='greater')
+
+        if p_value < alpha:
+            print(f"There is a significant difference between HTM and DFA with {binning_method} binning (p < 0.05).")
+        else:
+            print(f"There is no significant difference between HTM and DFA with {binning_method} binning (p >= 0.05).")
+
+        t_stat, p_value = stats.ttest_ind(res_lstm, res_htm, alternative='greater')
+
+        if p_value < alpha:
+            print(f"There is a significant difference between LSTM and HTM with {binning_method} binning (p < 0.05).")
+        else:
+            print(f"There is no significant difference between LSTM and HTM with {binning_method} binning (p >= 0.05).")
+
+
+def test_for_each_percentage():
+    lstm, htm, dfa = get_lstm_sheets_df(), get_htm_sheets_df(), get_dfa_sheet_df()
+    lstm_v3_2 = lstm.loc[
+        (lstm['data version'] == 'v3_2') & (lstm['binning'] == 'equal_width') & (lstm['percentage'] > 20)]
+    htm_v3_2 = htm.loc[(htm['data version'] == 'v3_2') & (htm['binning'] == 'equal_width') & (htm['percentage'] > 20)]
+    dfa = dfa.loc[(dfa['binning'] == 'equal_width') & (dfa['percentage'] > 20)]
+    alpha = 0.05
+
+    res_lstm, res_htm, res_dfa = lstm_v3_2['f1'], htm_v3_2['f1'], dfa['f1']
+
+    t_stat, p_value = stats.ttest_ind(res_lstm, res_dfa, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between LSTM and DFA with percentage (p < 0.05).")
+    else:
+        print(f"There is no significant difference between LSTM and DFA with percentage (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_htm, res_dfa, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between HTM and DFA with percentage (p < 0.05).")
+    else:
+        print(f"There is no significant difference between HTM and DFA with percentage (p >= 0.05).")
+
+    t_stat, p_value = stats.ttest_ind(res_lstm, res_htm, alternative='greater')
+
+    if p_value < alpha:
+        print(f"There is a significant difference between LSTM and HTM with percentage (p < 0.05).")
+    else:
+        print(f"There is no significant difference between LSTM and HTM with percentage (p >= 0.05).")
+
+
+def plot_anlis_htm(data_version, binning, bins):
+    percentages = [40, 50, 60, 70, 80]
+    name = 'test_{}_{}_{}'.format(data_version, binning, bins)
+    # anlis_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\anomaly likelihoods\\'
+    anlis_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\anlis hws=2k\\'
+    avg_anlis = None
+    pass_threshold = []
+    for p in percentages:
+        full_name = name + '_{}'.format(p)
+        anli_path = anlis_path + full_name
+        with open(anli_path, mode='rb') as f:
+            anlis = pickle.load(f, encoding='latin1')
+            if avg_anlis:
+                avg_anlis = [avg_anlis[i] + anlis[i] for i in range(len(anlis))]
+            else:
+                avg_anlis = anlis
+            """plt.plot([i + 1 for i in range(len(anlis))], [1 if anli > 0.99 else 0 for anli in anlis], label=p)
+            plt.xlabel('Index')
+            plt.ylabel('ANLI Values')
+            plt.title('ANLI List Plot')
+            plt.grid(True)
+            plt.show()"""
+            print(p, len([x for x in anlis if x > 0.99]))
+            print([i for i in range(len(anlis)) if anlis[i] > 0.99])
+            pass_threshold.append(len([x for x in anlis if x > 0.99]))
+    return pass_threshold
+
+
+def process_htm_log():
+    with open('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\test HTM-OCSVM.txt', 'r') as file:
+        lines = file.readlines()
+    htm_df = get_htm_sheets_df()
+    htm_df['tpr'] = 0
+    htm_df['fpr'] = 0
+    htm_df['tnr'] = 0
+    htm_df['fnr'] = 0
+
+    tprs, fprs, tnrs, fnrs = [], [], [], []
+
+    num_lines = len(lines)
+    for i in range(0, num_lines, 8):
+        result = lines[i: i + 8]
+        needed_metrics_line = result[-1]
+
+        tp, fp, tn, fn = get_metrics_from_line(needed_metrics_line)
+        tpr = tp / (tp + fn)
+        tnr = tn / (tn + fp)
+        fpr = fp / (fp + tn)
+        fnr = fn / (tn + tp)
+
+        tprs.append(tpr)
+        tnrs.append(tnr)
+        fprs.append(fpr)
+        fnrs.append(fnr)
+
+    htm_df['tpr'] = tprs
+    htm_df['fpr'] = fprs
+    htm_df['tnr'] = tnrs
+    htm_df['fnr'] = fnrs
+    with pd.ExcelWriter('C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\HTM\\htm analysis.xlsx', mode="a",
+                        engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        htm_df.to_excel(writer, sheet_name='full results')
+
+
+def get_metrics_from_line(line):
+    parts = line.split(',')
+    tp, fp, fn, tn = None, None, None, None
+
+    # Iterate through the parts to find the values
+    for part in parts:
+        key, value = part.split(':')
+        if key.strip() == "tp":
+            tp = float(value.strip())
+        elif key.strip() == "fp":
+            fp = float(value.strip())
+        elif key.strip() == "fn":
+            fn = float(value.strip())
+        elif key.strip() == "tn":
+            tn = float(value.strip())
+    return tp, fp, tn, fn
+
+
+def lag_in_HTM_anli(data_version, binning, bins):
+    percentages = [40, 50, 60, 70, 80]
+    name = 'test_{}_{}_{}'.format(data_version, binning, bins)
+    anlis_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\anomaly likelihoods\\'
+
+    for p in percentages:
+        full_name = name + '_{}'.format(p)
+        anli_path = anlis_path + full_name
+
+        with open(anli_path, mode='rb') as f:
+            anlis = pickle.load(f, encoding='latin1')
+
+        below_thresh = 0
+
+        for i in range(0, len(anlis), 3000):
+            found = False
+            j = 0
+            while j < 100 and not found:
+                if anlis[i + j] < 0.99:
+                    below_thresh += 1
+                j += 1
+        # delay /= 10
+        print(below_thresh)
+
+
+def examine_datasets_for_many_PLCs():
+    candidates = ['MB_TCP', 'modbus12']
+    # show: how many PLCs involved.
+    # show: how many HTMs involved.
+    # show: number of packets to each PLCs.
+    mb_tcp_p = data.datasets_path + f'\\{candidates[0]}'
+    modbus_12_p = data.datasets_path + f'\\{candidates[1]}'
+
+    # with open(mb_tcp_p, mode='rb') as df_f:
+    # mb_tcp = pickle.load(df_f)
+
+    with open(modbus_12_p, mode='rb') as df_f:
+        modbus_12 = pickle.load(df_f)
+
+    # print('examine mb_tcp')
+    # examine_raw_df(mb_tcp)
+
+    print('examine mobdbus_12')
+    examine_raw_df(modbus_12)
+
+
+def examine_raw_df(df):
+    responses = df.loc[df['src_port'] == data.plc_port]
+    PLCs = responses['src_ip'].unique()
+    print(f'there are {len(PLCs)} plcs.')
+
+    for plc in PLCs:
+        queries = df.loc[df['dst_ip'] == plc]
+        responses = df.loc[df['src_ip'] == plc]
+        print(f'PLC:{plc}, # queries: {len(queries)}, # responses: {len(responses)}')
+
+
+def analyze_htm_log_for_scores():
+    log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\test HTM-OCSVM.txt'
+    with open(log, 'r') as file:
+        log_entries = file.readlines()
+
+    # Initialize lists to store extracted data
+    percentages = []
+    data_versions = []
+    binning_methods = []
+    bins = []
+    windows = []
+    std_counts = []
+    likelihood_thresholds = []
+    aucs = []
+    prcs = []
+    f1s = []
+    precisions = []
+    recalls = []
+
+    # Regular expressions to match the patterns and extract data
+    percent_pattern = re.compile(r'%:\s(\d+)')
+    data_version_pattern = re.compile(r'data version:\s(\S+)')
+    binning_method_pattern = re.compile(r'binning method:(equal_frequency|equal_width|k_means)')
+    bins_pattern = re.compile(r'bins:(\d+)')
+    window_pattern = re.compile(r'window:(\d+)')
+    std_count_pattern = re.compile(r'std count:(\d+)')
+    auc_pattern = re.compile(r'auc:([\d.]+)')
+    prc_pattern = re.compile(r'prc:([\d.]+)')
+    f1_pattern = re.compile(r'f1:([\d.]+)')
+    precision_pattern = re.compile(r'precision:([\d.]+)')
+    recall_pattern = re.compile(r'recall:([\d.]+)')
+    likelihood_threshold_pattern = re.compile(r'likelihood threshold:\s([\d.]+)')
+
+    # Iterate through log entries and extract the data
+    for i in range(0, len(log_entries), 8):
+        entry = log_entries[i: i + 8]
+        percent_match = percent_pattern.search(entry[0])
+        data_version_match = data_version_pattern.search(entry[2])
+        binning_method_match = binning_method_pattern.search(entry[2])
+        bins_match = bins_pattern.search(entry[2])
+        window_match = window_pattern.search(entry[2])
+        std_count_match = std_count_pattern.search(entry[2])
+        likelihood_threshold_match = likelihood_threshold_pattern.search(entry[2])
+
+        auc_match = auc_pattern.search(entry[7])
+        prc_match = prc_pattern.search(entry[7])
+        f1_match = f1_pattern.search(entry[7])
+        precision_match = precision_pattern.search(entry[7])
+        recall_match = recall_pattern.search(entry[7])
+
+        if data_version_match.group(1)[:-1] != 'v3_2':
+            continue
+
+        if percent_match:
+            percentages.append(percent_match.group(1))
+        if data_version_match:
+            data_versions.append(data_version_match.group(1)[:-1])
+        if binning_method_match:
+            binning_methods.append(binning_method_match.group(1))
+        if bins_match:
+            bins.append(bins_match.group(1))
+        if window_match:
+            windows.append(window_match.group(1))
+        if std_count_match:
+            std_counts.append(std_count_match.group(1))
+        if likelihood_threshold_match:
+            likelihood_thresholds.append(likelihood_threshold_match.group(1))
+
+        if auc_match:
+            aucs.append(auc_match.group(1))
+        if prc_match:
+            prcs.append(prc_match.group(1))
+        if f1_match:
+            f1s.append(f1_match.group(1))
+        if precision_match:
+            precisions.append(precision_match.group(1))
+        if recall_match:
+            recalls.append(recall_match.group(1))
+
+    # Create a DataFrame from the extracted data
+    data = {
+        k: ['-'] * len(percentages) for k in excel_cols
+    }
+
+    data['percentage'] = percentages
+    data['injection length'] = 100
+    data['data version'] = data_versions
+    data['binning'] = binning_methods
+    data['# bins'] = bins
+    data['window size'] = windows
+    data['# std count'] = std_counts
+    data['likelihood_threshold'] = likelihood_thresholds
+    data['auc'] = aucs
+    data['prc'] = prcs
+    data['f1'] = f1s
+    data['precision'] = precisions
+    data['recall'] = recalls
+    data['algorithm'] = 'HTM'
+
+    df = pd.DataFrame(data)
+
+    # Save the DataFrame to an Excel file
+    df.to_excel('HTM v3_2 sheets compl.xlsx', index=False, engine='openpyxl')
+
+
+if __name__ == '__main__':
+    # create_performance_sheet()
+    # test_number_of_bins()
+    # test_best_binning_method()
+    # best_binning_for_algos()
+    # test_for_each_percentage()
+    # stat_test_algos()
+    # examine_datasets_for_many_PLCs()
+    print('hello world')
