@@ -997,18 +997,24 @@ def process_data_v3(pkt_df, n=5, binner=None, n_bins=None, scale=True, frequent_
 
 # this data processing is similar to v3 but adds an entry to the dataframe everytime
 def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=False, binner_path=None,
-                      load_binner=False):
-    """frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
+                      registers=None, load_binner=False, fill=True, get_cols=False):
+    frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
     PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
     registers = []
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
-    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
-    regs_copy = registers.copy()"""
-    registers = ['1', '2', '3']
-    cols = np.concatenate((['time', 'time_in_state'], ['1', '2', '3']))
 
+    regs_copy = registers.copy()
+    cols = np.concatenate((['time', 'time_in_state'], [str(i) for i in range(len(regs_copy))]))
     time_vals_df = pd.DataFrame(columns=cols)
+
+    if get_cols:
+        return cols
+
+    registers_map = {}
+    for plc in PLCs_registers:
+        for reg in PLCs_registers[plc]:
+            registers_map[(plc, reg)] = len(registers_map.keys())
 
     for i in range(1, len(pkt_df)):
         # entries from the original data frame
@@ -1043,21 +1049,24 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
         if src_port == plc_port:
             payload = curr['payload']
             updated_regs = payload.keys()
+            plc_ip = curr['src_ip']
 
             # set the columns of the registers values received from the packet and calculate similarity
             for reg_num in registers:
+                register_key = (plc_ip, reg_num)
+                register_id = registers_map[register_key]
                 if reg_num in updated_regs:
-                    new[reg_num] = np.float64(payload[reg_num])
+                    new[register_id] = np.float64(payload[reg_num])
                     # compare to the packet before and update similarity accordingly
-                    prev_reg = prev_entry.get(reg_num, np.nan)
-                    if has_prev and new[reg_num] == prev_reg:
+                    prev_reg = prev_entry.get(register_id, np.nan)
+                    if has_prev and new[register_id] == prev_reg:
                         similarity += 1
                 else:
                     # the value of this register wasn't recorded in the packet. get the last value known
                     if not has_prev:
-                        new[reg_num] = np.nan
+                        new[register_id] = np.nan
                     else:
-                        new[reg_num] = np.float64(prev_entry[reg_num])
+                        new[register_id] = np.float64(prev_entry[register_id])
                     # no known value change
                     similarity += 1
 
@@ -1086,30 +1095,35 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
                 # there was no state change.
                 if not abstract:
                     new['time_in_state'] = (time_vals_df.iloc[df_len - 1, 1] + new['time'])
+                plc_ip = curr['src_ip']
                 for reg_num in registers:
-                    new[reg_num] = prev_entry[reg_num]
+                    register_key = (plc_ip, reg_num)
+                    register_id = registers_map[register_key]
+                    new[register_id] = prev_entry[register_id]
 
         # in any case we add the new entry to the dataframe.
         temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                          data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
         time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
 
-    for reg_num in registers:
+    if not fill:
+        print('didnt fill :)')
+        return time_vals_df
+
+    for reg_num in [str(i) for i in range(len(regs_copy))]:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
         if binner is not None:
             if not load_binner:
                 time_vals_df[reg_num] = binner(time_vals_df, reg_num, n_bins, binner_path)
             else:
-                with open(binners_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as binner_p:
+                with open(binners_base + '//{}_{}'.format(binner_path, reg_num), mode='rb') as binner_p:
                     binner = pickle.load(binner_p)
-                time_vals_df[reg_num] = binner.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
+                time_vals_df[reg_num] = binner.transform(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
         if scale:
             if not load_binner:
                 time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, binner_path)
             else:
-                with open(scalers_base + '//{}_{}'.format(binner_path, reg_num), mode='wb') as scaler_p:
-                    scaler = pickle.load(scaler_p)
-                time_vals_df[reg_num] = scaler.transorm(time_vals_df[reg_num].to_numpy().reshape(-1, 1))
+                time_vals_df[reg_num] = scale_col(time_vals_df, reg_num, None)
 
     if abstract and binner is not None:
         # now we calculate the time_in_state after the temporal abstraction of registers values by binning.
@@ -1117,7 +1131,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
             curr = time_vals_df.iloc[n]
             prev = time_vals_df.iloc[n - 1]
             similarity = 0
-            for reg in registers:
+            for reg in [str(i) for i in range(len(regs_copy))]:
                 curr_reg = curr[reg]
                 prev_reg = prev[reg]
                 if curr_reg == prev_reg:
@@ -1135,9 +1149,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
             if not load_binner:
                 time_vals_df[col_name] = scale_col(time_vals_df, col_name, binner_path)
             else:
-                with open(scalers_base + '//{}_{}'.format(binner_path, col_name), mode='wb') as scaler_p:
-                    scaler = pickle.load(scaler_p)
-                time_vals_df[col_name] = scaler.transorm(time_vals_df[col_name].to_numpy().reshape(-1, 1))
+                time_vals_df[col_name] = scale_col(time_vals_df, col_name, None)
 
     return time_vals_df
 
@@ -1831,7 +1843,7 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
 
 
 if __name__ == '__main__':
-    df_path = datasets_path + '\\modbus12'
+    """df_path = datasets_path + '\\modbus12'
     with open(df_path, mode='rb') as df_f:
         modbus12 = pickle.load(df_f)
 
@@ -1849,9 +1861,18 @@ if __name__ == '__main__':
         print(f'there are {len(rs)} responses from plc {plc}')
         print(f'there are {len(qs)} queries from plc {plc}')
 
-    """stats_df = get_plcs_values_statistics(modbus12, 4)
+    stats_df = get_plcs_values_statistics(modbus12, 4)
 
     with pd.ExcelWriter(excel_path + '\\modbus12_stats_4regs.xlsx', mode="a",
                         engine="openpyxl",
                         if_sheet_exists="overlay") as writer:
         stats_df.to_excel(writer, sheet_name='PLCs stats')"""
+    p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\132.72.155.245_train'
+    with open(p, mode='rb') as f:
+        df = pickle.load(f)
+    stats = get_plcs_values_statistics(df, 4, to_df=False)
+    print(stats)
+    for i in range(len(df)):
+        if df.iloc[i]['src_port'] == plc_port:
+            print(df.iloc[i]['payload'])
+
