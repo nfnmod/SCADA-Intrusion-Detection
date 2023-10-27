@@ -75,10 +75,9 @@ def build_SGD(nu):
 # train classifier with models from the first folder and train sets from the other folder.
 # Classifiers are trained with benign data and tested with anomalies.
 # MAKE SURE THE DATA FOLDER HAS ALL THE TRAIN SETS.
-def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_only=False):
+def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_only=False, group_info=None):
     # models folder described the data version and binning method.
     bins = params['bins']
-    print(bins)
     for model_folder in os.listdir(data.modeles_path + '//' + models_folder):
         n_bins = int(model_folder.split(sep='_')[-1])
         if n_bins not in bins:
@@ -88,15 +87,21 @@ def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_onl
             model_path = data.modeles_path + "//" + models_folder + "//" + model_folder
             model = keras.models.load_model(model_path)
 
-            x_train_path = data.datasets_path + "//" + data_folder + '//X_train_' + model_folder
-            y_train_path = data.datasets_path + "//" + data_folder + '//y_train_' + model_folder
+            if group_info is None:
+                x_train_path = data.datasets_path + "//" + data_folder + '//X_train_' + model_folder
+                y_train_path = data.datasets_path + "//" + data_folder + '//y_train_' + model_folder
+            else:
+                x_train_path = data.datasets_path + "//" + data_folder + f'//{group_info}_X_train_' + model_folder
+                y_train_path = data.datasets_path + "//" + data_folder + f'//{group_info}_y_train_' + model_folder
+
             with open(x_train_path, 'rb') as x_train_f:
                 x_train = pickle.load(x_train_f)
             with open(y_train_path, 'rb') as y_train_f:
                 y_train = pickle.load(y_train_f)
+
             if not RF_only and not OCSVM_only:
                 post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
-                                                   models_folder)
+                                                   models_folder, group_info=group_info)
                 post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
             elif OCSVM_only:
                 post_lstm_classifier_One_Class_SVM(model, x_train, y_train, model_folder + '_OCSVM', params,
@@ -105,7 +110,7 @@ def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_onl
                 post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
 
 
-def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder):
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder, group_info=None):
     """
 
     :param models_folder: name of models folder of LSTMs, used for convenient saving of classifiers.
@@ -129,10 +134,14 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
     pred = lstm_model.predict(x_train)
     diff_x_train = np.abs(pred - y_train)
     # dirs for the datasets.
-    diff_path = SCADA_base + '//OCSVM datasets//OCSVM_{}'.format(models_folder)
+    if group_info is not None:
+        diff_path = SCADA_base + '//OCSVM datasets//OCSVM_{}_{}'.format(group_info, models_folder)
+    else:
+        diff_path = SCADA_base + '//OCSVM datasets//OCSVM_{}'.format(models_folder)
+
     if not os.path.exists(diff_path):
         Path(diff_path).mkdir(parents=True, exist_ok=True)
-    data.dump(diff_path, "X_train_{}".format(model_name),
+    data.dump(diff_path, "{}_X_train_{}".format(group_info, model_name),
               diff_x_train)
 
     binning_version = models_folder.split(sep='_', maxsplit=1)
@@ -152,13 +161,19 @@ def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name,
                 start = time.time()
                 model.fit(diff_x_train)
                 end = time.time()
+
                 log.write('Trained, time elapsed:{}\n'.format(end - start))
+
                 dirc = SCADA_base + '//SVM//' + models_folder
-                p = model_name + '_nu_{}_'.format(
-                    n) + 'kernel_{}.sav'.format(
-                    k)
+
+                if group_info is not None:
+                    p = f'{group_info}_{model_name}_nu_{n}_kernel{k}.sav'
+                else:
+                    p = f'{model_name}_nu_{n}_kernel{k}.sav'
+
                 if not os.path.exists(dirc):
                     Path(dirc).mkdir(exist_ok=True, parents=True)
+
                 data.dump(dirc, p, model)
 
 
