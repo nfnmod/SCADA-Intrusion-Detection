@@ -847,7 +847,7 @@ def train_OCSVM_from_KL_LSTMs(KL_config_file_path):
                                         keras.models.save_model(ocsvm, model_path)
 
 
-def create_train_sets_HTM(train_config):
+def create_train_sets_HTM(train_config, group_info=None):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
     # lstm params.
@@ -860,6 +860,8 @@ def create_train_sets_HTM(train_config):
                 method_folder = folders[method]
                 version_desc = data_version['desc']
                 data_folder_path = data.datasets_path + '//{}_{}'.format(method_folder, folder_name)
+                if group_info is not None:
+                    data_folder_path = data.datasets_path + '//{}_{}_{}'.format(group_info, method_folder, folder_name)
                 dataset_name = 'X_train_{}_{}_{}'.format(version_desc, method, number_of_bins)
                 with open(data_folder_path + '//' + dataset_name, mode='rb') as data_f:
                     train_df = pickle.load(data_f)
@@ -867,13 +869,24 @@ def create_train_sets_HTM(train_config):
                 with open(data_folder_path + '//' + y_train_path, mode='rb') as y_f:
                     y_train = pickle.load(y_f)
                 train_df = np.concatenate([train_df[0], y_train])
-                htm_df_base_path = HTM_base + '//datasets//' + '{}_{}'.format(method_folder, folder_name)
+                htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(method_folder, folder_name)
+                if group_info is not None:
+                    htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(group_info, method_folder, folder_name)
                 htm_df_name = dataset_name
                 if not os.path.exists(htm_df_base_path):
                     Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
-                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
-                                    registers=data.most_used, fill=True, get_cols=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None, registers=data.most_used, fill=True, get_cols=True)
                 write_df_to_csv(train_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
+
+
+def create_HTM_train_sets_single_plc_split(train_config):
+    for ip in data.active_ips:
+        group_info = f'single_plc_{ip}'
+        create_train_sets_HTM(train_config, group_info=group_info)
+
+
+def create_HTM_train_sets_all_plcs_split(train_config):
+    create_train_sets_HTM(train_config, 'all_plcs')
 
 
 def write_df_to_csv(df_arr, cols, path):
@@ -890,7 +903,7 @@ def write_df_to_csv(df_arr, cols, path):
     pd.DataFrame(df_arr).to_csv(path_or_buf=path, index=False, header=False, mode='a')
 
 
-def create_val_sets_htm(train_config):
+def create_val_sets_htm(train_config, group_info=None):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
     # lstm params.
@@ -903,6 +916,8 @@ def create_val_sets_htm(train_config):
                 method_folder = folders[method]
                 version_desc = data_version['desc']
                 data_folder_path = val_base + '//LSTM//{}_{}'.format(folder_name, method_folder)
+                if group_info is not None:
+                    data_folder_path = val_base + '//LSTM//{}_{}_{}'.format(group_info, folder_name, method_folder)
                 dataset_name = 'X_{}_{}_{}'.format(version_desc, method, number_of_bins)
                 with open(data_folder_path + '//' + dataset_name, mode='rb') as data_f:
                     val_df = pickle.load(data_f)
@@ -911,13 +926,23 @@ def create_val_sets_htm(train_config):
                     y_val = pickle.load(y_f)
                 val_df = np.concatenate([val_df[0], y_val])
                 htm_df_base_path = val_base + '//HTM//' + '{}_{}'.format(method_folder, folder_name)
+                if group_info is not None:
+                    htm_df_base_path = val_base + '//HTM//' + '{}_{}_{}'.format(group_info, method_folder, folder_name)
                 htm_df_name = dataset_name
                 if not os.path.exists(htm_df_base_path):
                     Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
-                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
-                                    registers=data.most_used, fill=True, get_cols=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None, registers=data.most_used, fill=True, get_cols=True)
                 write_df_to_csv(val_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
 
+
+def create_val_sets_htm_single_plc_split(train_config):
+    for active_ip in data.active_ips:
+        group_info = f'singe_plc_{active_ip}'
+        create_val_sets_htm(train_config, group_info=group_info)
+
+
+def create_val_sets_htm_all_plcs_split(train_config):
+    create_val_sets_htm(train_config, group_info='all_plcs')
 
 """
 The following function create the test files for the various classifiers.
@@ -925,7 +950,7 @@ Use configuration file to create them.
 """
 
 
-def create_test_sets_for_HTM(injection_config, train_config):
+def create_test_sets_for_HTM(injection_config, train_config, group_info=None):
     injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
     methods, bins, data_versions = get_LSTM_params(train_config)
     HTM_test_sets_base = test_sets_base_folder + '//HTM'
@@ -939,6 +964,10 @@ def create_test_sets_for_HTM(injection_config, train_config):
                             for data_version in data_versions:
                                 test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}//'.format(
                                     data_version['name'], method, number_of_bins)
+
+                                if group_info is not None:
+                                    test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}_{}//'.format(
+                                        group_info, data_version['name'], method, number_of_bins)
 
                                 p_suffix = '{}_{}_{}_{}_{}_{}'.format(
                                     data_version['desc'], method, number_of_bins, injection_length,
@@ -959,6 +988,10 @@ def create_test_sets_for_HTM(injection_config, train_config):
                                 htm_test_sets_folder = HTM_test_sets_base + '//{}_{}_{}//'.format(
                                     data_version['name'], method, number_of_bins)
 
+                                if group_info is not None:
+                                    htm_test_sets_folder = HTM_test_sets_base + '//{}_{}_{}_{}//'.format(
+                                        group_info, data_version['name'], method, number_of_bins)
+
                                 if not os.path.exists(htm_test_sets_folder):
                                     Path(htm_test_sets_folder).mkdir(exist_ok=True, parents=True)
 
@@ -971,7 +1004,16 @@ def create_test_sets_for_HTM(injection_config, train_config):
                                 write_df_to_csv(test_df, cols, HTM_X_test_path + '.csv')
 
                                 with open(HTM_labels_path, mode='wb') as labels_f:
-                                    pickle.dump(test_labels, labels_f)
+                                    pickle.dump(test_labels, labels_f, protocol=2)
+
+
+def create_test_sets_for_HTM_single_plc_split(injection_config, train_config):
+    for active_ip in data.active_ips:
+        create_test_sets_for_HTM(injection_config, train_config, f'single_plc_{active_ip}')
+
+
+def create_test_sets_for_HTM_all_plcs_split(injection_config, train_config):
+    create_test_sets_for_HTM(injection_config, train_config, 'all_plcs')
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
