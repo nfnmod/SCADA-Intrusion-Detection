@@ -52,7 +52,7 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
                   'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
                   'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
                   'minThreshold', 'activationThreshold', 'window size', 'KL epsilon', 'minimal VS', 'max gap',
-                  'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+                  'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1'}
 """excel_cols = ['algorithm', 'data version', 'binning', '# bins', '# std count', 'window size', 'likelihood_threshold',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn', 'newSynapseCount',
@@ -65,23 +65,23 @@ excel_cols = ['group', 'algorithm', 'data version', 'binning', '# bins', '# std 
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal HS', 'max gap',
-              'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc', 'kernel', 'nu']
+              'injection length', 'percentage', 'precision', 'recall', 'f1', 'kernel', 'nu']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
-           'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc'}
+           'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1'}
 OCSVM_cols = ['group', 'data version', 'binning', '# bins', '# std count', 'window size', 'nu', 'kernel',
-              'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']
+              'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1']
 
 DFA_cols = {'group', 'binning', '# bins', '# std count', 'injection length', 'step over', 'percentage', 'precision',
-            'recall', 'auc', 'f1', 'prc'}
+            'recall', 'f1'}
 
 LSTM_detection_cols = ['group', 'data version', 'binning', '# bins', '# std count', 'window size', 'injection length',
                        'step over', 'percentage',
                        'precision',
-                       'recall', 'auc', 'f1', 'prc']
+                       'recall', 'f1']
 
 KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal K', 'max gap',
-                    'injection length', 'step over', 'percentage', 'precision', 'recall', 'auc',
-                    'f1', 'prc'}
+                    'injection length', 'step over', 'percentage', 'precision', 'recall',
+                    'f1'}
 # xl_path = '//sise//home//zaslavsm//SCADA//excel//DFA sheets.xlsx'
 xl_path2 = '//sise//home//zaslavsm//SCADA//excel//LSTM v3_2 sheets.xlsx'
 xl_path3 = '//sise//home//zaslavsm//SCADA//excel//LSTM v2 sheets.xlsx'
@@ -98,7 +98,7 @@ HTM_cols = ['group', 'data version', 'binning', '# bins', '# std count', 'likeli
             'maxSynapsesPerSegment',
             'maxSegmentsPerCell', 'minThreshold', 'activationThreshold', 'injection length', 'step over', 'percentage',
             'precision',
-            'recall', 'auc', 'f1', 'prc']
+            'recall', 'f1']
 
 window_sizes = [400, 600, 800, 1000]
 p_values = [0.01, 0.03, 0.05]
@@ -1999,7 +1999,7 @@ def test_LSTM_based_classifiers(lstm_config, ocsvm_config, injection_config, gro
                                                           'binning': binning_method_for_excel,
                                                           '# bins': number_of_bins_for_excel, '# std count': num_std,
                                                           'window size': window_size, 'precision': precision,
-                                                          'recall': recall, 'auc': auc_score, 'f1': f1,
+                                                          'recall': recall, 'f1': f1,
                                                           'injection length': injection_length, 'step over': step_over,
                                                           'percentage': percentage, 'kernel': kernel, 'nu': nu}
 
@@ -2026,9 +2026,7 @@ def test_LSTM_based_classifiers(lstm_config, ocsvm_config, injection_config, gro
                                                     test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
                                                                                                  result['nu']))
                                                     test_log.write(
-                                                        'auc:{}, f1:{}, prc:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
-                                                            auc_score, f1,
-                                                            prc_auc_score,
+                                                        'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format( f1,
                                                             precision,
                                                             recall, tn, fp, fn, tp))
     best_df = make_best(results_df)
@@ -2340,8 +2338,7 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                                           'binning': binning_method_for_excel,
                                                           '# bins': number_of_bins_for_excel, '# std count': num_std,
                                                           'window size': window_size, 'precision': precision,
-                                                          'recall': recall, 'auc': auc_score, 'f1': f1,
-                                                          'prc': prc_auc_score,
+                                                          'recall': recall, 'f1': f1,
                                                           'injection length': injection_length, 'step over': step_over,
                                                           'percentage': percentage, 'kernel': kernel, 'nu': nu}
 
@@ -2378,9 +2375,8 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                                     test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
                                                                                                  result['nu']))
                                                     test_log.write(
-                                                        'auc:{}, f1:{}, prc:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
-                                                            auc_score, f1,
-                                                            prc_auc_score,
+                                                        'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
+                                                            f1,
                                                             precision,
                                                             recall, tn, fp, fn, tp))
                                                     test_log.write('OCSVM detected in test: {}, in val: {}\n'.format(
@@ -2414,7 +2410,7 @@ def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_
     results_df = pd.read_excel(xl_path2, sheet_name='performance')
     averaged_results_df = None
     metric_cols = ['f1', 'precision', 'recall']
-    other_cols = results_df.columns[:-5]
+    other_cols = results_df.columns[:-3]
 
     for active_ip in data.active_ips:
         group_name = f'single_plc_{active_ip}'
@@ -2560,9 +2556,7 @@ def test_DFA(injection_config, group=None):
                                               'percentage': percentage,
                                               'precision': precision,
                                               'recall': recall,
-                                              'auc': auc_score,
-                                              'f1': f1,
-                                              'prc': prc_auc_score}
+                                              'f1': f1,}
 
                                     """labels_test_df = pd.DataFrame(columns=labels_df.columns)
                                     labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
@@ -2617,11 +2611,10 @@ def test_DFA(injection_config, group=None):
                                         test_log.write('len: {}, step: {}, %: {}\n'.format(injection_length, step_over,
                                                                                            percentage))
                                         test_log.write(
-                                            'scores: precision: {}, recall: {}, auc: {}, f1: {}, prc:{}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
+                                            'scores: precision: {}, recall: {}, f1: {}, tn: {}, fn : {}, tp: {}, fp: {}\n'.format(
                                                 result['precision'],
                                                 result['recall'],
-                                                result['auc'],
-                                                result['f1'], result['prc'], tn, fn, tp, fp))
+                                                result['f1'], tn, fn, tp, fp))
                                         test_log.write(
                                             'new_state:{}, bad_time:{}, new_t:{}\n'.format(new_state, bad_time, new_t))
                                         test_log.write(
@@ -2654,7 +2647,7 @@ def test_DFA_single_plcs_split(injection_config):
     results_df = pd.read_excel(xl_path, sheet_name='performance')
     averaged_results_df = None
     metric_cols = ['f1', 'precision', 'recall']
-    other_cols = results_df.columns[:-5]
+    other_cols = results_df.columns[:-3]
 
     for active_ip in data.active_ips:
         group_name = f'single_plc_{active_ip}'
