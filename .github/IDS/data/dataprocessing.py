@@ -1842,6 +1842,57 @@ def export_results(models_folder, columns, sheet_name, data_version, series_leng
         results_df.to_excel(writer, sheet_name=sheet_name)
 
 
+def construct_value_series(modbus, plc, reg):
+    values = []
+    for i in range(len(modbus)):
+        pkt = modbus.iloc[i]
+        if pkt['src_ip'] == plc and reg in pkt['payload'].keys():
+            values = values.append(pkt['payload'][reg])
+        else:
+            if len(values) > 0:
+                values = values.append(values[-1])
+            else:
+                values = values.append(None)
+
+    j = 0
+    while j < len(values) and values[j] is None:
+        j += 1
+
+    for i in range(j - 1, -1, 0):
+        values[i] = values[j]
+
+    return values
+
+
+def calculate_correlations(corrleation_fuction, score_name):
+    path = datasets_path + '//all_plcs//train'
+    with open(path, mode='rb') as df_f:
+        modbus = pickle.load(df_f)
+    plc_stats = get_plcs_values_statistics(modbus, 5, False)
+    PLCs_registers = {PLC: [reg for reg, stats in plc_stats[PLC] if stats[0] > 1] for PLC in plc_stats.keys()}
+    values_series = dict()
+    for plc, regs in PLCs_registers.items():
+        for reg in regs:
+            values_series[(plc, reg)] = construct_value_series(modbus, plc, reg)
+
+    correlations_df = pd.DataFrame(columns=['plc1', 'reg1', 'plc2', 'reg2', score_name])
+    for (plc, reg) in values_series.keys():
+        for (plc1, reg1) in values_series.keys():
+            if plc > plc1:
+                score = corrleation_fuction(values_series[(plc, reg)], values_series[plc1, reg1])
+                entry = {'plc1': plc,
+                         'reg1': reg,
+                         'plc2': plc1,
+                         'reg2': reg1,
+                         score_name: score}
+                pd.concat([correlations_df,
+                           pd.DataFrame.from_dict(data={'0': entry}, columns=correlations_df.columns, orient='index')],
+                          ignore_index=True, axis=0)
+
+    with pd.ExcelWriter('...', mode='a') as writer:
+        correlations_df.to_excel(excel_writer=writer, sheet_name=f'correlations {score_name}')
+
+
 if __name__ == '__main__':
     """df_path = datasets_path + '\\modbus12'
     with open(df_path, mode='rb') as df_f:
@@ -1875,4 +1926,3 @@ if __name__ == '__main__':
     for i in range(len(df)):
         if df.iloc[i]['src_port'] == plc_port:
             print(df.iloc[i]['payload'])
-
