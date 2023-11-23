@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import stumpy
+from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import KBinsDiscretizer
@@ -550,45 +551,49 @@ def equal_frequency_discretization(df, col_name, n_bins, path=None):
 # works on data from a group of PLCs.
 def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=True, binner_path=None, get_cols=False):
     frequent_regs = get_plcs_values_statistics(pkt_df, n, to_df=False)
-
-    # frequent_regs is a list of lists ,so we get the list of our PLC which is the only one used
-    PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] > 1] for PLC in frequent_regs.keys()}
+    PLCs_registers = {PLC: [reg for reg, stats in frequent_regs[PLC] if stats[0] >= 1] for PLC in frequent_regs.keys()}
     registers = []
     for PLC in PLCs_registers.keys():
         registers = np.concatenate([registers, PLCs_registers[PLC]])
-    cols = np.concatenate((['time'], registers))
+
+    regs_copy = registers.copy()
+    cols = np.concatenate((['time'], [str(i) for i in range(len(regs_copy))]))
     if get_cols:
         return cols
 
     IPs = list(pkt_df['src_ip'].unique())
     avgs_dict = {IP: None for IP in IPs}
-    for IP in IPs:
-        avgs = get_avg_vals(pkt_df, IP, registers)
-        avgs_dict[IP] = avgs
+    # for IP in IPs:
+    # avgs = get_avg_vals(pkt_df, IP, PLCs_registers[IP])
+    # avgs_dict[IP] = avgs
 
-    last_values = {r: np.nan for r in registers}
-    # last packet for each PLC.
-    last_packets = {IP: None for IP in IPs}
+    last_values = dict()
+    # for plc, regs in PLCs_registers.items():
+    # for reg in regs:
+    # last_values[(plc, reg)] = np.nan
+
+    registers_map = {}
+    for plc in PLCs_registers:
+        for reg in PLCs_registers[plc]:
+            registers_map[(plc, reg)] = len(registers_map.keys())
+
     time_vals_df = pd.DataFrame(columns=cols)
 
-    for i in range(len(pkt_df)):
+    for i in range(1, len(pkt_df)):
         # entries from the original data frame
+        prev = pkt_df.iloc[i - 1]
         curr = pkt_df.iloc[i]
 
         IP = curr['src_ip']
         if plc_port != curr['src_port']:
             IP = curr['dst_ip']
-        if last_packets[IP] is None:
-            last_packets[IP] = curr
-            continue
 
-        prev = last_packets[IP]
         # the new entry
         new = {}
 
         # inter-arrival time
         # we treat them all as one entity. So, the inter-arrival time is with regard to the previous packet in THE DATA.
-        delta_t = curr['time'] - pkt_df.loc[i - 1, 'time']
+        delta_t = curr['time'] - prev['time']
         new['time'] = delta_t.total_seconds()
 
         src_port = curr['src_port']
@@ -597,12 +602,10 @@ def process_data_v1(pkt_df, n, binner=None, n_bins=None, entry_func=None, scale=
             prev_entry = {}
         else:
             prev_entry = time_vals_df.iloc[df_len - 1]
-        new = entry_func(src_port, curr, registers, new, prev_entry, i, avgs_dict[IP], prev, last_values)
+        new = entry_func(src_port, curr, registers, new, prev_entry, i, avgs_dict[IP], prev, last_values, registers_map)
         temp_df = pd.DataFrame.from_dict(columns=time_vals_df.columns,
                                          data={'0': [new[col] for col in time_vals_df.columns]}, orient='index')
         time_vals_df = pd.concat([time_vals_df, temp_df], ignore_index=True)
-        # update dictionaries for the PLC.
-        last_packets[IP] = curr
 
     for reg_num in registers:
         time_vals_df[reg_num] = time_vals_df[reg_num].fillna(time_vals_df[reg_num].mean())
@@ -624,27 +627,32 @@ def process_data_no_time(pkt_df, n, binner=None, bins=None):
     return no_time
 
 
-def make_entry_v1(src_port, curr, registers, new, prev_entry, i, avgs, prev, last_values):
+def make_entry_v1(src_port, curr, registers, new, prev_entry, i, avgs, prev, last_values, regs_map):
     if src_port == plc_port:
         payload = curr['payload']
+        plc_ip = curr['src_ip']
+
         updated_regs = payload.keys()
         # set the columns of the registers values received from the packet
         for reg_num in registers:
+            reg_id = regs_map[(plc_ip, reg_num)]
             if reg_num in updated_regs:
-                new[reg_num] = np.float64(payload[reg_num])
+                new[reg_id] = np.float64(payload[reg_num])
             else:
                 # the value of this register wasn't recorded in the packet. get the last value known
                 if prev_entry == {}:
-                    new[reg_num] = np.nan
+                    new[reg_id] = np.nan
                 else:
-                    new[reg_num] = np.float64(prev_entry[reg_num])
+                    new[reg_id] = np.float64(prev_entry[reg_id])
     else:
         # a query packet
+        plc_ip = curr['dst_ip']
         for reg_num in registers:
+            reg_id = regs_map[(plc_ip, reg_num)]
             if prev_entry == {}:
-                new[reg_num] = np.nan
+                new[reg_id] = np.nan
             else:
-                new[reg_num] = np.float64(prev_entry[reg_num])
+                new[reg_id] = np.float64(prev_entry[reg_id])
 
     return new
 
@@ -1864,10 +1872,7 @@ def construct_value_series(modbus, plc, reg):
     return values
 
 
-def calculate_correlations(corrleation_fuction, score_name):
-    path = datasets_path + '//all_plcs//train'
-    with open(path, mode='rb') as df_f:
-        modbus = pickle.load(df_f)
+def calculate_correlations(corrleation_fuction, score_name, modbus):
     plc_stats = get_plcs_values_statistics(modbus, 5, False)
     PLCs_registers = {PLC: [reg for reg, stats in plc_stats[PLC] if stats[0] > 1] for PLC in plc_stats.keys()}
     values_series = dict()
@@ -1876,6 +1881,8 @@ def calculate_correlations(corrleation_fuction, score_name):
             values_series[(plc, reg)] = construct_value_series(modbus, plc, reg)
 
     correlations_df = pd.DataFrame(columns=['plc1', 'reg1', 'plc2', 'reg2', score_name])
+    plcs_correlations_df = pd.DataFrame(columns=['plc1', 'plc2', score_name])
+
     for (plc, reg) in values_series.keys():
         for (plc1, reg1) in values_series.keys():
             if plc > plc1:
@@ -1885,13 +1892,49 @@ def calculate_correlations(corrleation_fuction, score_name):
                          'plc2': plc1,
                          'reg2': reg1,
                          score_name: score}
-                pd.concat([correlations_df,
-                           pd.DataFrame.from_dict(data={'0': entry}, columns=correlations_df.columns, orient='index')],
-                          ignore_index=True, axis=0)
+                correlations_df = pd.concat([correlations_df,
+                                             pd.DataFrame.from_dict(data={'0': entry}, columns=correlations_df.columns,
+                                                                    orient='index')],
+                                            ignore_index=True, axis=0)
+
+    plcs = PLCs_registers.keys()
+    for plc1 in plcs:
+        for plc2 in plcs:
+            if plc1 > plc2:
+                plc1_plc2_scores_mean = correlations_df.loc[('plc1' == plc1) & ('plc2' == plc2)][score_name].mean()
+                entry = {'plc1': plc1, 'plc2': plc2, score_name: plc1_plc2_scores_mean}
+                plcs_correlations_df = pd.concat([plcs_correlations_df,
+                                                  pd.DataFrame.from_dict(data={'0': entry},
+                                                                         columns=plcs_correlations_df.columns,
+                                                                         orient='index')],
+                                                 ignore_index=True, axis=0)
 
     with pd.ExcelWriter('...', mode='a') as writer:
-        correlations_df.to_excel(excel_writer=writer, sheet_name=f'correlations {score_name}')
+        correlations_df.to_excel(excel_writer=writer, sheet_name=f'registers correlations {score_name}')
 
+    with pd.ExcelWriter('...', mode='a') as writer:
+        correlations_df.to_excel(excel_writer=writer, sheet_name=f'plcs correlations {score_name}')
+
+
+def cluster_plcs():
+    plcs_dfs = dict()
+    packets_df = pd.DataFrame()
+    for ip in active_ips:
+        with open(datasets_path + f'//single_plc//{ip}_train', mode='rb') as df_f:
+            modbus_plc = pickle.load(df_f)
+            modbus_plc = process_data_v1(modbus_plc, n=5)
+            modbus_plc = modbus_plc.drop(axis=1, labels=['time'])
+            plcs_dfs[ip] = [len(packets_df), len(packets_df) + len(modbus_plc)]
+            packets_df = pd.concat([packets_df, modbus_plc], axis=0, ignore_index=True)
+
+    kmeans = KMeans(n_clusters=2, random_state=42, n_init="auto").fit(packets_df)
+    results = kmeans.labels_
+
+    for plc in active_ips:
+        plc_idx = plcs_dfs[plc]
+        plc_results = results[plc_idx[0]: plc_idx[1]]
+        plc_cluster = statistics.mode(plc_results)
+        print(f'plc {plc} is from cluster {plc_cluster}')
 
 if __name__ == '__main__':
     """df_path = datasets_path + '\\modbus12'
