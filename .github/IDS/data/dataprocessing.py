@@ -1752,17 +1752,13 @@ def bin_col(df, method, col, n_bins, path=None):
         df[col] = equal_width_discretization(df, col, n_bins, path)
 
 
-def split_single_plcs(df):
+def split_single_plcs(all_train, all_val, all_test):
     dump_path = datasets_path + '//single_plc//'
 
     for active_ip in active_ips:
-        plc_df = df.loc[(df['src_ip'] == active_ip) | (df['dst_ip'] == active_ip)]
-        length = len(plc_df)
-        train_size = int(length * 0.8)
-        val_test_size = int(length * 0.1)
-        plc_df_train = plc[:train_size]
-        plc_df_val = plc_df[train_size: train_size + val_test_size]
-        plc_df_test = plc_df[train_size + val_test_size: train_size + 2 * val_test_size]
+        plc_df_train = all_train.loc[(all_train['src_ip'] == active_ip) | (all_train['dst_ip'] == active_ip)]
+        plc_df_val = all_val.loc[(all_val['src_ip'] == active_ip) | (all_val['dst_ip'] == active_ip)]
+        plc_df_test = all_test.loc[(all_test['src_ip'] == active_ip) | (all_test['dst_ip'] == active_ip)]
 
         with open(dump_path + f'{active_ip}_train', mode='wb') as train_f:
             pickle.dump(plc_df_train, train_f)
@@ -1788,6 +1784,13 @@ def split_all_plcs(df):
         pickle.dump(plc_df_val, val_f)
     with open(dump_path + 'test', mode='wb') as test_f:
         pickle.dump(plc_df_test, test_f)
+
+    return plc_df_train, plc_df_val, plc_df_test
+
+
+def split(df):
+    plc_df_train, plc_df_val, plc_df_test = split_all_plcs(df)
+    split_single_plcs(plc_df_train, plc_df_val, plc_df_test)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------
@@ -1935,6 +1938,7 @@ def cluster_plcs():
         plc_results = results[plc_idx[0]: plc_idx[1]]
         plc_cluster = statistics.mode(plc_results)
         print(f'plc {plc} is from cluster {plc_cluster}')
+
 
 if __name__ == '__main__':
     """df_path = datasets_path + '\\modbus12'

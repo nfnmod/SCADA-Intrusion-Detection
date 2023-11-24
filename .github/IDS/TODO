@@ -1,5 +1,4 @@
-# TODO: (1) anaylze many PLCs data. (2) code for splitting datasets. (3) code for many PLCs: DFA, LSTM and, HTM.
-# TODO: FSTM- validation, testing, detection, many PLCs version.
+# TODO: split the datasets for the single plc split such that the test set and validation or train sets don't intersect.
 
 # Many PLCs experiments:
 1. define the grouping of plcs.
