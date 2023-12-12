@@ -2497,7 +2497,7 @@ def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
-    plcs_weights = {plc: 0 for plc in data.active_ips}
+    plcs_weights = {plc: 0 for plc in group_pool}
 
     for group in group_pool:
         raw_test_set_path = data.datasets_path + f'//{split_type}//{group}'
@@ -2735,7 +2735,7 @@ def test_DFA_single_plcs_split(injection_config, group_pool=data.active_ips, spl
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
-    plcs_weights = {plc: 0 for plc in data.active_ips}
+    plcs_weights = {plc: 0 for plc in group_pool}
 
     for group in group_pool:
         raw_test_set_path = data.datasets_path + f'//{split_type}//{group}'
