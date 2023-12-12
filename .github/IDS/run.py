@@ -106,6 +106,10 @@ p_values = [0.01, 0.03, 0.05]
 nums_std = [0, 1, 2, 3]
 num_stds_count = [0, 1, 2, 3]
 
+spearman_groups = []
+pearson_groups = []
+k_means_groups = []
+
 best_cols = DFA_cols.copy()
 lim = 0.2
 
@@ -185,6 +189,27 @@ def train_OCSVM_all_plc_split(train_config):
     train_OCSVM(train_config, group_info)
 
 
+def train_OCSVM_pearson_split(train_config):
+    for group in pearson_groups:
+        with open(LSTM_based_OCSVM_log, mode='a') as log:
+            log.write(f'training OCSVM for the pearson PLCs split with group: {group}\n')
+        train_OCSVM(train_config, group)
+
+
+def train_OCSVM_spearman_split(train_config):
+    for group in spearman_groups:
+        with open(LSTM_based_OCSVM_log, mode='a') as log:
+            log.write(f'training OCSVM for the spearman PLCs split with group: {group}\n')
+        train_OCSVM(train_config, group)
+
+
+def train_OCSVM_pearson_split(train_config):
+    for group in k_means_groups:
+        with open(LSTM_based_OCSVM_log, mode='a') as log:
+            log.write(f'training OCSVM for the kmeans PLCs split with group: {group}\n')
+        train_OCSVM(train_config, group)
+
+
 # single plc or groups of plcs.
 def train_automaton(group=None, train_data_path=None):
     """
@@ -261,6 +286,24 @@ def train_automatons_single_plcs_split():
 def train_automatons_all_plcs_split():
     load_data = data.datasets_path + '//all_plcs//'
     train_automaton(group='all_plcs', train_data_path=load_data + 'test')
+
+
+def train_automatons_pearson_split():
+    load_data = data.datasets_path + '//pearson//'
+    for group in spearman_groups:
+        train_automaton(group=group, train_data_path=load_data + f'{group}_train')
+
+
+def train_automatons_spearman_split():
+    load_data = data.datasets_path + '//spearman//'
+    for group in spearman_groups:
+        train_automaton(group=group, train_data_path=load_data + f'{group}_train')
+
+
+def train_automatons_k_means_split():
+    load_data = data.datasets_path + '//k_means//'
+    for group in k_means_groups:
+        train_automaton(group=group, train_data_path=load_data + f'{group}_train')
 
 
 def train_LSTM_transition_algo(FSTM_config, raw_data, group='', group_registers=None):
@@ -869,7 +912,7 @@ def create_train_sets_HTM(train_config, group_info=None):
                 with open(data_folder_path + '//' + y_train_path, mode='rb') as y_f:
                     y_train = pickle.load(y_f)
                 train_df = np.concatenate([train_df[0], y_train])
-                htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(method_folder, folder_name)
+                htm_df_base_path = HTM_base + '//datasets//' + '{}_{}'.format(method_folder, folder_name)
                 if group_info is not None:
                     htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(group_info, method_folder, folder_name)
                 htm_df_name = dataset_name
@@ -887,6 +930,21 @@ def create_HTM_train_sets_single_plc_split(train_config):
 
 def create_HTM_train_sets_all_plcs_split(train_config):
     create_train_sets_HTM(train_config, 'all_plcs')
+
+
+def create_HTM_train_sets_spearman_split(train_config):
+    for group in spearman_groups:
+        create_train_sets_HTM(train_config, group_info=group)
+
+
+def create_HTM_train_sets_pearson_split(train_config):
+    for group in pearson_groups:
+        create_train_sets_HTM(train_config, group_info=group)
+
+
+def create_HTM_train_sets_k_means_split(train_config):
+    for group in k_means_groups:
+        create_train_sets_HTM(train_config, group_info=group)
 
 
 def write_df_to_csv(df_arr, cols, path):
@@ -943,6 +1001,21 @@ def create_val_sets_htm_single_plc_split(train_config):
 
 def create_val_sets_htm_all_plcs_split(train_config):
     create_val_sets_htm(train_config, group_info='all_plcs')
+
+
+def create_val_sets_htm_spearman_split(train_config):
+    for group in spearman_groups:
+        create_val_sets_htm(train_config, group_info=group)
+
+
+def create_val_sets_htm_pearson_split(train_config):
+    for group in spearman_groups:
+        create_val_sets_htm(train_config, group_info=group)
+
+
+def create_val_sets_htm_k_means_split(train_config):
+    for group in spearman_groups:
+        create_val_sets_htm(train_config, group_info=group)
 
 """
 The following function create the test files for the various classifiers.
@@ -1014,6 +1087,21 @@ def create_test_sets_for_HTM_single_plc_split(injection_config, train_config):
 
 def create_test_sets_for_HTM_all_plcs_split(injection_config, train_config):
     create_test_sets_for_HTM(injection_config, train_config, 'all_plcs')
+
+
+def create_test_sets_for_HTM_pearson_split(injection_config, train_config):
+    for group in pearson_groups:
+        create_test_sets_for_HTM(injection_config, train_config, group)
+
+
+def create_test_sets_for_HTM_spearman_split(injection_config, train_config):
+    for group in spearman_groups:
+        create_test_sets_for_HTM(injection_config, train_config, group)
+
+
+def create_test_sets_for_HTM_k_means_split(injection_config, train_config):
+    for group in pearson_groups:
+        create_test_sets_for_HTM(injection_config, train_config, group)
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
@@ -1209,6 +1297,21 @@ def create_DFA_test_sets_single_plc_split(injection_config):
 
 def create_DFA_test_sets_all_plcs_split(injection_config):
     create_test_files_DFA(injection_config, group='all_plcs')
+
+
+def create_DFA_test_sets_spearman_split(injection_config):
+    for group in spearman_groups:
+        create_test_files_DFA(injection_config, group=group)
+
+
+def create_DFA_test_sets_pearson_split(injection_config):
+    for group in pearson_groups:
+        create_test_files_DFA(injection_config, group=group)
+
+
+def create_DFA_test_sets_k_means_split(injection_config):
+    for group in k_means_groups:
+        create_test_files_DFA(injection_config, group=group)
 
 
 # 1. after running KL on the test_events, filter TIRPs by support. REDUNDANT.
@@ -2386,18 +2489,18 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                                                                                         count_threshold))
 
 
-def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_config):
+def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc', group_pool=data.active_ips, split_type='single_plc', group_sheet_name='single_plc_split_avg'):
     # 1. test every single PLC.
-    for active_ip in data.active_ips:
-        group_info = f'single_plc_{active_ip}'
+    for group in group_pool:
+        group_info = f'{group_prefix}_{group}' if group_prefix else group
         test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info)
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
     plcs_weights = {plc: 0 for plc in data.active_ips}
 
-    for active_ip in data.active_ips:
-        raw_test_set_path = data.datasets_path + f'//single_plc//{active_ip}'
+    for group in group_pool:
+        raw_test_set_path = data.datasets_path + f'//{split_type}//{group}'
         with open(raw_test_set_path, mode='rb') as raw_test_set_f:
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
@@ -2412,9 +2515,9 @@ def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_
     metric_cols = ['f1', 'precision', 'recall']
     other_cols = results_df.columns[:-3]
 
-    for active_ip in data.active_ips:
-        group_name = f'single_plc_{active_ip}'
-        plc_weight = plcs_weights[active_ip]
+    for group in group_pool:
+        group_name = f'{group_prefix}_{group}' if group_prefix else group
+        plc_weight = plcs_weights[group]
 
         plc_res = results_df.loc[results_df['group'] == group_name, metric_cols] * plc_weight
 
@@ -2432,7 +2535,7 @@ def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_
         if 'performance' in writer.sheets.keys():
             row = writer.sheets['performance'].max_row
         total_df['algorithm'] = 'LSTM-OCSVM'
-        total_df['group'] = 'single_plc_split_avg'
+        total_df['group'] = group_sheet_name
         h = True
         if row > 0:
             h = False
@@ -2623,18 +2726,19 @@ def test_DFA(injection_config, group=None):
                                                                                                     new_t_val))
 
 
-def test_DFA_single_plcs_split(injection_config):
+def test_DFA_single_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc', group_prefix='single_plc', group_sheet_name='single_plc_split_avg'):
+
     # 1. test every single PLC.
-    for active_ip in data.active_ips:
-        group_info = f'single_plc_{active_ip}'
+    for group in group_pool:
+        group_info = f'{group_prefix}_{group}' if group_prefix else group
         test_DFA(injection_config, group=group_info)
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
     plcs_weights = {plc: 0 for plc in data.active_ips}
 
-    for active_ip in data.active_ips:
-        raw_test_set_path = data.datasets_path + f'//single_plc//{active_ip}'
+    for group in group_pool:
+        raw_test_set_path = data.datasets_path + f'//{split_type}//{group}'
         with open(raw_test_set_path, mode='rb') as raw_test_set_f:
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
@@ -2649,9 +2753,9 @@ def test_DFA_single_plcs_split(injection_config):
     metric_cols = ['f1', 'precision', 'recall']
     other_cols = results_df.columns[:-3]
 
-    for active_ip in data.active_ips:
-        group_name = f'single_plc_{active_ip}'
-        plc_weight = plcs_weights[active_ip]
+    for group in group_pool:
+        group_name = f'{group_prefix}_{group}' if group_prefix else group
+        plc_weight = plcs_weights[group]
 
         plc_res = results_df.loc[results_df['group'] == group_name, metric_cols] * plc_weight
 
@@ -2669,7 +2773,7 @@ def test_DFA_single_plcs_split(injection_config):
         if 'performance' in writer.sheets.keys():
             row = writer.sheets['performance'].max_row
         total_df['algorithm'] = 'DFA'
-        total_df['group'] = 'single_plc_split_avg'
+        total_df['group'] = group_sheet_name
         h = True
         if row > 0:
             h = False
@@ -2770,6 +2874,36 @@ def train_LSTM_all_PLCs(train_config):
     with open(LSTM_train_log, mode='a') as log:
         log.write('training LSTMs, all PLCs split\n')
     train_LSTM(train_config, train_df=all_plcs_df, group_info='all plcs')
+
+
+def train_LSTM_pearson_split(train_config):
+    for group_name in pearson_groups:
+        load_path = data.datasets_path + f'//pearson//{group_name}'
+        with open(load_path, mode='rb') as train_f:
+            pearson_df = pickle.load(train_f)
+        with open(LSTM_train_log, mode='a') as log:
+            log.write('training LSTMs, pearson split\n')
+        train_LSTM(train_config, train_df=pearson_df, group_info=group_name)
+
+
+def train_LSTM_spearman_split(train_config):
+    for group_name in pearson_groups:
+        load_path = data.datasets_path + f'//spearman//{group_name}'
+        with open(load_path, mode='rb') as train_f:
+            spearman_df = pickle.load(train_f)
+        with open(LSTM_train_log, mode='a') as log:
+            log.write('training LSTMs, spearman split\n')
+        train_LSTM(train_config, train_df=spearman_df, group_info=group_name)
+
+
+def train_LSTM_pearson_split(train_config):
+    for group_name in pearson_groups:
+        load_path = data.datasets_path + f'//k_means_split//{group_name}'
+        with open(load_path, mode='rb') as train_f:
+            k_means_df = pickle.load(train_f)
+        with open(LSTM_train_log, mode='a') as log:
+            log.write('training LSTMs, k_means split\n')
+        train_LSTM(train_config, train_df=k_means_df, group_info=group_name)
 
 
 # for LSTM classifiers.
@@ -2914,6 +3048,21 @@ def create_LSTM_test_sets_all_plcs_split(train_config, injection_config):
     create_test_sets_LSTMs(train_config, injection_config, 'all_plcs')
 
 
+def create_LSTM_test_sets_pearson_split(train_config, injection_config):
+    for group in spearman_groups:
+        create_test_sets_LSTMs(train_config, injection_config, group)
+
+
+def create_LSTM_test_sets_spearman_split(train_config, injection_config):
+    for group in pearson_groups:
+        create_test_sets_LSTMs(train_config, injection_config, group)
+
+
+def create_LSTM_test_sets_k_means_split(train_config, injection_config):
+    for group in k_means_groups:
+        create_test_sets_LSTMs(train_config, injection_config, group)
+
+
 def test_LSTM(train_config, raw_test_data, group_info=None):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
@@ -3025,6 +3174,24 @@ def test_LSTM_all_plcs_split(train_config):
     group_info = f'all_plcs'
     raw_test_set_path = f'//raw//{group_info}'
     test_LSTM(train_config, raw_test_set_path, group_info=group_info)
+
+
+def test_LSTM_spearman_split(train_config):
+    for group in spearman_groups:
+        raw_test_set_path = f'//raw//{group}'
+        test_LSTM(train_config, raw_test_set_path, group_info=group)
+
+
+def test_LSTM_pearson_split(train_config):
+    for group in pearson_groups:
+        raw_test_set_path = f'//raw//{group}'
+        test_LSTM(train_config, raw_test_set_path, group_info=group)
+
+
+def test_LSTM_k_means_split(train_config):
+    for group in k_means_groups:
+        raw_test_set_path = f'//raw//{group}'
+        test_LSTM(train_config, raw_test_set_path, group_info=group)
 
 
 def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
@@ -3319,6 +3486,27 @@ def create_LSTM_val_all_plcs(lstm_config):
     create_val_for_LSTM(lstm_config, val_data_path=val_path, group_info=group_info)
 
 
+def create_LSTM_val_pearson_split(lstm_config):
+    val_path = data.datasets_path + '//all_plcs//val'
+
+    for group in pearson_groups:
+        create_val_for_LSTM(lstm_config, val_data_path=val_path, group_info=group)
+
+
+def create_LSTM_val_spearman_split(lstm_config):
+    val_path = data.datasets_path + '//all_plcs//val'
+
+    for group in pearson_groups:
+        create_val_for_LSTM(lstm_config, val_data_path=val_path, group_info=group)
+
+
+def create_LSTM_val_k_means_split(lstm_config):
+    val_path = data.datasets_path + '//all_plcs//val'
+
+    for group in pearson_groups:
+        create_val_for_LSTM(lstm_config, val_data_path=val_path, group_info=group)
+
+
 def create_raw_test_sets(injections_config, test_df_path=None, group_info=None, plcs=data.active_ips):
     with open(injections_config, mode='r') as injections_conf:
         injection_params = yaml.load(injections_conf, Loader=yaml.FullLoader)
@@ -3388,6 +3576,24 @@ def create_raw_test_sets_all_plcs_split(injection_config):
     load_path = data.datasets_path + '//all_plcs//test'
     group_info = 'all_plcs'
     create_raw_test_sets(injection_config, load_path, group_info)
+
+
+def create_raw_test_sets_pearson_split(injection_config):
+    for group in pearson_groups:
+        load_path = data.datasets_path + '//all_plcs//test'
+        create_raw_test_sets(injection_config, load_path, group)
+
+
+def create_raw_test_sets_spearman_split(injection_config):
+    for group in pearson_groups:
+        load_path = data.datasets_path + '//all_plcs//test'
+        create_raw_test_sets(injection_config, load_path, group)
+
+
+def create_raw_test_sets_k_means_split(injection_config):
+    for group in pearson_groups:
+        load_path = data.datasets_path + '//all_plcs//test'
+        create_raw_test_sets(injection_config, load_path, group)
 
 
 # xl file will save for each model: model name, model parameters, injection parameters, true labels for window, model labels for windows.
@@ -3703,6 +3909,24 @@ def create_DFA_val_sets_single_plcs_split():
 def create_DFA_val_sets_all_plcs_split():
     val_data_path = data.datasets_path + f'//all_plcs//val'
     create_val_for_DFA(group=f'all_plcs', val_data_path=val_data_path)
+
+
+def create_DFA_val_sets_pearson_split():
+    for group in pearson_groups:
+        val_data_path = data.datasets_path + f'//pearson//{group}_val'
+        create_val_for_DFA(group=group, val_data_path=val_data_path)
+
+
+def create_DFA_val_sets_spearman_split():
+    for group in pearson_groups:
+        val_data_path = data.datasets_path + f'//spearman//{group}_val'
+        create_val_for_DFA(group=group, val_data_path=val_data_path)
+
+
+def create_DFA_val_sets_pearson_split():
+    for group in pearson_groups:
+        val_data_path = data.datasets_path + f'//k_means//{group}_val'
+        create_val_for_DFA(group=group, val_data_path=val_data_path)
 
 
 def reorder(df):
