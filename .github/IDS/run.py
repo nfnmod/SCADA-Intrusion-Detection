@@ -106,9 +106,9 @@ p_values = [0.01, 0.03, 0.05]
 nums_std = [0, 1, 2, 3]
 num_stds_count = [0, 1, 2, 3]
 
-spearman_groups = []
-pearson_groups = []
-k_means_groups = []
+spearman_groups = [['132.72.249.42', '132.72.248.211', '132.72.155.245'], ['132.72.35.161', '132.72.75.40']]
+pearson_groups = [['132.72.75.40', '132.72.248.211', '132.72.155.245'], ['132.72.249.42', '132.72.35.161']]
+k_means_groups = [['132.72.75.40', '132.72.248.211', '132.72.35.161'], ['132.72.249.42', '132.72.155.245']]
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -203,7 +203,7 @@ def train_OCSVM_spearman_split(train_config):
         train_OCSVM(train_config, group)
 
 
-def train_OCSVM_pearson_split(train_config):
+def train_OCSVM_k_means_split(train_config):
     for group in k_means_groups:
         with open(LSTM_based_OCSVM_log, mode='a') as log:
             log.write(f'training OCSVM for the kmeans PLCs split with group: {group}\n')
@@ -2489,7 +2489,7 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                                                                                         count_threshold))
 
 
-def test_LSTM_based_OCSVM_single_plc_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc', group_pool=data.active_ips, split_type='single_plc', group_sheet_name='single_plc_split_avg'):
+def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc', group_pool=data.active_ips, split_type='single_plc', group_sheet_name='single_plc_split_avg'):
     # 1. test every single PLC.
     for group in group_pool:
         group_info = f'{group_prefix}_{group}' if group_prefix else group
@@ -2726,7 +2726,7 @@ def test_DFA(injection_config, group=None):
                                                                                                     new_t_val))
 
 
-def test_DFA_single_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc', group_prefix='single_plc', group_sheet_name='single_plc_split_avg'):
+def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc', group_prefix='single_plc', group_sheet_name='single_plc_split_avg'):
 
     # 1. test every single PLC.
     for group in group_pool:
@@ -2896,7 +2896,7 @@ def train_LSTM_spearman_split(train_config):
         train_LSTM(train_config, train_df=spearman_df, group_info=group_name)
 
 
-def train_LSTM_pearson_split(train_config):
+def train_LSTM_k_means_split(train_config):
     for group_name in pearson_groups:
         load_path = data.datasets_path + f'//k_means_split//{group_name}'
         with open(load_path, mode='rb') as train_f:
@@ -3923,7 +3923,7 @@ def create_DFA_val_sets_spearman_split():
         create_val_for_DFA(group=group, val_data_path=val_data_path)
 
 
-def create_DFA_val_sets_pearson_split():
+def create_DFA_val_sets_k_means_split():
     for group in pearson_groups:
         val_data_path = data.datasets_path + f'//k_means//{group}_val'
         create_val_for_DFA(group=group, val_data_path=val_data_path)

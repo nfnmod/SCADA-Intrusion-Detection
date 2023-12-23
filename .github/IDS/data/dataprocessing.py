@@ -3,6 +3,7 @@ import os
 import pickle
 import statistics
 from datetime import datetime
+from itertools import combinations
 
 import keras.models
 import matplotlib.pyplot as plt
@@ -23,12 +24,16 @@ automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
 automaton_datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
 plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
 excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
+plc_splits_xl = '/sise/home/zaslavsm/SCADA/excel/plcs splits.xlsx'
 binners_base = '//sise//home//zaslavsm//SCADA//binners'
 scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
 plc = '132.72.249.42'
 to_bin = ['13', '26', '25', '24', '23', '22', '21', '20']
 most_used = ['13', '26', '25', '24', '23', '22', '21', '20']
-active_ips = ['132.72.249.42', '132.72.155.245', '132.72.216.62', '132.72.75.40', '132.72.248.211', '132.72.35.161']
+active_ips = ['132.72.249.42', '132.72.155.245', '132.72.75.40', '132.72.248.211', '132.72.35.161']
+spearman_groups = [['132.72.249.42', '132.72.248.211', '132.72.155.245'], ['132.72.35.161', '132.72.75.40']]
+pearson_groups = [['132.72.75.40', '132.72.248.211', '132.72.155.245'], ['132.72.249.42', '132.72.35.161']]
+k_means_groups = [['132.72.75.40', '132.72.248.211', '132.72.35.161'], ['132.72.249.42', '132.72.155.245']]
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -1752,13 +1757,21 @@ def bin_col(df, method, col, n_bins, path=None):
         df[col] = equal_width_discretization(df, col, n_bins, path)
 
 
+def reset_df_index(df):
+    new_idx = df.reset_index()
+    new_idx = new_idx.drop('index', axis=1)
+    return new_idx
+
+
 def split_single_plcs(all_train, all_val, all_test):
     dump_path = datasets_path + '//single_plc//'
 
     for active_ip in active_ips:
-        plc_df_train = all_train.loc[(all_train['src_ip'] == active_ip) | (all_train['dst_ip'] == active_ip)]
-        plc_df_val = all_val.loc[(all_val['src_ip'] == active_ip) | (all_val['dst_ip'] == active_ip)]
-        plc_df_test = all_test.loc[(all_test['src_ip'] == active_ip) | (all_test['dst_ip'] == active_ip)]
+        plc_df_train = reset_df_index(
+            all_train.loc[(all_train['src_ip'] == active_ip) | (all_train['dst_ip'] == active_ip)])
+        plc_df_val = reset_df_index(all_val.loc[(all_val['src_ip'] == active_ip) | (all_val['dst_ip'] == active_ip)])
+        plc_df_test = reset_df_index(
+            all_test.loc[(all_test['src_ip'] == active_ip) | (all_test['dst_ip'] == active_ip)])
 
         with open(dump_path + f'{active_ip}_train', mode='wb') as train_f:
             pickle.dump(plc_df_train, train_f)
@@ -1770,13 +1783,13 @@ def split_single_plcs(all_train, all_val, all_test):
 
 def split_all_plcs(df):
     dump_path = datasets_path + '//all_plcs//'
-    plcs_df = df.loc[(df['src_ip'] in active_ips) | (df['dst_ip'] in active_ips)]
+    plcs_df = df.loc[(df['src_ip'].isin(active_ips)) | (df['dst_ip'].isin(active_ips))]
     length = len(plcs_df)
     train_size = int(length * 0.8)
     val_test_size = int(length * 0.1)
-    plc_df_train = plcs_df[:train_size]
-    plc_df_val = plcs_df[train_size: train_size + val_test_size]
-    plc_df_test = plcs_df[train_size + val_test_size: train_size + 2 * val_test_size]
+    plc_df_train = reset_df_index(plcs_df[:train_size])
+    plc_df_val = reset_df_index(plcs_df[train_size: train_size + val_test_size])
+    plc_df_test = reset_df_index(plcs_df[train_size + val_test_size: train_size + 2 * val_test_size])
 
     with open(dump_path + 'train', mode='wb') as train_f:
         pickle.dump(plc_df_train, train_f)
@@ -1788,9 +1801,34 @@ def split_all_plcs(df):
     return plc_df_train, plc_df_val, plc_df_test
 
 
+def split_by_corrleation(all_train, all_val, all_test, split_type, group_pool):
+    dump_path = datasets_path + f'//{split_type}//'
+
+    for num_group in range(len(group_pool)):
+        group = pearson_groups[num_group]
+        plc_df_train = reset_df_index(
+            all_train.loc[(all_train['src_ip'].isin(group)) | (all_train['dst_ip'].isin(group))])
+        plc_df_val = reset_df_index(all_val.loc[(all_val['src_ip'].isin(group)) | (all_val['dst_ip'].isin(group))])
+        plc_df_test = reset_df_index(all_test.loc[(all_test['src_ip'].isin(group)) | (all_test['dst_ip'].isin(group))])
+
+        with open(dump_path + f'{split_type}_{num_group}_train', mode='wb') as train_f:
+            pickle.dump(plc_df_train, train_f)
+        with open(dump_path + f'{split_type}_{num_group}_val', mode='wb') as val_f:
+            pickle.dump(plc_df_val, val_f)
+        with open(dump_path + f'{split_type}_{num_group}_test', mode='wb') as test_f:
+            pickle.dump(plc_df_test, test_f)
+
+
 def split(df):
     plc_df_train, plc_df_val, plc_df_test = split_all_plcs(df)
     split_single_plcs(plc_df_train, plc_df_val, plc_df_test)
+
+
+def split_by_correlations(df):
+    plc_df_train, plc_df_val, plc_df_test = split_all_plcs(df)
+    split_by_corrleation(plc_df_train, plc_df_val, plc_df_test, 'pearson', pearson_groups)
+    split_by_corrleation(plc_df_train, plc_df_val, plc_df_test, 'spearman', spearman_groups)
+    split_by_corrleation(plc_df_train, plc_df_val, plc_df_test, 'k_means', k_means_groups)
 
 
 # ---------------------------------------------------------------------------------------------------------------------------
@@ -1857,44 +1895,54 @@ def construct_value_series(modbus, plc, reg):
     values = []
     for i in range(len(modbus)):
         pkt = modbus.iloc[i]
-        if pkt['src_ip'] == plc and reg in pkt['payload'].keys():
-            values = values.append(pkt['payload'][reg])
-        else:
-            if len(values) > 0:
-                values = values.append(values[-1])
+        if pkt['src_ip'] == plc and str(reg) in pkt['payload'].keys():
+            if values:
+                values.append(float(pkt['payload'][reg]))
             else:
-                values = values.append(None)
+                values = [float(pkt['payload'][reg])]
+        else:
+            if values:
+                values.append(values[-1])
+            else:
+                values = [None]
 
     j = 0
     while j < len(values) and values[j] is None:
         j += 1
 
-    for i in range(j - 1, -1, 0):
+    for i in range(j - 1, -1, -1):
         values[i] = values[j]
 
     return values
 
 
-def calculate_correlations(corrleation_fuction, score_name, modbus):
+def calculate_correlations(corrleation_fuction1, corrleation_fuction2, score_name1, score_name2, modbus):
     plc_stats = get_plcs_values_statistics(modbus, 5, False)
-    PLCs_registers = {PLC: [reg for reg, stats in plc_stats[PLC] if stats[0] > 1] for PLC in plc_stats.keys()}
+    PLCs_registers = {PLC: [reg for reg, stats in plc_stats[PLC].items() if int(stats[0]) > 1] for PLC in
+                      plc_stats.keys()}
     values_series = dict()
     for plc, regs in PLCs_registers.items():
         for reg in regs:
             values_series[(plc, reg)] = construct_value_series(modbus, plc, reg)
 
-    correlations_df = pd.DataFrame(columns=['plc1', 'reg1', 'plc2', 'reg2', score_name])
-    plcs_correlations_df = pd.DataFrame(columns=['plc1', 'plc2', score_name])
+    abs_score_1, abs_score_2 = 'abs ' + score_name1, 'abs ' + score_name2
+    correlations_df = pd.DataFrame(
+        columns=['plc1', 'reg1', 'plc2', 'reg2', score_name1, score_name2, abs_score_1, abs_score_2])
+    plcs_correlations_df = pd.DataFrame(columns=['plc1', 'plc2', score_name1, score_name2])
 
     for (plc, reg) in values_series.keys():
         for (plc1, reg1) in values_series.keys():
             if plc > plc1:
-                score = corrleation_fuction(values_series[(plc, reg)], values_series[plc1, reg1])
+                score1 = corrleation_fuction1(values_series[(plc, reg)], values_series[plc1, reg1]).correlation
+                score2 = corrleation_fuction2(values_series[(plc, reg)], values_series[plc1, reg1])[0]
                 entry = {'plc1': plc,
                          'reg1': reg,
                          'plc2': plc1,
                          'reg2': reg1,
-                         score_name: score}
+                         score_name1: score1,
+                         score_name2: score2,
+                         abs_score_1: abs(score1),
+                         abs_score_2: abs(score2)}
                 correlations_df = pd.concat([correlations_df,
                                              pd.DataFrame.from_dict(data={'0': entry}, columns=correlations_df.columns,
                                                                     orient='index')],
@@ -1904,19 +1952,33 @@ def calculate_correlations(corrleation_fuction, score_name, modbus):
     for plc1 in plcs:
         for plc2 in plcs:
             if plc1 > plc2:
-                plc1_plc2_scores_mean = correlations_df.loc[('plc1' == plc1) & ('plc2' == plc2)][score_name].mean()
-                entry = {'plc1': plc1, 'plc2': plc2, score_name: plc1_plc2_scores_mean}
+                plc1_plc2_scores_mean1 = \
+                    correlations_df.loc[(correlations_df['plc1'] == plc1) & (correlations_df['plc2'] == plc2)][
+                        abs_score_1].mean()
+                plc1_plc2_scores_mean2 = \
+                    correlations_df.loc[(correlations_df['plc1'] == plc1) & (correlations_df['plc2'] == plc2)][
+                        abs_score_2].mean()
+                entry = {'plc1': plc1, 'plc2': plc2, score_name1: plc1_plc2_scores_mean1,
+                         score_name2: plc1_plc2_scores_mean2}
                 plcs_correlations_df = pd.concat([plcs_correlations_df,
                                                   pd.DataFrame.from_dict(data={'0': entry},
                                                                          columns=plcs_correlations_df.columns,
                                                                          orient='index')],
                                                  ignore_index=True, axis=0)
 
-    with pd.ExcelWriter('...', mode='a') as writer:
-        correlations_df.to_excel(excel_writer=writer, sheet_name=f'registers correlations {score_name}')
+    with pd.ExcelWriter(plc_splits_xl, mode='a') as writer:
+        row = 0
+        sheet_name = 'registers correlations'
+        if sheet_name in writer.sheets.keys():
+            row = writer.sheets[sheet_name].max_row
+        correlations_df.to_excel(excel_writer=writer, sheet_name=sheet_name, startrow=row)
 
-    with pd.ExcelWriter('...', mode='a') as writer:
-        correlations_df.to_excel(excel_writer=writer, sheet_name=f'plcs correlations {score_name}')
+    with pd.ExcelWriter(plc_splits_xl, mode='a') as writer:
+        row = 0
+        sheet_name = 'plcs correlations'
+        if sheet_name in writer.sheets.keys():
+            row = writer.sheets[sheet_name].max_row
+        plcs_correlations_df.to_excel(excel_writer=writer, sheet_name=sheet_name, startrow=row)
 
 
 def cluster_plcs():
@@ -1925,12 +1987,12 @@ def cluster_plcs():
     for ip in active_ips:
         with open(datasets_path + f'//single_plc//{ip}_train', mode='rb') as df_f:
             modbus_plc = pickle.load(df_f)
-            modbus_plc = process_data_v1(modbus_plc, n=5)
+            modbus_plc = process_data_v1(modbus_plc, n=5, entry_func=make_entry_v1)
             modbus_plc = modbus_plc.drop(axis=1, labels=['time'])
-            plcs_dfs[ip] = [len(packets_df), len(packets_df) + len(modbus_plc)]
+            plcs_dfs[ip] = [len(packets_df), len(packets_df) + len(modbus_plc) - 1]
             packets_df = pd.concat([packets_df, modbus_plc], axis=0, ignore_index=True)
 
-    kmeans = KMeans(n_clusters=2, random_state=42, n_init="auto").fit(packets_df)
+    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10).fit(packets_df)
     results = kmeans.labels_
 
     for plc in active_ips:
@@ -1940,36 +2002,54 @@ def cluster_plcs():
         print(f'plc {plc} is from cluster {plc_cluster}')
 
 
+def get_subsets_of_size(iterable, size):
+    return list(combinations(iterable, size))
+
+
+def get_group_correlations(triplet, correlations_df):
+    sum_correlations_spearman = 0
+    sum_correlations_pearson = 0
+    num_terms = 0
+    for element1 in triplet:
+        for element2 in triplet:
+            if element1 > element2:
+                mask = (correlations_df['plc1'] == element1) & (correlations_df['plc2'] == element2)
+                pair_spearman, pair_pearson = correlations_df[mask].spearman.values[0], \
+                                              correlations_df[mask].pearson.values[0]
+                sum_correlations_pearson += pair_pearson
+                sum_correlations_spearman += pair_spearman
+                num_terms += 1
+
+    return sum_correlations_pearson / num_terms, sum_correlations_spearman / num_terms
+
+
+def analyze_plc_correlations():
+    path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plcs splits.xlsx'
+    df = pd.read_excel(path, sheet_name='plcs correlations')
+    df = df.loc[(df['spearman'].notna()) & (df['pearson'].notna())]
+
+    S = set(active_ips)
+    triplets = get_subsets_of_size(S, 3)
+    best_by_pearson = 0
+    best_by_spearman = 0
+    best_pearson_triplet = None
+    best_spearman_triplet = None
+
+    for triplet in triplets:
+        triplet_pearson, triplet_spearman = get_group_correlations(triplet, df)
+        pair = S.difference(triplet)
+        pair_pearson, pair_spearman = get_group_correlations(pair, df)
+
+        if (triplet_pearson + pair_pearson) / 2 > best_by_pearson:
+            best_by_pearson = triplet_pearson
+            best_pearson_triplet = triplet
+        if (triplet_spearman + pair_spearman) / 2 > best_by_spearman:
+            best_by_spearman = triplet_spearman
+            best_spearman_triplet = triplet
+
+    print(f'best spearman split {list(best_spearman_triplet)}, {list(S.difference(best_spearman_triplet))}')
+    print(f'best pearson split {list(best_pearson_triplet)}, {list(S.difference(best_pearson_triplet))}')
+
+
 if __name__ == '__main__':
-    """df_path = datasets_path + '\\modbus12'
-    with open(df_path, mode='rb') as df_f:
-        modbus12 = pickle.load(df_f)
-
-    print(f'there are {len(modbus12)} packets')
-
-    responses = modbus12.loc[modbus12['src_port'] == plc_port]
-    plcs = responses['src_ip'].unique()
-
-    print(f"there are {len(plcs)} plcs")
-
-    for plc in plcs:
-        rs = modbus12.loc[(modbus12['src_ip'] == plc)]
-        qs = modbus12.loc[(modbus12['dst_ip']) == plc]
-
-        print(f'there are {len(rs)} responses from plc {plc}')
-        print(f'there are {len(qs)} queries from plc {plc}')
-
-    stats_df = get_plcs_values_statistics(modbus12, 4)
-
-    with pd.ExcelWriter(excel_path + '\\modbus12_stats_4regs.xlsx', mode="a",
-                        engine="openpyxl",
-                        if_sheet_exists="overlay") as writer:
-        stats_df.to_excel(writer, sheet_name='PLCs stats')"""
-    p = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\132.72.155.245_train'
-    with open(p, mode='rb') as f:
-        df = pickle.load(f)
-    stats = get_plcs_values_statistics(df, 4, to_df=False)
-    print(stats)
-    for i in range(len(df)):
-        if df.iloc[i]['src_port'] == plc_port:
-            print(df.iloc[i]['payload'])
+    analyze_plc_correlations()
