@@ -6,6 +6,7 @@ timings and the frequency of the anomalies in the data.
 from datetime import timedelta
 
 import numpy as np
+import pandas as pd
 
 import data
 
@@ -77,6 +78,7 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
     ones that carry information about a state transition or events.
     :return: the test data with injected time-anomalies and the labels of the test data packets.
     """
+    test_data = data.reset_df_index(test_data)
     i = 0
     length = len(test_data)
     labels = np.zeros(length)
@@ -84,7 +86,7 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
     while i < length - injection_length + 1:
         # 1. get the "next" packet of the PLC (if exists) and use it as a limit of the change in the arrival time of the packet.
         # calculate new arrival time.
-        if percentage > 0:  # SHORTEN INTER ARRIVAL TIME.
+        if percentage > 0:
             for j in range(i + injection_length - 1, i - 1, -1):
                 old_time = cpy.iloc[j, 0]
                 next_pkt_idx = j + 1
@@ -107,28 +109,54 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
                     if i > 0:
                         labels[i] = 1
                     test_data.iloc[j, 0] = new_time
-        else:  # LENGTHEN THE INTER ARRIVAL TIME.
-            for j in range(i + injection_length - 1, i - 1, -1):
+        else:
+            for j in range(i, i + injection_length):
                 old_time = cpy.iloc[j, 0]
+                prev_pkt_idx = j - 1
+                if j < 0:
+                    j = -1
                 next_pkt_idx = j + 1
                 if next_pkt_idx >= len(test_data):
                     next_pkt_idx = -1
-                if next_pkt_idx != - 1 and j > 0:
-                    next_time = cpy.iloc[next_pkt_idx, 0]
-                    # original inter-arrival time.
-                    inter_arrival = (next_time - old_time).total_seconds()
-                    # new inter-arrival time.
-                    new_inter_arrival_time = inter_arrival * (1 - (percentage / 100))
-                    # new arrival time.
-                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=new_inter_arrival_time)
+                if prev_pkt_idx != -1 and next_pkt_idx != -1:
+                    nxt_time = cpy.iloc[next_pkt_idx, 0]
+                    inter_arrival = (nxt_time - old_time).total_seconds()  # wrt to next one.
+                    new_inter_arrival_time = inter_arrival * (1 - (percentage / 100))  # inc ia time
+                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=new_inter_arrival_time)  # wrt to next one.
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
-                    min_limit = test_data.iloc[j - 1, 0] + timedelta(seconds=epsilon)
+                    min_limit = test_data.iloc[prev_pkt_idx, 0] + timedelta(seconds=epsilon)
                     if new_time < min_limit:
                         new_time = min_limit
-                    labels[j + 1] = 1
-                    if i > 0:
-                        labels[i] = 1
+                    labels[j] = 1
                     test_data.iloc[j, 0] = new_time
         i += (step_over + injection_length)
     return test_data, labels
+
+
+def inject_to_sub_group(test_data, injection_length, step_over, percentage, epsilon, plcs_to_effect):
+    mask = (test_data['src_ip'].isin(plcs_to_effect)) | (test_data['dst_ip'].isin(plcs_to_effect))
+    data_to_change = test_data.loc[mask]
+    data_not_to_change = test_data.loc[~mask]
+    data_to_change_indices = data_to_change.index
+
+    data_to_change_indices_map = dict()
+    for j in range((len(data_to_change_indices))):
+        data_to_change_indices_map[data_to_change_indices[j]] = j
+
+    data_to_change, data_to_change_labels = inject_to_raw_data(data_to_change, injection_length, step_over, percentage, epsilon)
+
+    df = pd.DataFrame.concat([data_not_to_change, data_to_change], ignore_index=True).sort_values(by=['time'])
+    df = data.reset_df_index(df)
+
+    labels = []
+
+    for i in range(len(test_data)):
+        if i in data_to_change_indices:
+            label_idx = data_to_change_indices_map[i]
+            labels.append(data_to_change_labels[label_idx])
+        else:
+            labels.append(0)
+
+    return df, labels
+

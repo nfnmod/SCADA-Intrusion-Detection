@@ -25,4 +25,5 @@ from .PLCDependeciesAlgorithm import extract_features_v2
 from .injections import inject_to_raw_data
 from .dataprocessing import process_data_v3_2
 from .dataprocessing import active_ips
+from .dataprocessing import reset_df_index
 
