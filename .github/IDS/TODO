@@ -1,4 +1,4 @@
-# TODO: split the datasets for the single plc split such that the test set and validation or train sets don't intersect.
+# TODO: implement new test sets creation and performance evaluation functions.
 
 # Many PLCs experiments:
 1. define the grouping of plcs.
