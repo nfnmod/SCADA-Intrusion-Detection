@@ -21,7 +21,7 @@ import data
 import models
 import models.TIRP as TIRP
 from data import squeeze, find_frequent_transitions_sequences
-from data.injections import inject_to_raw_data
+from data.injections import inject_to_raw_data, inject_to_sub_group
 from models.models import LSTM_train_log
 
 KL_base = data.datasets_path + "\\KL\\"
@@ -106,9 +106,17 @@ p_values = [0.01, 0.03, 0.05]
 nums_std = [0, 1, 2, 3]
 num_stds_count = [0, 1, 2, 3]
 
-spearman_groups = [['132.72.249.42', '132.72.248.211', '132.72.155.245'], ['132.72.35.161', '132.72.75.40']]
-pearson_groups = [['132.72.75.40', '132.72.248.211', '132.72.155.245'], ['132.72.249.42', '132.72.35.161']]
-k_means_groups = [['132.72.75.40', '132.72.248.211', '132.72.35.161'], ['132.72.249.42', '132.72.155.245']]
+spearman_groups = ['spearman_0', 'spearman_1']
+pearson_groups = ['pearson_0', 'pearson_1']
+k_means_groups = ['k_means_0', 'k_means_1']
+
+spearman_groups_ips = [['132.72.249.42', '132.72.248.211', '132.72.155.245'], ['132.72.35.161', '132.72.75.40']]
+pearson_groups_ips = [['132.72.75.40', '132.72.248.211', '132.72.155.245'], ['132.72.249.42', '132.72.35.161']]
+k_means_groups_ips = [['132.72.75.40', '132.72.248.211', '132.72.35.161'], ['132.72.249.42', '132.72.155.245']]
+
+effected_plcs_data_tuples = [(spearman_groups_ips[0], spearman_groups[0]), (spearman_groups_ips[1], spearman_groups[1]),
+                             (pearson_groups_ips[0], pearson_groups[0]), (pearson_groups_ips[1], pearson_groups[1]),
+                             (k_means_groups_ips[0], k_means_groups[0]), (k_means_groups_ips[1], k_means_groups[1])]
 
 best_cols = DFA_cols.copy()
 lim = 0.2
@@ -914,11 +922,13 @@ def create_train_sets_HTM(train_config, group_info=None):
                 train_df = np.concatenate([train_df[0], y_train])
                 htm_df_base_path = HTM_base + '//datasets//' + '{}_{}'.format(method_folder, folder_name)
                 if group_info is not None:
-                    htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(group_info, method_folder, folder_name)
+                    htm_df_base_path = HTM_base + '//datasets//' + '{}_{}_{}'.format(group_info, method_folder,
+                                                                                     folder_name)
                 htm_df_name = dataset_name
                 if not os.path.exists(htm_df_base_path):
                     Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
-                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None, registers=data.most_used, fill=True, get_cols=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
+                                    registers=data.most_used, fill=True, get_cols=True)
                 write_df_to_csv(train_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
 
 
@@ -989,7 +999,8 @@ def create_val_sets_htm(train_config, group_info=None):
                 htm_df_name = dataset_name
                 if not os.path.exists(htm_df_base_path):
                     Path(htm_df_base_path).mkdir(exist_ok=True, parents=True)
-                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None, registers=data.most_used, fill=True, get_cols=True)
+                cols = data.process(None, folder_name, None, None, scale=True, binner_path=None,
+                                    registers=data.most_used, fill=True, get_cols=True)
                 write_df_to_csv(val_df, cols, htm_df_base_path + '//' + htm_df_name + '.csv')
 
 
@@ -1017,13 +1028,15 @@ def create_val_sets_htm_k_means_split(train_config):
     for group in spearman_groups:
         create_val_sets_htm(train_config, group_info=group)
 
+
 """
 The following function create the test files for the various classifiers.
 Use configuration file to create them.
 """
 
 
-def create_test_sets_for_HTM(injection_config, train_config, group_info=None):
+def create_test_sets_for_HTM(injection_config, train_config, group_info=None, df_for_regs=None,
+                             effected_plcs_suffix=None):
     injection_lengths, step_overs, percentages, epsilons = get_injection_params(injection_config)
     methods, bins, data_versions = get_LSTM_params(train_config)
     HTM_test_sets_base = test_sets_base_folder + '//HTM'
@@ -1035,16 +1048,16 @@ def create_test_sets_for_HTM(injection_config, train_config, group_info=None):
                     for method in methods:
                         for number_of_bins in bins:
                             for data_version in data_versions:
-                                test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}//'.format(
-                                    data_version['name'], method, number_of_bins)
 
-                                if group_info is not None:
-                                    test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}_{}//'.format(
-                                        group_info, data_version['name'], method, number_of_bins)
+                                test_sets_folder = test_sets_base_folder + '//LSTM//{}_{}_{}_{}//'.format(
+                                    group_info, data_version['name'], method, number_of_bins)
 
                                 p_suffix = '{}_{}_{}_{}_{}_{}'.format(
                                     data_version['desc'], method, number_of_bins, injection_length,
                                     step_over, percentage)
+
+                                if effected_plcs_suffix is not None:
+                                    p_suffix += f'_{effected_plcs_suffix}'
 
                                 X_test_path = test_sets_folder + 'X_test_' + p_suffix
                                 y_test_path = test_sets_folder + 'y_test_' + p_suffix
@@ -1073,35 +1086,69 @@ def create_test_sets_for_HTM(injection_config, train_config, group_info=None):
 
                                 cols = data.process(None, data_version['name'], None, None, scale=True,
                                                     binner_path=None, registers=data.most_used, fill=True,
-                                                    get_cols=True)
+                                                    get_cols=True, df_for_regs=df_for_regs)
                                 write_df_to_csv(test_df, cols, HTM_X_test_path + '.csv')
 
                                 with open(HTM_labels_path, mode='wb') as labels_f:
                                     pickle.dump(test_labels, labels_f, protocol=2)
 
 
-def create_test_sets_for_HTM_single_plc_split(injection_config, train_config):
+def create_test_sets_for_HTM_single_plc_split(injection_config, train_config, effected_plcs_suffix=None):
     for active_ip in data.active_ips:
-        create_test_sets_for_HTM(injection_config, train_config, f'single_plc_{active_ip}')
+        df_for_regs_path = data.datasets_path + f'//single_plc//{active_ip}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_for_HTM(injection_config, train_config, f'single_plc_{active_ip}', df_for_regs=df_for_regs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_test_sets_for_HTM_all_plcs_split(injection_config, train_config):
-    create_test_sets_for_HTM(injection_config, train_config, 'all_plcs')
+def create_test_sets_for_HTM_all_plcs_split(injection_config, train_config, effected_plcs_suffix=None):
+    df_for_regs_path = data.datasets_path + f'//all_plcs//train'
+    with open(df_for_regs_path, mode='rb') as df_f:
+        df_for_regs = pickle.load(df_f)
+    create_test_sets_for_HTM(injection_config, train_config, 'all_plcs', df_for_regs=df_for_regs,
+                             effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_test_sets_for_HTM_pearson_split(injection_config, train_config):
+def create_test_sets_for_HTM_pearson_split(injection_config, train_config, effected_plcs_suffix=None):
     for group in pearson_groups:
-        create_test_sets_for_HTM(injection_config, train_config, group)
+        df_for_regs_path = data.datasets_path + f'//pearson//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_for_HTM(injection_config, train_config, group, df_for_regs=df_for_regs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_test_sets_for_HTM_spearman_split(injection_config, train_config):
+def create_test_sets_for_HTM_spearman_split(injection_config, train_config, effected_plcs_suffix=None):
     for group in spearman_groups:
-        create_test_sets_for_HTM(injection_config, train_config, group)
+        df_for_regs_path = data.datasets_path + f'//spearman//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_for_HTM(injection_config, train_config, group, df_for_regs=df_for_regs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_test_sets_for_HTM_k_means_split(injection_config, train_config):
-    for group in pearson_groups:
-        create_test_sets_for_HTM(injection_config, train_config, group)
+def create_test_sets_for_HTM_k_means_split(injection_config, train_config, effected_plcs_suffix=None):
+    for group in k_means_groups:
+        df_for_regs_path = data.datasets_path + f'//k_means//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_for_HTM(injection_config, train_config, group, df_for_regs=df_for_regs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
+
+
+def create_all_HTM_test_sets_with_injections_by_splits(injection_config, train_config):
+    for effected_plcs, effected_plcs_suffix in effected_plcs_data_tuples:
+        create_test_sets_for_HTM_single_plc_split(injection_config=injection_config, train_config=train_config,
+                                                  effected_plcs_suffix=effected_plcs_suffix)
+        create_test_sets_for_HTM_all_plcs_split(injection_config=injection_config, train_config=train_config,
+                                                effected_plcs_suffix=effected_plcs_suffix)
+        create_test_sets_for_HTM_pearson_split(injection_config=injection_config, train_config=train_config,
+                                               effected_plcs_suffix=effected_plcs_suffix)
+        create_test_sets_for_HTM_spearman_split(injection_config=injection_config, train_config=train_config,
+                                               effected_plcs_suffix=effected_plcs_suffix)
+        create_test_sets_for_HTM_k_means_split(injection_config=injection_config, train_config=train_config,
+                                               effected_plcs_suffix=effected_plcs_suffix)
 
 
 def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, group='', group_regs=None):
@@ -1200,12 +1247,13 @@ def create_test_file_for_FSTM(FSTM_config, raw_test_data_df, injection_config, g
                                                     pickle.dump(y_test, f)
 
 
-def create_test_files_DFA(injection_config, group=None):
+def create_test_files_DFA(injection_config, group=None, df_for_regs=None, effected_plcs_suffix=None):
     """
      just grid over all the injection parameters and binning params.
     """
 
-    binners = [data.k_means_binning, data.equal_frequency_discretization, data.equal_width_discretization]
+    binners = [data.equal_width_discretization]
+    binner_to_str = {data.equal_width_discretization: 'equal_width'}
     folders_names = {'k_means': 'KMeans', 'equal_frequency': 'EqualFreq', 'equal_width': 'EqualWidth'}
     n_bins, binning_methods, names = get_DFA_params()
 
@@ -1228,12 +1276,14 @@ def create_test_files_DFA(injection_config, group=None):
                     for epsilon in epsilons:
 
                         parent = test_sets_base_folder + '//raw'
-                        data_path = parent + '//data_{}_{}_{}'.format(injection_length, step_over, percentage)
-                        labels_path = parent + '//labels_{}_{}_{}'.format(injection_length, step_over, percentage)
+                        data_path = parent + '//{}_data_{}_{}_{}'.format(group, injection_length, step_over,
+                                                                         percentage)
+                        labels_path = parent + '//{}_labels_{}_{}_{}'.format(group, injection_length, step_over,
+                                                                             percentage)
 
-                        if group is not None:
-                            data_path = parent + '//{}_data_{}_{}_{}'.format(group, injection_length, step_over, percentage)
-                            labels_path = parent + '//{}_labels_{}_{}_{}'.format(group, injection_length, step_over, percentage)
+                        if effected_plcs_suffix is not None:
+                            data_path += f'_{effected_plcs_suffix}'
+                            labels_path += f'_{effected_plcs_suffix}'
 
                         with open(data_path, mode='rb') as d_p:
                             anomalous_data = pickle.load(d_p)
@@ -1241,7 +1291,7 @@ def create_test_files_DFA(injection_config, group=None):
                             labels = pickle.load(l_p)
 
                         test_df = data.process(anomalous_data, 'v3_2_abstract', None, None, False, binner_path=None,
-                                               registers=None, fill=False)
+                                               registers=None, fill=False, df_for_regs=df_for_regs)
                         for binner in binners:
                             for bins in n_bins:
 
@@ -1250,9 +1300,11 @@ def create_test_files_DFA(injection_config, group=None):
                                     if 'time' not in col_name:
                                         # load binner.
                                         binner_path = binners_base + '//DFA//{}_{}_{}_{}'.format(
-                                            group, folders_names[names[binner]], bins, col_name)
+                                            group, folders_names[binner_to_str[binner]], bins, col_name)
                                         with open(binner_path, mode='rb') as binner_p:
                                             col_binner = pickle.load(binner_p)
+                                        binned_test_df[col_name] = binned_test_df[col_name].fillna(
+                                            binned_test_df[col_name].mean())
                                         binned_test_df[col_name] = col_binner.transform(
                                             binned_test_df[col_name].to_numpy().reshape(-1, 1))
 
@@ -1265,19 +1317,24 @@ def create_test_files_DFA(injection_config, group=None):
                                                                                             dfa_in)
 
                                 p_x_test = test_sets_base_folder + '//DFA//{}_X_test_{}_{}_{}_{}_{}'.format(
-                                    group, names[binner], bins, injection_length,
+                                    group, binner_to_str[binner], bins, injection_length,
                                     step_over,
                                     percentage)
 
                                 p_labels = test_sets_base_folder + '//DFA//{}_labels_{}_{}_{}_{}_{}'.format(
-                                    group, names[binner], bins, injection_length,
+                                    group, binner_to_str[binner], bins, injection_length,
                                     step_over,
                                     percentage)
 
                                 p_pkt_dict = test_sets_base_folder + '//DFA//{}_dict_{}_{}_{}_{}_{}'.format(
-                                    group, names[binner], bins, injection_length,
+                                    group, binner_to_str[binner], bins, injection_length,
                                     step_over,
                                     percentage)
+
+                                if effected_plcs_suffix is not None:
+                                    p_x_test += f'_{effected_plcs_suffix}'
+                                    p_labels += f'_{effected_plcs_suffix}'
+                                    p_pkt_dict += f'_{effected_plcs_suffix}'
 
                                 if not os.path.exists(test_sets_base_folder + '//DFA'):
                                     Path(test_sets_base_folder + '//DFA').mkdir(parents=True, exist_ok=True)
@@ -1290,28 +1347,58 @@ def create_test_files_DFA(injection_config, group=None):
                                     pickle.dump(pkts_to_states, p_pkts_dict)
 
 
-def create_DFA_test_sets_single_plc_split(injection_config):
+def create_DFA_test_sets_single_plc_split(injection_config, effected_plcs_suffix=None):
     for ip in data.active_ips:
-        create_test_files_DFA(injection_config, group=f'single_plc_{ip}')
+        df_for_regs_path = data.datasets_path + f'//single_plc//{ip}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_files_DFA(injection_config, group=f'single_plc_{ip}', df_for_regs=df_for_regs,
+                              effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_DFA_test_sets_all_plcs_split(injection_config):
-    create_test_files_DFA(injection_config, group='all_plcs')
+def create_DFA_test_sets_all_plcs_split(injection_config, effected_plcs_suffix=None):
+    df_for_regs_path = data.datasets_path + f'//all_plcs//train'
+    with open(df_for_regs_path, mode='rb') as df_f:
+        df_for_regs = pickle.load(df_f)
+    create_test_files_DFA(injection_config, group='all_plcs', df_for_regs=df_for_regs,
+                          effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_DFA_test_sets_spearman_split(injection_config):
+def create_DFA_test_sets_spearman_split(injection_config, effected_plcs_suffix=None):
     for group in spearman_groups:
-        create_test_files_DFA(injection_config, group=group)
+        df_for_regs_path = data.datasets_path + f'//spearman//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_files_DFA(injection_config, group=group, df_for_regs=df_for_regs,
+                              effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_DFA_test_sets_pearson_split(injection_config):
+def create_DFA_test_sets_pearson_split(injection_config, effected_plcs_suffix=None):
     for group in pearson_groups:
-        create_test_files_DFA(injection_config, group=group)
+        df_for_regs_path = data.datasets_path + f'//pearson//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+
+        create_test_files_DFA(injection_config, group=group, df_for_regs=df_for_regs,
+                              effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_DFA_test_sets_k_means_split(injection_config):
+def create_DFA_test_sets_k_means_split(injection_config, effected_plcs_suffix=None):
     for group in k_means_groups:
-        create_test_files_DFA(injection_config, group=group)
+        df_for_regs_path = data.datasets_path + f'//k_means//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_files_DFA(injection_config, group=group, df_for_regs=df_for_regs,
+                              effected_plcs_suffix=effected_plcs_suffix)
+
+
+def create_all_test_files_for_DFA_with_injections_by_splits(injection_config):
+    for effected_plcs, effected_plcs_suffix in effected_plcs_data_tuples:
+        create_DFA_test_sets_single_plc_split(injection_config, effected_plcs_suffix=effected_plcs_suffix)
+        create_DFA_test_sets_all_plcs_split(injection_config, effected_plcs_suffix=effected_plcs_suffix)
+        create_DFA_test_sets_pearson_split(injection_config, effected_plcs_suffix=effected_plcs_suffix)
+        create_DFA_test_sets_spearman_split(injection_config, effected_plcs_suffix=effected_plcs_suffix)
+        create_DFA_test_sets_k_means_split(injection_config, effected_plcs_suffix=effected_plcs_suffix)
 
 
 # 1. after running KL on the test_events, filter TIRPs by support. REDUNDANT.
@@ -2129,7 +2216,8 @@ def test_LSTM_based_classifiers(lstm_config, ocsvm_config, injection_config, gro
                                                     test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
                                                                                                  result['nu']))
                                                     test_log.write(
-                                                        'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format( f1,
+                                                        'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
+                                                            f1,
                                                             precision,
                                                             recall, tn, fp, fn, tp))
     best_df = make_best(results_df)
@@ -2489,7 +2577,9 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                                                                                         count_threshold))
 
 
-def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc', group_pool=data.active_ips, split_type='single_plc', group_sheet_name='single_plc_split_avg'):
+def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc',
+                                     group_pool=data.active_ips, split_type='single_plc',
+                                     group_sheet_name='single_plc_split_avg'):
     # 1. test every single PLC.
     for group in group_pool:
         group_info = f'{group_prefix}_{group}' if group_prefix else group
@@ -2618,7 +2708,8 @@ def test_DFA(injection_config, group=None):
                                 step_over,
                                 percentage)
                             parent = test_sets_base_folder + '//raw'
-                            labels_path = parent + '//{}_labels_{}_{}_{}'.format(group, injection_length, step_over, percentage)
+                            labels_path = parent + '//{}_labels_{}_{}_{}'.format(group, injection_length, step_over,
+                                                                                 percentage)
 
                             with open(p_x_test, mode='rb') as test_data_path:
                                 test_df = pickle.load(test_data_path)
@@ -2659,7 +2750,7 @@ def test_DFA(injection_config, group=None):
                                               'percentage': percentage,
                                               'precision': precision,
                                               'recall': recall,
-                                              'f1': f1,}
+                                              'f1': f1, }
 
                                     """labels_test_df = pd.DataFrame(columns=labels_df.columns)
                                     labels_test_df['# window'] = [i for i in range(len(true_windows_labels))]
@@ -2726,8 +2817,8 @@ def test_DFA(injection_config, group=None):
                                                                                                     new_t_val))
 
 
-def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc', group_prefix='single_plc', group_sheet_name='single_plc_split_avg'):
-
+def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc',
+                        group_prefix='single_plc', group_sheet_name='single_plc_split_avg'):
     # 1. test every single PLC.
     for group in group_pool:
         group_info = f'{group_prefix}_{group}' if group_prefix else group
@@ -2907,7 +2998,8 @@ def train_LSTM_k_means_split(train_config):
 
 
 # for LSTM classifiers.
-def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
+def create_test_sets_LSTMs(train_config, injection_config, group_info=None, df_for_regs=None,
+                           effected_plcs_suffix=None):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
 
@@ -2929,21 +3021,18 @@ def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
             else:
                 for percentage in percentages:
                     for epsilon in epsilons:
-                        if group_info is None:
-                            df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
-                                                                                            percentage)
-                            labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
-                                                                                                  step_over,
-                                                                                                  percentage)
-                        else:
-                            df_path = test_sets_base_folder + '//raw//{}_data_{}_{}_{}'.format(group_info,
-                                                                                               injection_length,
-                                                                                               step_over,
-                                                                                               percentage)
-                            labels_path = test_sets_base_folder + '//raw//{}_labels_{}_{}_{}'.format(group_info,
-                                                                                                     injection_length,
-                                                                                                     step_over,
-                                                                                                     percentage)
+                        df_path = test_sets_base_folder + '//raw//{}_data_{}_{}_{}'.format(group_info,
+                                                                                           injection_length,
+                                                                                           step_over,
+                                                                                           percentage)
+                        labels_path = test_sets_base_folder + '//raw//{}_labels_{}_{}_{}'.format(group_info,
+                                                                                                 injection_length,
+                                                                                                 step_over,
+                                                                                                 percentage)
+                        if effected_plcs_suffix is not None:
+                            df_path += f'_{effected_plcs_suffix}'
+                            labels_path += f'_{effected_plcs_suffix}'
+
                         with open(df_path, mode='rb') as p:
                             anomalous_data = pickle.load(p)
 
@@ -2964,12 +3053,13 @@ def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
                                 name = data_version['name']
                                 desc = data_version['desc']
                                 if not data_version['reprocess']:
-                                    processed = data.process(anomalous_data, name, None, None, False)
+                                    processed = data.process(anomalous_data, name, None, None, False,
+                                                             df_for_regs=df_for_regs)
                                 for number_of_bins in numbers_of_bins:
                                     if data_version['reprocess']:
                                         lstm_input = data.process(anomalous_data, folder_name, number_of_bins,
                                                                   method_name,
-                                                                  True)
+                                                                  True, df_for_regs=df_for_regs)
                                     else:
                                         lstm_input = processed.copy()
                                         cols_not_to_bin = data_version['no_bin']
@@ -2982,8 +3072,11 @@ def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
                                             suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(
                                                 model_name)
                                         else:
+                                            group = group_info
+                                            if group_info is 'all_plcs':
+                                                group = 'all plcs'
                                             suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(
-                                                group_info,
+                                                group,
                                                 model_name)
 
                                         # scale everything, bin by config file.
@@ -3015,6 +3108,9 @@ def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
                                         file_name, method_name, number_of_bins, injection_length,
                                         step_over, percentage)
 
+                                    if effected_plcs_suffix is not None:
+                                        p_suffix += f'_{effected_plcs_suffix}'
+
                                     # make sure dirs exist and dump.
                                     dir_path = test_sets_base_folder + '//LSTM//{}_{}_{}'.format(
                                         folder_name, method_name, number_of_bins)
@@ -3039,28 +3135,62 @@ def create_test_sets_LSTMs(train_config, injection_config, group_info=None):
                                         pickle.dump(labels, data_path)
 
 
-def create_LSTM_test_sets_single_plc_split(train_config, injection_config):
+def create_LSTM_test_sets_single_plc_split(train_config, injection_config, effected_plcs_suffix=None):
     for ip in data.active_ips:
-        create_test_sets_LSTMs(train_config, injection_config, f'single_plc_{ip}')
+        df_for_regs_path = data.datasets_path + f'//single_plc//{ip}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_LSTMs(train_config, injection_config, f'single_plc_{ip}', df_for_regs=df_for_regs,
+                               effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_LSTM_test_sets_all_plcs_split(train_config, injection_config):
-    create_test_sets_LSTMs(train_config, injection_config, 'all_plcs')
+def create_LSTM_test_sets_all_plcs_split(train_config, injection_config, effected_plcs_suffix=None):
+    df_for_regs_path = data.datasets_path + f'//all_plcs//train'
+    with open(df_for_regs_path, mode='rb') as df_f:
+        df_for_regs = pickle.load(df_f)
+    create_test_sets_LSTMs(train_config, injection_config, 'all_plcs', df_for_regs=df_for_regs,
+                           effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_LSTM_test_sets_pearson_split(train_config, injection_config):
-    for group in spearman_groups:
-        create_test_sets_LSTMs(train_config, injection_config, group)
-
-
-def create_LSTM_test_sets_spearman_split(train_config, injection_config):
+def create_LSTM_test_sets_pearson_split(train_config, injection_config, effected_plcs_suffix=None):
     for group in pearson_groups:
-        create_test_sets_LSTMs(train_config, injection_config, group)
+        df_for_regs_path = data.datasets_path + f'//pearson//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_LSTMs(train_config, injection_config, group, df_for_regs=df_for_regs,
+                               effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_LSTM_test_sets_k_means_split(train_config, injection_config):
+def create_LSTM_test_sets_spearman_split(train_config, injection_config, effected_plcs_suffix=None):
+    for group in spearman_groups:
+        df_for_regs_path = data.datasets_path + f'//spearman//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_LSTMs(train_config, injection_config, group, df_for_regs=df_for_regs,
+                               effected_plcs_suffix=effected_plcs_suffix)
+
+
+def create_LSTM_test_sets_k_means_split(train_config, injection_config, effected_plcs_suffix=None):
     for group in k_means_groups:
-        create_test_sets_LSTMs(train_config, injection_config, group)
+        df_for_regs_path = data.datasets_path + f'//k_means//{group}_train'
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+        create_test_sets_LSTMs(train_config, injection_config, group, df_for_regs=df_for_regs,
+                               effected_plcs_suffix=effected_plcs_suffix)
+
+
+def create_all_LSTM_test_sets_with_injections_by_splits(train_config, injection_config):
+    for effected_plcs, effected_plcs_suffix in effected_plcs_data_tuples:
+        create_LSTM_test_sets_single_plc_split(train_config=train_config, injection_config=injection_config,
+                                               effected_plcs_suffix=effected_plcs_suffix)
+        create_LSTM_test_sets_all_plcs_split(train_config=train_config, injection_config=injection_config,
+                                             effected_plcs_suffix=effected_plcs_suffix)
+        create_LSTM_test_sets_spearman_split(train_config=train_config, injection_config=injection_config,
+                                             effected_plcs_suffix=effected_plcs_suffix)
+        create_LSTM_test_sets_pearson_split(train_config=train_config, injection_config=injection_config,
+                                            effected_plcs_suffix=effected_plcs_suffix)
+        create_LSTM_test_sets_k_means_split(train_config=train_config, injection_config=injection_config,
+                                            effected_plcs_suffix=effected_plcs_suffix)
 
 
 def test_LSTM(train_config, raw_test_data, group_info=None):
@@ -3507,7 +3637,8 @@ def create_LSTM_val_k_means_split(lstm_config):
         create_val_for_LSTM(lstm_config, val_data_path=val_path, group_info=group)
 
 
-def create_raw_test_sets(injections_config, test_df_path=None, group_info=None, plcs=data.active_ips):
+def create_raw_test_sets(injections_config, test_df_path=None, group_info=None, plcs=data.active_ips,
+                         effected_plcs=data.active_ips, effected_plcs_suffix=None):
     with open(injections_config, mode='r') as injections_conf:
         injection_params = yaml.load(injections_conf, Loader=yaml.FullLoader)
 
@@ -3532,28 +3663,26 @@ def create_raw_test_sets(injections_config, test_df_path=None, group_info=None, 
             else:
                 for percentage in percentages:
                     for epsilon in epsilons:
-                        anomalous_data, labels = inject_to_raw_data(test_data, injection_length, step_over,
-                                                                    percentage,
-                                                                    epsilon)
-                        df_path = test_sets_base_folder + '//raw//data_{}_{}_{}'.format(injection_length, step_over,
-                                                                                        percentage)
-                        labels_path = test_sets_base_folder + '//raw//labels_{}_{}_{}'.format(injection_length,
-                                                                                              step_over,
-                                                                                              percentage)
-                        if test_df_path is not None:
-                            df_path = test_sets_base_folder + '//raw//{}_data_{}_{}_{}'.format(group_info,
-                                                                                               injection_length,
-                                                                                               step_over,
-                                                                                               percentage)
-                            labels_path = test_sets_base_folder + '//raw//{}_labels_{}_{}_{}'.format(group_info,
-                                                                                                     injection_length,
-                                                                                                     step_over,
-                                                                                                     percentage)
+                        anomalous_data, labels = inject_to_sub_group(test_data, injection_length, step_over,
+                                                                     percentage,
+                                                                     epsilon, effected_plcs)
+
+                        df_path = test_sets_base_folder + '//raw//{}_data_{}_{}_{}'.format(group_info,
+                                                                                           injection_length,
+                                                                                           step_over,
+                                                                                           percentage)
+                        labels_path = test_sets_base_folder + '//raw//{}_labels_{}_{}_{}'.format(group_info,
+                                                                                                 injection_length,
+                                                                                                 step_over,
+                                                                                                 percentage)
+                        if effected_plcs_suffix is not None:
+                            df_path += f'_{effected_plcs_suffix}'
+                            labels_path += f'_{effected_plcs_suffix}'
 
                         plcs_mask = anomalous_data['src_ip'].isin(plcs) | anomalous_data['dst_ip'].isin(plcs)
 
                         with open(df_path, mode='wb') as df_p:
-                            pickle.dump(anomalous_data[plcs_mask], df_p)
+                            pickle.dump(data.reset_df_index(anomalous_data[plcs_mask]), df_p)
 
                         indices = anomalous_data.index[plcs_mask].tolist()
 
@@ -3561,39 +3690,84 @@ def create_raw_test_sets(injections_config, test_df_path=None, group_info=None, 
                             pickle.dump(labels[indices], labels_p)
 
 
-def create_raw_test_sets_sinple_plcs_split(injection_config):
-    load_path = data.datasets_path + '//single_plc//'
+def create_raw_test_sets_sinple_plcs_split(injection_config, effected_plcs=data.active_ips, effected_plcs_suffix=None):
     ips = data.active_ips
 
     for ip in ips:
         test_data_path = data.datasets_path + '//all_plcs//test'
         group_info = f'single_plc_{ip}'
-        create_raw_test_sets(injection_config, test_data_path, group_info, plcs=[ip])
+        if effected_plcs_suffix is None:
+            create_raw_test_sets(injection_config, test_data_path, group_info, plcs=[ip])
+        else:
+            create_raw_test_sets(injection_config, test_data_path, group_info, plcs=[ip], effected_plcs=effected_plcs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
 
 
 # THIS HAS TO HAPPEN FIRST.
-def create_raw_test_sets_all_plcs_split(injection_config):
+def create_raw_test_sets_all_plcs_split(injection_config, effected_plcs=data.active_ips, effected_plcs_suffix=None):
     load_path = data.datasets_path + '//all_plcs//test'
     group_info = 'all_plcs'
-    create_raw_test_sets(injection_config, load_path, group_info)
+    if effected_plcs_suffix is None:
+        create_raw_test_sets(injection_config, load_path, group_info=group_info)
+    else:
+        create_raw_test_sets(injection_config, load_path, group_info=group_info, effected_plcs=effected_plcs,
+                             effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_raw_test_sets_pearson_split(injection_config):
+def create_raw_test_sets_pearson_split(injection_config, effected_plcs=data.active_ips, effected_plcs_suffix=None):
     for group in pearson_groups:
         load_path = data.datasets_path + '//all_plcs//test'
-        create_raw_test_sets(injection_config, load_path, group)
+        if '0' in group:
+            plcs = pearson_groups_ips[0]
+        else:
+            plcs = pearson_groups_ips[1]
+        if effected_plcs_suffix is None:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs)
+        else:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs,
+                                 effected_plcs=effected_plcs, effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_raw_test_sets_spearman_split(injection_config):
+def create_raw_test_sets_spearman_split(injection_config, effected_plcs=data.active_ips, effected_plcs_suffix=None):
     for group in pearson_groups:
         load_path = data.datasets_path + '//all_plcs//test'
-        create_raw_test_sets(injection_config, load_path, group)
+        if '0' in group:
+            plcs = spearman_groups_ips[0]
+        else:
+            plcs = spearman_groups_ips[1]
+        if effected_plcs_suffix is None:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs)
+        else:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs, effected_plcs=effected_plcs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
 
 
-def create_raw_test_sets_k_means_split(injection_config):
+def create_raw_test_sets_k_means_split(injection_config, effected_plcs=data.active_ips, effected_plcs_suffix=None):
     for group in pearson_groups:
         load_path = data.datasets_path + '//all_plcs//test'
-        create_raw_test_sets(injection_config, load_path, group)
+        if '0' in group:
+            plcs = k_means_groups_ips[0]
+        else:
+            plcs = k_means_groups_ips[1]
+        if effected_plcs_suffix is None:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs)
+        else:
+            create_raw_test_sets(injection_config, load_path, group_info=group, plcs=plcs, effected_plcs=effected_plcs,
+                                 effected_plcs_suffix=effected_plcs_suffix)
+
+
+def create_all_raw_test_sets_with_injections_by_splits(injection_config):
+    for effected_plcs, effected_plcs_suffix in effected_plcs_data_tuples:
+        create_raw_test_sets_sinple_plcs_split(injection_config, effected_plcs=effected_plcs,
+                                               effected_plcs_suffix=effected_plcs_suffix)
+        create_raw_test_sets_all_plcs_split(injection_config, effected_plcs=effected_plcs,
+                                            effected_plcs_suffix=effected_plcs_suffix)
+        create_raw_test_sets_pearson_split(injection_config, effected_plcs=effected_plcs,
+                                           effected_plcs_suffix=effected_plcs_suffix)
+        create_raw_test_sets_spearman_split(injection_config, effected_plcs=effected_plcs,
+                                            effected_plcs_suffix=effected_plcs_suffix)
+        create_raw_test_sets_k_means_split(injection_config, effected_plcs=effected_plcs,
+                                           effected_plcs_suffix=effected_plcs_suffix)
 
 
 # xl file will save for each model: model name, model parameters, injection parameters, true labels for window, model labels for windows.
