@@ -69,7 +69,8 @@ excel_cols = ['group', 'algorithm', 'injection type', 'data version', 'binning',
               'injection length', 'percentage', 'precision', 'recall', 'f1', 'kernel', 'nu']
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1'}
-OCSVM_cols = ['group', 'data version', 'binning', '# bins', '# std count', 'window size', 'nu', 'kernel',
+OCSVM_cols = ['group', 'injection type', 'data version', 'binning', '# bins', '# std count', 'window size', 'nu',
+              'kernel',
               'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1']
 
 DFA_cols = {'group', 'injection type', 'binning', '# bins', '# std count', 'injection length', 'step over',
@@ -2367,7 +2368,7 @@ def test_LSTM_based_classifiers_many_PLCs(models_train_config, injection_config,
                 best_df.to_excel(writer, sheet_name=sheet)
 
 
-def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info=None):
+def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info=None, effected_plcs_suffixes=None):
     """
     injection sets folder: folder_name, name, number_of_bins = binning method, data version, # bins
     path to RF = SCADA_BASE + '\\RFs\\' + 'diff_' + models_folder + '\\' + diff_' + model_name + 'estimators_{}_'.format(
@@ -2474,184 +2475,217 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
                                             continue
                                         for percentage in percentages:
                                             for epsilon in epsilons:
-                                                suffix = '{}_{}_{}_{}_{}_{}'.format(file_name,
-                                                                                    binning_method,
-                                                                                    number_of_bins,
-                                                                                    injection_length,
-                                                                                    step_over,
-                                                                                    percentage)
-                                                folder = '//LSTM//{}_{}_{}'.format(folder_name, binning_method,
-                                                                                   number_of_bins)
+                                                for effected_plcs_suffix in effected_plcs_suffixes:
+                                                    suffix = '{}_{}_{}_{}_{}_{}'.format(file_name,
+                                                                                        binning_method,
+                                                                                        number_of_bins,
+                                                                                        injection_length,
+                                                                                        step_over,
+                                                                                        percentage)
+                                                    folder = '//LSTM//{}_{}_{}'.format(folder_name, binning_method,
+                                                                                       number_of_bins)
 
-                                                p_x_test = test_sets_base_folder + folder + '//X_test_' + suffix
-                                                p_y_test = test_sets_base_folder + folder + '//y_test_' + suffix
-                                                p_labels = test_sets_base_folder + folder + '//labels_' + suffix
+                                                    p_x_test = test_sets_base_folder + folder + '//X_test_' + suffix
+                                                    p_y_test = test_sets_base_folder + folder + '//y_test_' + suffix
+                                                    p_labels = test_sets_base_folder + folder + '//labels_' + suffix
 
-                                                if group_info is not None:
-                                                    p_x_test = test_sets_base_folder + folder + f'//{group_info}_X_test_' + suffix
-                                                    p_y_test = test_sets_base_folder + folder + f'//{group_info}_y_test_' + suffix
-                                                    p_labels = test_sets_base_folder + folder + f'//{group_info}_labels_' + suffix
-
-                                                with open(p_x_test, mode='rb') as x_path:
-                                                    X_test = pickle.load(x_path)
-                                                with open(p_y_test, mode='rb') as y_path:
-                                                    y_test = pickle.load(y_path)
-                                                with open(p_labels, mode='rb') as l_path:
-                                                    labels = pickle.load(l_path)
-
-                                                pred = LSTM.predict(X_test)
-                                                test = np.abs(pred - y_test)
-
-                                                # make classifications.
-                                                classifications = trained_classifier.predict(test)
-                                                classifications = [1 if c == -1 else 0 for c in classifications]
-
-                                                true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
-                                                    classifications, labels, window_size, count_threshold)
-                                                # detected, missed, mean_lag = measure_lag(model_windows_labels, labels, injection_length, step_over, w)
-                                                """labels_test_df = pd.DataFrame(columns=labels_df.columns)
-                                                labels_test_df['# window'] = [i for i in
-                                                                              range(len(true_windows_labels))]
-                                                labels_test_df['window size'] = window_size
-                                                labels_test_df['model label'] = model_windows_labels
-                                                labels_test_df['true label'] = true_windows_labels
-                                                labels_test_df['data version'] = data_version['name']
-                                                labels_test_df['binning'] = bin_part
-                                                labels_test_df['# bins'] = number_of_bins
-                                                labels_test_df['injection length'] = injection_length
-                                                labels_test_df['percentage'] = percentage
-                                                labels_test_df['# std count'] = num_std
-
-                                                excel_path = paths_dict[data_version['name']]
-
-                                                with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl",
-                                                                    if_sheet_exists="overlay") as writer:
-                                                    row = 0
-                                                    sheet_name = 'LSTM-OCSVM_{}_{}_{} windows labels'.format(
-                                                        data_version['name'], bin_part, number_of_bins)
                                                     if group_info is not None:
-                                                        sheet_name = '{}_LSTM-OCSVM_{}_{}_{} windows labels'.format(
-                                                        group_info, data_version['name'], bin_part, number_of_bins)
-                                                    if sheet_name in writer.sheets.keys():
-                                                        row = writer.sheets[sheet_name].max_row
-                                                    labels_test_df.to_excel(writer, sheet_name=sheet_name, startrow=row)"""
+                                                        p_x_test = test_sets_base_folder + folder + f'//{group_info}_X_test_' + suffix
+                                                        p_y_test = test_sets_base_folder + folder + f'//{group_info}_y_test_' + suffix
+                                                        p_labels = test_sets_base_folder + folder + f'//{group_info}_labels_' + suffix
 
-                                                precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
-                                                    true_windows_labels,
-                                                    model_windows_labels)
+                                                    if effected_plcs_suffix is not None:
+                                                        p_x_test += f'_{effected_plcs_suffix}'
+                                                        p_y_test += f'_{effected_plcs_suffix}'
+                                                        p_labels += f'_{effected_plcs_suffix}'
 
-                                                excel_path = paths_dict[data_version['name']]
+                                                    with open(p_x_test, mode='rb') as x_path:
+                                                        X_test = pickle.load(x_path)
+                                                    with open(p_y_test, mode='rb') as y_path:
+                                                        y_test = pickle.load(y_path)
+                                                    with open(p_labels, mode='rb') as l_path:
+                                                        labels = pickle.load(l_path)
 
-                                                # parameters for excel.
-                                                data_version_for_excel = data_version['name']
-                                                binning_method_for_excel = binning_method
-                                                number_of_bins_for_excel = number_of_bins
+                                                    pred = LSTM.predict(X_test)
+                                                    test = np.abs(pred - y_test)
 
-                                                result = {'group': group_info, 'data version': data_version_for_excel,
-                                                          'binning': binning_method_for_excel,
-                                                          '# bins': number_of_bins_for_excel, '# std count': num_std,
-                                                          'window size': window_size, 'precision': precision,
-                                                          'recall': recall, 'f1': f1,
-                                                          'injection length': injection_length, 'step over': step_over,
-                                                          'percentage': percentage, 'kernel': kernel, 'nu': nu}
+                                                    # make classifications.
+                                                    classifications = trained_classifier.predict(test)
+                                                    classifications = [1 if c == -1 else 0 for c in classifications]
 
-                                                for col_name in excel_cols:
-                                                    if col_name not in OCSVM_cols:
-                                                        result[col_name] = '-'
+                                                    true_windows_labels, model_windows_labels = LSTM_preds_to_window_preds(
+                                                        classifications, labels, window_size, count_threshold)
+                                                    # detected, missed, mean_lag = measure_lag(model_windows_labels, labels, injection_length, step_over, w)
+                                                    """labels_test_df = pd.DataFrame(columns=labels_df.columns)
+                                                    labels_test_df['# window'] = [i for i in
+                                                                                  range(len(true_windows_labels))]
+                                                    labels_test_df['window size'] = window_size
+                                                    labels_test_df['model label'] = model_windows_labels
+                                                    labels_test_df['true label'] = true_windows_labels
+                                                    labels_test_df['data version'] = data_version['name']
+                                                    labels_test_df['binning'] = bin_part
+                                                    labels_test_df['# bins'] = number_of_bins
+                                                    labels_test_df['injection length'] = injection_length
+                                                    labels_test_df['percentage'] = percentage
+                                                    labels_test_df['# std count'] = num_std
+    
+                                                    excel_path = paths_dict[data_version['name']]
+    
+                                                    with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl",
+                                                                        if_sheet_exists="overlay") as writer:
+                                                        row = 0
+                                                        sheet_name = 'LSTM-OCSVM_{}_{}_{} windows labels'.format(
+                                                            data_version['name'], bin_part, number_of_bins)
+                                                        if group_info is not None:
+                                                            sheet_name = '{}_LSTM-OCSVM_{}_{}_{} windows labels'.format(
+                                                            group_info, data_version['name'], bin_part, number_of_bins)
+                                                        if sheet_name in writer.sheets.keys():
+                                                            row = writer.sheets[sheet_name].max_row
+                                                        labels_test_df.to_excel(writer, sheet_name=sheet_name, startrow=row)"""
 
-                                                res_df = pd.DataFrame.from_dict(data={'0': result}, columns=excel_cols,
-                                                                                orient='index')
+                                                    precision, recall, auc_score, f1, prc_auc_score, tn, fp, fn, tp = get_metrics(
+                                                        true_windows_labels,
+                                                        model_windows_labels)
 
-                                                row = 0
+                                                    excel_path = paths_dict[data_version['name']]
 
-                                                with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl",
-                                                                    if_sheet_exists="overlay") as writer:
-                                                    if 'performance' in writer.sheets.keys():
-                                                        row = writer.sheets['performance'].max_row
-                                                    res_df['algorithm'] = 'LSTM-OCSVM'
-                                                    h = True
-                                                    if row > 0:
-                                                        h = False
-                                                    res_df.to_excel(excel_writer=writer, sheet_name='performance',
-                                                                    startrow=row, header=h, index=False)
+                                                    # parameters for excel.
+                                                    data_version_for_excel = data_version['name']
+                                                    binning_method_for_excel = binning_method
+                                                    number_of_bins_for_excel = number_of_bins
 
-                                                with open(test_LSTM_OCSVM_log, mode='a') as test_log:
-                                                    test_log.write('recorded results of OCSVM\n')
-                                                    test_log.write(
-                                                        'injection parameters are: len: {}, step: {}, %: {}, eps: {}\n'.format(
-                                                            injection_length, step_over, percentage, epsilon))
-                                                    test_log.write('model parameters:\n')
-                                                    test_log.write(
-                                                        'data version: {}, # bins: {}, binning method: {} ,# std:{}, window: {}\n'.format(
-                                                            data_version_for_excel, number_of_bins_for_excel,
-                                                            binning_method_for_excel, num_std, window_size))
-                                                    test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
-                                                                                                 result['nu']))
-                                                    test_log.write(
-                                                        'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
-                                                            f1,
-                                                            precision,
-                                                            recall, tn, fp, fn, tp))
-                                                    test_log.write('OCSVM detected in test: {}, in val: {}\n'.format(
-                                                        sum(classifications), sum(val_classification_transformed)))
-                                                    test_log.write(
-                                                        'mean is {} std is {} threshold is {}\n'.format(mean, std,
-                                                                                                        count_threshold))
+                                                    result = {'group': group_info,
+                                                              'injection type': effected_plcs_suffix if effected_plcs_suffix else 'all_plcs',
+                                                              'data version': data_version_for_excel,
+                                                              'binning': binning_method_for_excel,
+                                                              '# bins': number_of_bins_for_excel,
+                                                              '# std count': num_std,
+                                                              'window size': window_size, 'precision': precision,
+                                                              'recall': recall, 'f1': f1,
+                                                              'injection length': injection_length,
+                                                              'step over': step_over,
+                                                              'percentage': percentage, 'kernel': kernel, 'nu': nu}
+
+                                                    for col_name in excel_cols:
+                                                        if col_name not in OCSVM_cols:
+                                                            result[col_name] = '-'
+
+                                                    res_df = pd.DataFrame.from_dict(data={'0': result},
+                                                                                    columns=excel_cols,
+                                                                                    orient='index')
+
+                                                    row = 0
+
+                                                    with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl",
+                                                                        if_sheet_exists="overlay") as writer:
+                                                        if 'performance' in writer.sheets.keys():
+                                                            row = writer.sheets['performance'].max_row
+                                                        res_df['algorithm'] = 'LSTM-OCSVM'
+                                                        h = True
+                                                        if row > 0:
+                                                            h = False
+                                                        res_df.to_excel(excel_writer=writer, sheet_name='performance',
+                                                                        startrow=row, header=h, index=False)
+
+                                                    with open(test_LSTM_OCSVM_log, mode='a') as test_log:
+                                                        test_log.write('recorded results of OCSVM\n')
+                                                        test_log.write(
+                                                            'injection parameters are: len: {}, step: {}, %: {}, eps: {}, type:{}\n'.format(
+                                                                injection_length, step_over, percentage, epsilon,
+                                                                effected_plcs_suffix if effected_plcs_suffix else 'all_plcs'))
+                                                        test_log.write('model parameters:\n')
+                                                        test_log.write(
+                                                            'data version: {}, # bins: {}, binning method: {} ,# std:{}, window: {}\n'.format(
+                                                                data_version_for_excel, number_of_bins_for_excel,
+                                                                binning_method_for_excel, num_std, window_size))
+                                                        test_log.write('kernel: {}, nu: {}\n'.format(result['kernel'],
+                                                                                                     result['nu']))
+                                                        test_log.write(
+                                                            'f1:{}, precision:{}, recall:{},tn:{}, fp:{}, fn:{}, tp:{}\n'.format(
+                                                                f1,
+                                                                precision,
+                                                                recall, tn, fp, fn, tp))
+                                                        test_log.write(
+                                                            'OCSVM detected in test: {}, in val: {}\n'.format(
+                                                                sum(classifications),
+                                                                sum(val_classification_transformed)))
+                                                        test_log.write(
+                                                            'mean is {} std is {} threshold is {}\n'.format(mean, std,
+                                                                                                            count_threshold))
 
 
-def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_prefix='single_plc',
-                                     group_pool=data.active_ips, split_type='single_plc',
-                                     group_sheet_name='single_plc_split_avg'):
+def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_pool=data.active_ips,
+                                     split_type='single_plc',
+                                     sheet_name='average_performance', effected_plcs_suffixes=None):
+    """
+
+    :param injection_config: injection parameters.
+    :param group_pool: the groups of plcs in the split (spearman_0 spearman_1) or (k_means_0, k_means_1) etc.
+    :param split_type: textual description of the split (all_plcs, single_plc, spearman, etc.)
+    :param sheet_name: the sheet name (will always be average_performance)
+    :param effected_plcs_suffixes: describes the injection types.
+    :return:
+    """
+
     # 1. test every single PLC.
     for group in group_pool:
-        group_info = f'{group_prefix}_{group}' if group_prefix else group
-        test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info)
+        group_info = group
+        test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info,
+                              effected_plcs_suffixes=effected_plcs_suffixes)
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
-    plcs_weights = {plc: 0 for plc in group_pool}
+    sub_groups_in_split_weights = {sub_groups_in_split: 0 for sub_groups_in_split in group_pool}
 
     for group in group_pool:
-        raw_test_set_path = data.datasets_path + f'//{split_type}//{group}'
+        raw_test_set_path = test_sets_base_folder + f'//{split_type}//{group}'
         with open(raw_test_set_path, mode='rb') as raw_test_set_f:
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
         total_length += raw_test_set_length
+        sub_groups_in_split_weights[group] = raw_test_set_length
 
-    for plc in plcs_weights.keys():
-        plcs_weights[plc] /= total_length
+    for sub_groups_in_split in sub_groups_in_split_weights.keys():
+        sub_groups_in_split_weights[sub_groups_in_split] /= total_length
 
     # 3. calculate weighted average.
     results_df = pd.read_excel(xl_path2, sheet_name='performance')
-    averaged_results_df = None
     metric_cols = ['f1', 'precision', 'recall']
     other_cols = results_df.columns[:-3]
+    total_df = pd.DataFrame()
 
-    for group in group_pool:
-        group_name = f'{group_prefix}_{group}' if group_prefix else group
-        plc_weight = plcs_weights[group]
+    for effected_plcs_suffix in effected_plcs_suffixes:
+        averaged_results_df = None
+        for group in group_pool:
+            group_name = group
+            sub_groups_in_split_weight = sub_groups_in_split_weights[group]
+            results_mask = (results_df['group'] == group_name) & (
+                    results_df['injection type'] == (effected_plcs_suffix if effected_plcs_suffix else 'all_plcs'))
+            sub_groups_in_split_res = results_df.loc[results_mask, metric_cols] * sub_groups_in_split_weight
 
-        plc_res = results_df.loc[results_df['group'] == group_name, metric_cols] * plc_weight
+            if averaged_results_df is None:
+                averaged_results_df = sub_groups_in_split_res
+            else:
+                averaged_results_df += sub_groups_in_split_res
 
-        if averaged_results_df is None:
-            averaged_results_df = plc_res
-        else:
-            averaged_results_df += plc_res
+        effected_plcs_suffix_total_df = pd.concat(
+            [results_df[range(len(averaged_results_df)), other_cols], averaged_results_df], axis=1,
+            ignore_index=True)
 
-    total_df = pd.concat([results_df[range(len(averaged_results_df)), other_cols], averaged_results_df], axis=1,
-                         ignore_index=True)
+        total_df = pd.concat([total_df, effected_plcs_suffix_total_df], axis=0, ignore_index=True)
 
     # 4. update excel file.
     with pd.ExcelWriter(xl_path2, mode="a", engine="openpyxl",
                         if_sheet_exists="overlay") as writer:
+        row = 0
         if 'performance' in writer.sheets.keys():
             row = writer.sheets['performance'].max_row
         total_df['algorithm'] = 'LSTM-OCSVM'
-        total_df['group'] = group_sheet_name
+        total_df['split type'] = split_type
         h = True
         if row > 0:
             h = False
-        total_df.to_excel(excel_writer=writer, sheet_name='performance',
+        total_df.to_excel(excel_writer=writer, sheet_name=sheet_name,
                           startrow=row, header=h, index=False)
 
 
@@ -2659,6 +2693,13 @@ def test_LSTM_based_OCSVM_all_plcs_split(lstm_config, ocsvm_config, injection_co
     # 1. test. no need to average anything like in the previous case.
     group_info = 'all_plcs'
     test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info)
+
+
+def test_LSTM_OCSVM_all_splits_all_injections(lstm_config, ocsvm_config, injection_config):
+    for split_type in SPLIT_TYPES:
+        test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, split_type=split_type,
+                                         effected_plcs_suffixes=EFFECTED_PLCS_SUFFIXES,
+                                         group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type])
 
 
 #################################IRRELEVANT FOR NOW#####################################################
@@ -2877,6 +2918,7 @@ def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
         total_length += raw_test_set_length
+        sub_groups_in_split_weights[group] = raw_test_set_length
 
     for sub_groups_in_split in sub_groups_in_split_weights.keys():
         sub_groups_in_split_weights[sub_groups_in_split] /= total_length
