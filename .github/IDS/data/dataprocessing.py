@@ -1805,7 +1805,7 @@ def split_by_corrleation(all_train, all_val, all_test, split_type, group_pool):
     dump_path = datasets_path + f'//{split_type}//'
 
     for num_group in range(len(group_pool)):
-        group = pearson_groups[num_group]
+        group = group_pool[num_group]
         plc_df_train = reset_df_index(
             all_train.loc[(all_train['src_ip'].isin(group)) | (all_train['dst_ip'].isin(group))])
         plc_df_val = reset_df_index(all_val.loc[(all_val['src_ip'].isin(group)) | (all_val['dst_ip'].isin(group))])
