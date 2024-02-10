@@ -122,7 +122,8 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
                     nxt_time = cpy.iloc[next_pkt_idx, 0]
                     inter_arrival = (nxt_time - old_time).total_seconds()  # wrt to next one.
                     new_inter_arrival_time = inter_arrival * (1 - (percentage / 100))  # inc ia time
-                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(seconds=new_inter_arrival_time)  # wrt to next one.
+                    new_time = test_data.iloc[next_pkt_idx, 0] - timedelta(
+                        seconds=new_inter_arrival_time)  # wrt to next one.
                     if epsilon >= inter_arrival:
                         epsilon = inter_arrival / 2
                     min_limit = test_data.iloc[prev_pkt_idx, 0] + timedelta(seconds=epsilon)
@@ -135,28 +136,23 @@ def inject_to_raw_data(test_data, injection_length, step_over, percentage, epsil
 
 
 def inject_to_sub_group(test_data, injection_length, step_over, percentage, epsilon, plcs_to_effect):
-    mask = (test_data['src_ip'].isin(plcs_to_effect)) | (test_data['dst_ip'].isin(plcs_to_effect))
-    data_to_change = test_data.loc[mask]
-    data_not_to_change = test_data.loc[~mask]
-    data_to_change_indices = data_to_change.index
+    test_data_copy = test_data.copy()
+    mask = (test_data_copy['src_ip'].isin(plcs_to_effect)) | (test_data_copy['dst_ip'].isin(plcs_to_effect))
+    data_to_change = test_data_copy.loc[mask]
+    data_not_to_change = test_data_copy.loc[~mask]
 
-    data_to_change_indices_map = dict()
-    for j in range((len(data_to_change_indices))):
-        data_to_change_indices_map[data_to_change_indices[j]] = j
+    data_to_change, data_to_change_labels = inject_to_raw_data(data_to_change, injection_length, step_over, percentage,
+                                                               epsilon)
 
-    data_to_change, data_to_change_labels = inject_to_raw_data(data_to_change, injection_length, step_over, percentage, epsilon)
-
-    df = pd.DataFrame.concat([data_not_to_change, data_to_change], ignore_index=True).sort_values(by=['time'])
+    df = pd.concat([data_not_to_change, data_to_change], ignore_index=True).sort_values(by=['time'])
     df = data.reset_df_index(df)
 
     labels = []
 
-    for i in range(len(test_data)):
-        if i in data_to_change_indices:
-            label_idx = data_to_change_indices_map[i]
-            labels.append(data_to_change_labels[label_idx])
+    for i in range(len(test_data_copy)):
+        if test_data_copy.loc[i, 'time'] != df.loc[i, 'time']:
+            labels.append(1)
         else:
             labels.append(0)
 
     return df, labels
-

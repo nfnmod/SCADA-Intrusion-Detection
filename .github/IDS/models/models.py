@@ -6,15 +6,14 @@ from pathlib import Path
 
 import keras
 import numpy as np
-import tensorflow
 import yaml
-from keras.wrappers.scikit_learn import KerasRegressor
+from keras import layers
+# from tensorflow.keras.wrappers import KerasRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import SGDOneClassSVM
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.model_selection import train_test_split
 from sklearn.svm import OneClassSVM
-from tensorflow.keras import layers
 
 import data
 
@@ -29,22 +28,22 @@ LSTM_train_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log fi
 
 
 def build_LSTM_series_prediction(epochs, batch_size):
-    model = tensorflow.keras.Sequential()
+    model = keras.Sequential()
     model.add(layers.LSTM(units=n_features, input_shape=(series_length, n_features), return_sequences=True))
     model.add(layers.LSTM(units=n_features, input_shape=(series_length, n_features), return_sequences=True))
     model.add(layers.TimeDistributed(layers.Dense(units=n_features)))
-    model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error", "accuracy"],
+    model.compile(loss=keras.losses.MeanSquaredError(), metrics=["mean_squared_error", "accuracy"],
                   optimizer='adam', )
     return model
 
 
 def build_RNN(epochs, batch_size):
-    model = tensorflow.keras.Sequential()
+    model = keras.Sequential()
     # model.add(layers.SimpleRNN(units=n_features, input_shape=(series_length, n_features), return_sequences=True))
     model.add(layers.SimpleRNN(units=n_features, input_shape=(series_length, n_features)))
     model.add(layers.Dropout(0.2))
     model.add(layers.Dense(n_features, activation='relu'))
-    model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error", "accuracy"],
+    model.compile(loss=keras.losses.MeanSquaredError(), metrics=["mean_squared_error", "accuracy"],
                   optimizer='adam', )
 
     return model
@@ -58,8 +57,10 @@ def predict_series_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8):
     return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM_series_prediction)
 
 
-def simple_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8, models_path=data.modeles_path, data_path=data.datasets_path):
-    return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM, dump_model=models_path, dump_df=data_path)
+def simple_LSTM(pkt_data, series_len, np_seed, model_name, train=0.8, models_path=data.modeles_path,
+                data_path=data.datasets_path):
+    return make_my_model(pkt_data, series_len, np_seed, model_name, train, build_LSTM, dump_model=models_path,
+                         dump_df=data_path)
 
 
 def build_One_Class_SVM(kernel, nu):
@@ -110,7 +111,8 @@ def make_classifier(models_folder, data_folder, params, RF_only=False, OCSVM_onl
                 post_lstm_classifier_Random_Forest(model, x_train, y_train, model_folder + '_RF', params, models_folder)
 
 
-def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder, group_info=None):
+def post_lstm_classifier_One_Class_SVM(lstm_model, x_train, y_train, model_name, params, models_folder,
+                                       group_info=None):
     """
 
     :param models_folder: name of models folder of LSTMs, used for convenient saving of classifiers.
@@ -256,14 +258,15 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
-    early_stopping = tensorflow.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min', restore_best_weights=True)
+    early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min',
+                                                   restore_best_weights=True)
 
     params_dict = dict()
     params_dict['epochs'] = [40]
     params_dict['batch_size'] = [32, 64, 128]
     params_dict['callbacks'] = [[early_stopping]]
 
-    estimator = KerasRegressor(build_fn=model_creator)
+    estimator = model_creator  # KerasRegressor(build_fn=model_creator)
     search = GridSearchCV(estimator=estimator, param_grid=params_dict, cv=kf, scoring='neg_mean_squared_error')
 
     print("fitting the model")
@@ -276,7 +279,7 @@ def make_my_model(pkt_data, series_len, np_seed, model_name, train=0.8, model_cr
 
     model = model_creator(best_params['epochs'], best_params['batch_size'], best_params['callbacks'])
     model.fit(X_train, y_train, best_params['callbacks'])
-    tensorflow.keras.models.save_model(model, dump_model + '\\' + model_name)
+    keras.models.save_model(model, dump_model + '\\' + model_name)
 
     print('Best Score: %s' % best_model.best_score_)
     print('Best Hyper parameters: %s' % best_model.best_params_)
@@ -294,7 +297,8 @@ def grid_search_train(pkt_data, series_len, np_seed, model_name, train=0.8):
 
     kf = KFold(n_splits=10, random_state=np_seed, shuffle=True)
 
-    early_stopping = tensorflow.keras.callbacks.EarlyStopping(monitor='loss', patience=5, verbose=1, mode='min', restore_best_weights=True, min_delta=0.0005)
+    early_stopping = keras.callbacks.EarlyStopping(monitor='loss', patience=5, verbose=1, mode='min',
+                                                              restore_best_weights=True, min_delta=0.0005)
 
     params_dict = dict()
     params_dict['epochs'] = [40]
@@ -317,11 +321,11 @@ def grid_search_train(pkt_data, series_len, np_seed, model_name, train=0.8):
 
 
 def build_LSTM(epochs, batch_size, callbacks):
-    model = tensorflow.keras.Sequential()
+    model = keras.Sequential()
     model.add(layers.LSTM(units=n_features, input_shape=(series_length, n_features)))
     model.add(layers.Dropout(0.2))
     model.add(layers.Dense(n_features, activation='relu'))
-    model.compile(loss=tensorflow.keras.losses.MeanSquaredError(), metrics=["mean_squared_error"],
+    model.compile(loss=keras.losses.MeanSquaredError(), metrics=["mean_squared_error"],
                   optimizer='adam')
 
     return model
@@ -393,5 +397,5 @@ def train_LSTM_many_PLCs(datasets_base_path, train_config):
                         Path(df_p).mkdir(exist_ok=True, parents=True)
                     if not os.path.exists(model_p):
                         Path(model_p).mkdir(exist_ok=True, parents=True)
-                    make_my_model(processed, 20, 42, model_name, train=0.8, model_creator=simple_LSTM, dump_df=df_p, dump_model=model_p)
-
+                    make_my_model(processed, 20, 42, model_name, train=0.8, model_creator=simple_LSTM, dump_df=df_p,
+                                  dump_model=model_p)

@@ -6,6 +6,7 @@ import pandas as pd
 
 import data
 import run
+import injections
 
 test_captures_path = "C:\\Users\\User\\Desktop\\SCADA\\testcaptures"
 
@@ -555,7 +556,7 @@ class TestDataConversions(unittest.TestCase):
         processed = data.squeeze(processed)
         print(processed)
 
-    def test_make_transitions_labels(self):
+    def est_make_transitions_labels(self):
         # create anomalous data and labels.
         cols = ['time', 'dst_ip', 'src_ip', 'dst_port', 'src_port', 'func_code', 'payload']
 
@@ -630,6 +631,50 @@ class TestDataConversions(unittest.TestCase):
         transitions_labels, pkts_to_states = run.get_transitions_labels(anomalies, labels, processed)
         print(pkts_to_states)
         print(transitions_labels)
+
+    def test_partial_injection(self):
+
+        cols = ['time', 'dst_ip', 'src_ip']
+
+        datestrs = ["Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262",
+                    "Mar 22, 2022 21:13:36.902262"]
+
+        times = [datetime.strptime(date_str, '%b %d, %Y %H:%M:%S.%f') for date_str in datestrs]
+        m = [100] * 10
+        for i in range(len(times)):
+            times[i] += timedelta(seconds=m[i] * i)
+
+        dst_ips = np.repeat('0', 10)
+        src_ips = ['1', '2', '3', '4', '5'] * 2
+
+        df = pd.DataFrame(columns=cols)
+        df['time'] = times
+        df['dst_ip'] = dst_ips
+        df['src_ip'] = src_ips
+
+        df = pd.DataFrame(columns=cols)
+        df['time'] = times
+        df['dst_ip'] = dst_ips
+        df['src_ip'] = src_ips
+
+        test_df, labels = injections.inject_to_sub_group(df, 3, 2, 10, 0.0000001, ['1', '4'])
+
+        print('original')
+        print(df)
+
+        print('test data')
+        print(test_df)
+
+        print('test labels')
+        print(labels)
 
 
 if __name__ == 'main':

@@ -21,7 +21,7 @@ import data
 import models
 import models.TIRP as TIRP
 from data import squeeze, find_frequent_transitions_sequences
-from data.injections import inject_to_raw_data, inject_to_sub_group
+from data.injections import inject_to_sub_group
 from models.models import LSTM_train_log
 
 KL_base = data.datasets_path + "\\KL\\"
