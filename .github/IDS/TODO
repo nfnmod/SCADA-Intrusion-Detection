@@ -1,4 +1,29 @@
-# TODO: implement new test sets creation and performance evaluation functions.
+# TODO: fix the columns of the excel files for DFA and LSTM tests.
+# TODO: Why does the DFA sheet have twice as many rows?
+# TODO: create the averaged performance files.
+# TODO: update run.py.
+
+# TODO: HTM training and testing.
+
+IDEAS:
+LSTMs didn't learn well because of the dimensionality of the data.
+Too many PLCs.
+The splits are bad.
+Not enough data.
+Configurations of algorithms- look at logs, play with threshold. If that doesn't help:
+                 play with LSTMs data dimensioonality and the OCSVMs parameters values.
+For quicker tests, try testing a model trained on a group only with injections matching to thes split that the group is part of.
+This should give the best results for each model.
+
+TO UPDATE IN HTM RUN FILE:
+global variables.
+excel columns.
+main test function.
+logging.
+temporary dataset sizes.
+edge cases for file names.
+
+--------------------------------------------------------------------------------------
 
 # Many PLCs experiments:
 1. define the grouping of plcs.

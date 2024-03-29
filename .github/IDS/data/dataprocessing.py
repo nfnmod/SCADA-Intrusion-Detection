@@ -18,12 +18,12 @@ from sklearn.preprocessing import MinMaxScaler
 
 plc_port = 502
 captures_path = 'C:\\Users\\User\\Desktop\\SCADA\\modbuscaptures'
-datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
-modeles_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\models'
-automaton_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
-automaton_datasets_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
-plots_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
-excel_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel'
+datasets_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\datasets'
+modeles_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\models'
+automaton_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\DFA'
+automaton_datasets_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\DFA_datasets'
+plots_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\plots\\regular\\singleplc'
+excel_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\excel'
 plc_splits_xl = '/sise/home/zaslavsm/SCADA/excel/plcs splits.xlsx'
 binners_base = '//sise//home//zaslavsm//SCADA//binners'
 scalers_base = '//sise//home//zaslavsm//SCADA//scalers'
@@ -1682,7 +1682,8 @@ def get_inter_arrival_times_stats():
     return mean, std, minimum, maximum, max_2, min_2, max_3, min_3
 
 
-def process(data, name, bins, binning, scale=True, binner_path=None, registers=most_used, fill=True, get_cols=False):
+def process(data, name, bins, binning, scale=True, binner_path=None, registers=most_used, fill=True, get_cols=False,
+            df_for_regs=None):
     names = {"k_means": k_means_binning, "equal_frequency": equal_frequency_discretization,
              "equal_width": equal_width_discretization, None: None}
     if name == 'embedding_MP_deltas_regs_times':
@@ -1742,10 +1743,12 @@ def process(data, name, bins, binning, scale=True, binner_path=None, registers=m
                                fill=fill)
     elif name == 'v3_2':
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, scale=scale, binner_path=binner_path,
-                                 get_cols=get_cols)
+                                 get_cols=get_cols, df_for_regs=df_for_regs)
     else:
+        print('v3_2_abstract :)')
         return process_data_v3_2(data, 5, binner=names[binning], n_bins=bins, abstract=True, scale=scale,
-                                 binner_path=binner_path, load_binner=True)
+                                 binner_path=binner_path, registers=registers, load_binner=True, fill=fill,
+                                 get_cols=get_cols, df_for_regs=df_for_regs)
 
 
 def bin_col(df, method, col, n_bins, path=None):

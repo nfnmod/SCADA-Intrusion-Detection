@@ -59,14 +59,14 @@ excel_cols_old = {'HTM type', 'LSTM type', 'mix', 'data version', 'binning', '# 
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal K', 'max gap',
               'injection length', 'percentage', 'precision', 'recall', 'auc', 'f1', 'prc']"""
-excel_cols = ['group', 'algorithm', 'injection type', 'data version', 'binning', '# bins', '# std count',
-              'likelihood_threshold',
-              'window size',
+excel_cols = ['group', 'injection type', 'algorithm', 'data version', 'binning', '# bins', '# std count', 'kernel',
+              'nu', 'likelihood_threshold', 'window size',
               'ON bits', 'SDR size', 'numOfActiveColumnsPerInhArea', 'potential Pct', 'synPermConnected',
               'synPermActiveInc', 'synPermInactiveDec', 'boostStrength', 'cellsPerColumn',
               'initialPerm', 'permanenceInc', 'permanenceDec', 'maxSynapsesPerSegment', 'maxSegmentsPerCell',
               'minThreshold', 'activationThreshold', 'KL epsilon', 'minimal HS', 'max gap',
-              'injection length', 'percentage', 'precision', 'recall', 'f1', 'kernel', 'nu']
+              'injection length', 'percentage', 'precision', 'recall', 'f1']
+
 RF_cols = {'data version', 'binning', '# bins', '# estimators', 'criterion', 'max features',
            'injection length', 'step over', 'percentage', 'precision', 'recall', 'f1'}
 OCSVM_cols = ['group', 'injection type', 'data version', 'binning', '# bins', '# std count', 'window size', 'nu',
@@ -87,7 +87,7 @@ KL_based_RF_cols = {'binning', '# bins', 'window size', 'KL epsilon', 'minimal K
                     'injection length', 'step over', 'percentage', 'precision', 'recall',
                     'f1'}
 # xl_path = '//sise//home//zaslavsm//SCADA//excel//DFA sheets.xlsx'
-xl_path2 = '//sise//home//zaslavsm//SCADA//excel//LSTM v3_2 sheets.xlsx'
+xl_path2 = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\excel\\LSTM v3_2 sheets.xlsx'
 xl_path3 = '//sise//home//zaslavsm//SCADA//excel//LSTM v2 sheets.xlsx'
 xl_path4 = '//sise//home//zaslavsm//SCADA//excel//LSTM v1_1 sheets.xlsx'
 paths_dict = {'v1_1': xl_path4, 'v2': xl_path3, 'v3_2': xl_path2}
@@ -125,36 +125,37 @@ effected_plcs_data_tuples = [(spearman_groups_ips[0], spearman_groups[0]), (spea
 SPEARMAN = 'spearman'
 PEARSON = 'pearson'
 K_MEANS = 'k_means'
-SINGLE_PLC = 'single_plcs'
+SINGLE_PLC = 'single_plc'
 ALL_PLCS = 'all_plcs'
 SPLIT_TYPES = [SINGLE_PLC, ALL_PLCS, SPEARMAN, PEARSON, K_MEANS]
-
-EFFECTED_PLCS_SUFFIXES = [spearman_groups[0], spearman_groups[1],
-                          pearson_groups[0],
-                          pearson_groups[1],
-                          k_means_groups[0], k_means_groups[1], None]
 
 SPLIT_TYPE_TO_GROUP_POOL = {SPEARMAN: spearman_groups,
                             PEARSON: pearson_groups,
                             K_MEANS: k_means_groups,
-                            SINGLE_PLC: data.active_ips,
-                            ALL_PLCS: ALL_PLCS,
+                            SINGLE_PLC: ['single_plc_' + active_ip for active_ip in data.active_ips],
+                            ALL_PLCS: [ALL_PLCS]
                             }
+
+injection_type_to_effected_plcs_suffixes = {SPEARMAN: spearman_groups,
+                                            PEARSON: pearson_groups,
+                                            K_MEANS: k_means_groups,
+                                            SINGLE_PLC: [active_ip for active_ip in data.active_ips],
+                                            ALL_PLCS: [None]}
 
 best_cols = DFA_cols.copy()
 lim = 0.2
 
-xl_base = "C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\"
-xl_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\classifiers comprison.xlsx'
+xl_base = "C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\excel\\"
+xl_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\excel\\DFA sheets.xlsx'
 
-xl_labels_path = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\excel\\labels.xlsx'
+xl_labels_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\excel\\labels.xlsx'
 
-test_LSTM_OCSVM_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_OCSVM.txt'
-test_DFA_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
-test_KL_RF_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
-test_LSTM_STD_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
-val_base = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation'
-KLSTM_test_log = 'C:\\Users\\michael zaslavski\\OneDrive\\Desktop\\SCADA\\log files\\KLSTM detection test.txt'
+test_LSTM_OCSVM_log = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_OCSVM.txt'
+test_DFA_log = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test DFA.txt'
+test_KL_RF_log = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test KL-RF.txt'
+test_LSTM_STD_log = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\log files\\test LSTM_STD.txt'
+val_base = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\validation'
+KLSTM_test_log = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\log files\\KLSTM detection test.txt'
 LSTM_validation = val_base + '\\LSTM\\'
 LSTM_based_OCSVM_log = logs + 'OCSVM train.txt'
 
@@ -2615,30 +2616,25 @@ def test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_inf
 
 
 def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, group_pool=data.active_ips,
-                                     split_type='single_plc',
-                                     sheet_name='average_performance', effected_plcs_suffixes=None):
-    """
-
-    :param injection_config: injection parameters.
-    :param group_pool: the groups of plcs in the split (spearman_0 spearman_1) or (k_means_0, k_means_1) etc.
-    :param split_type: textual description of the split (all_plcs, single_plc, spearman, etc.)
-    :param sheet_name: the sheet name (will always be average_performance)
-    :param effected_plcs_suffixes: describes the injection types.
-    :return:
-    """
-
+                                     split_type='single_plc', effected_plcs_suffixes=None, injection_type='all_plcs',
+                                     sheet_name='average_performance'):
     # 1. test every single PLC.
-    for group in group_pool:
+    """for group in group_pool:
         group_info = group
-        test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info,
-                              effected_plcs_suffixes=effected_plcs_suffixes)
+        test_LSTM_based_OCSVM(lstm_config, ocsvm_config, injection_config, group_info=group_info, effected_plcs_suffixes=effected_plcs_suffixes)"""
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
     sub_groups_in_split_weights = {sub_groups_in_split: 0 for sub_groups_in_split in group_pool}
 
     for group in group_pool:
-        raw_test_set_path = test_sets_base_folder + f'//{split_type}//{group}'
+        raw_test_set_path = data.datasets_path + f'\\{split_type}\\{group}_test'
+        if 'single_plc' in group:
+            group_name = group[11:]
+            raw_test_set_path = data.datasets_path + f'\\{split_type}\\{group_name}_test'
+        if split_type == 'all_plcs':
+            raw_test_set_path = data.datasets_path + f'\\{split_type}\\test'
+
         with open(raw_test_set_path, mode='rb') as raw_test_set_f:
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
@@ -2652,7 +2648,7 @@ def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config
     results_df = pd.read_excel(xl_path2, sheet_name='performance')
     metric_cols = ['f1', 'precision', 'recall']
     other_cols = results_df.columns[:-3]
-    total_df = pd.DataFrame()
+    total_df = pd.DataFrame(columns=excel_cols)
 
     for effected_plcs_suffix in effected_plcs_suffixes:
         averaged_results_df = None
@@ -2662,26 +2658,37 @@ def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config
             results_mask = (results_df['group'] == group_name) & (
                     results_df['injection type'] == (effected_plcs_suffix if effected_plcs_suffix else 'all_plcs'))
             sub_groups_in_split_res = results_df.loc[results_mask, metric_cols] * sub_groups_in_split_weight
+            sub_groups_in_split_res = data.reset_df_index(sub_groups_in_split_res)
 
             if averaged_results_df is None:
                 averaged_results_df = sub_groups_in_split_res
+                averaged_results_df = data.reset_df_index(averaged_results_df)
             else:
-                averaged_results_df += sub_groups_in_split_res
+                averaged_results_df = averaged_results_df.add(sub_groups_in_split_res, fill_value=0)
+                averaged_results_df = data.reset_df_index(averaged_results_df)
+
+            print('printing averaged results df')
+            print(len(averaged_results_df))
 
         effected_plcs_suffix_total_df = pd.concat(
-            [results_df[range(len(averaged_results_df)), other_cols], averaged_results_df], axis=1,
-            ignore_index=True)
+            [results_df.iloc[:(len(averaged_results_df)), :-3], averaged_results_df], axis=1,
+            ignore_index=False)  # DROP THE GROUP COLUMN.
+        effected_plcs_suffix_total_df = effected_plcs_suffix_total_df.drop('group', axis=1)
+
+        effected_plcs_suffix_total_df = data.reset_df_index(effected_plcs_suffix_total_df)
 
         total_df = pd.concat([total_df, effected_plcs_suffix_total_df], axis=0, ignore_index=True)
+        total_df = data.reset_df_index(total_df)
 
     # 4. update excel file.
     with pd.ExcelWriter(xl_path2, mode="a", engine="openpyxl",
                         if_sheet_exists="overlay") as writer:
         row = 0
-        if 'performance' in writer.sheets.keys():
-            row = writer.sheets['performance'].max_row
+        if sheet_name in writer.sheets.keys():
+            row = writer.sheets[sheet_name].max_row
         total_df['algorithm'] = 'LSTM-OCSVM'
         total_df['split type'] = split_type
+        total_df['injection type'] = injection_type
         h = True
         if row > 0:
             h = False
@@ -2697,9 +2704,11 @@ def test_LSTM_based_OCSVM_all_plcs_split(lstm_config, ocsvm_config, injection_co
 
 def test_LSTM_OCSVM_all_splits_all_injections(lstm_config, ocsvm_config, injection_config):
     for split_type in SPLIT_TYPES:
-        test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, split_type=split_type,
-                                         effected_plcs_suffixes=EFFECTED_PLCS_SUFFIXES,
-                                         group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type])
+        for injection_type, effected_plcs_suffixes in injection_type_to_effected_plcs_suffixes.items():
+            test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, split_type=split_type,
+                                             effected_plcs_suffixes=effected_plcs_suffixes,
+                                             group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type],
+                                             injection_type=injection_type)
 
 
 #################################IRRELEVANT FOR NOW#####################################################
@@ -2893,7 +2902,7 @@ def test_DFA(injection_config, group=None, effected_plcs_suffixes=None):
 
 
 def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type='single_plc',
-                        sheet_name='average_performance', effected_plcs_suffixes=None):
+                        sheet_name='average_performance', effected_plcs_suffixes=None, injection_type='all_plcs'):
     """
 
     :param injection_config: injection parameters.
@@ -2904,16 +2913,22 @@ def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type
     :return:
     """
     # 1. test every single PLC.
-    for group in group_pool:
+    """for group in group_pool:
         group_info = group
-        test_DFA(injection_config, group=group_info, effected_plcs_suffixes=effected_plcs_suffixes)
+        test_DFA(injection_config, group=group_info, effected_plcs_suffixes=effected_plcs_suffixes)"""
 
     # 2. find the weight of the results of each PLC.
     total_length = 0
     sub_groups_in_split_weights = {sub_groups_in_split: 0 for sub_groups_in_split in group_pool}
 
     for group in group_pool:
-        raw_test_set_path = test_sets_base_folder + f'//{split_type}//{group}'
+        raw_test_set_path = data.datasets_path + f'\\{split_type}\\{group}_test'
+        if 'single_plc' in group:
+            group_name = group[11:]
+            raw_test_set_path = data.datasets_path + f'\\{split_type}\\{group_name}_test'
+        if split_type == 'all_plcs':
+            raw_test_set_path = data.datasets_path + f'\\{split_type}\\test'
+
         with open(raw_test_set_path, mode='rb') as raw_test_set_f:
             raw_test_set = pickle.load(raw_test_set_f)
         raw_test_set_length = len(raw_test_set)
@@ -2927,7 +2942,7 @@ def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type
     results_df = pd.read_excel(xl_path, sheet_name='performance')
     metric_cols = ['f1', 'precision', 'recall']
     other_cols = results_df.columns[:-3]
-    total_df = pd.DataFrame()
+    total_df = pd.DataFrame(columns=excel_cols)
 
     for effected_plcs_suffix in effected_plcs_suffixes:
         averaged_results_df = None
@@ -2937,28 +2952,52 @@ def test_DFA_plcs_split(injection_config, group_pool=data.active_ips, split_type
             results_mask = (results_df['group'] == group_name) & (
                     results_df['injection type'] == (effected_plcs_suffix if effected_plcs_suffix else 'all_plcs'))
             sub_groups_in_split_res = results_df.loc[results_mask, metric_cols] * sub_groups_in_split_weight
+            sub_groups_in_split_res = data.reset_df_index(sub_groups_in_split_res)
+
+            print('printing sub_groups_in_split_res')
+            print(sub_groups_in_split_res)
 
             if averaged_results_df is None:
                 averaged_results_df = sub_groups_in_split_res
+                averaged_results_df = data.reset_df_index(averaged_results_df)
             else:
-                averaged_results_df += sub_groups_in_split_res
+                averaged_results_df = averaged_results_df.add(sub_groups_in_split_res, fill_value=0)
+                averaged_results_df = data.reset_df_index(averaged_results_df)
+
+            print('printing averaged results df')
+            print(averaged_results_df, len(averaged_results_df))
 
         effected_plcs_suffix_total_df = pd.concat(
-            [results_df[range(len(averaged_results_df)), other_cols], averaged_results_df], axis=1,
-            ignore_index=True)
+            [results_df.iloc[:(len(averaged_results_df)), :-3], averaged_results_df], axis=1,
+            ignore_index=False)  # CAN NOT DO THIS!!!!!!!
+
+        effected_plcs_suffix_total_df = data.reset_df_index(effected_plcs_suffix_total_df)
+        print('printing effected_plcs_suffix_total_df')
+        print(effected_plcs_suffix_total_df)
+
+        total_df = pd.concat([total_df, effected_plcs_suffix_total_df], axis=0, ignore_index=True)
+        total_df = data.reset_df_index(total_df)
+        print('printing total_df')
+        print(total_df)
 
         total_df = pd.concat([total_df, effected_plcs_suffix_total_df], axis=0, ignore_index=True)
 
     # 4. update excel file.
     with pd.ExcelWriter(xl_path, mode="a", engine="openpyxl",
                         if_sheet_exists="overlay") as writer:
-        if 'performance' in writer.sheets.keys():
-            row = writer.sheets['performance'].max_row
-        total_df['algorithm'] = 'DFA'
+        row = 0
+
+        if sheet_name in writer.sheets.keys():
+            row = writer.sheets[sheet_name].max_row
+
         total_df['split type'] = split_type
+        total_df['injection type'] = injection_type
+        total_df = total_df.drop('group', axis=1)
+
         h = True
         if row > 0:
             h = False
+
         total_df.to_excel(excel_writer=writer, sheet_name=sheet_name,
                           startrow=row, header=h, index=False)
 
@@ -2969,8 +3008,22 @@ def test_DFA_all_plcs_split(injection_config):
 
 def test_DFA_all_splits_all_injections(injection_config):
     for split_type in SPLIT_TYPES:
-        test_DFA_plcs_split(injection_config, split_type=split_type, effected_plcs_suffixes=EFFECTED_PLCS_SUFFIXES,
-                            group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type])
+        print(f'SPLIT : {split_type}')
+        for injection_type, effected_plcs_suffixes in injection_type_to_effected_plcs_suffixes.items():
+            print(f'INJECTION TYPE: {injection_type}')
+            test_DFA_plcs_split(injection_config, split_type=split_type, effected_plcs_suffixes=effected_plcs_suffixes,
+                                group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type], injection_type=injection_type)
+            break
+        break
+
+
+"""def test_LSTM_OCSVM_all_splits_all_injections(lstm_config, ocsvm_config, injection_config):
+    for split_type in SPLIT_TYPES:
+        for injection_type, effected_plcs_suffixes in injection_type_to_effected_plcs_suffixes.items():
+            test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config, split_type=split_type,
+                                             effected_plcs_suffixes=effected_plcs_suffixes,
+                                             group_pool=SPLIT_TYPE_TO_GROUP_POOL[split_type],
+                                             injection_type=injection_type)"""
 
 
 ######################IRRELEVANT FOR NOW########################################
@@ -3290,13 +3343,19 @@ def create_all_LSTM_test_sets_with_injections_by_splits(train_config, injection_
                                             effected_plcs_suffix=effected_plcs_suffix)
 
 
-def test_LSTM(train_config, raw_test_data, group_info=None):
+def test_LSTM(train_config, group_info=None, df_for_regs=None):
     folders = {"k_means": 'KMeans', "equal_frequency": 'EqualFreq',
                "equal_width": 'EqualWidth'}
 
-    test_df = data.load(test_sets_base_folder, raw_test_data)
+    # load test data.
+    if group_info != "all_plcs":
+        test_df = data.load(test_sets_base_folder, data.datasets_path + f"//{group_info}_test")
+    else:
+        test_df = data.load(test_sets_base_folder, data.datasets_path + "//test")
+
     cols = ['data_version', 'binning', '# bins', 'mse', 'r2'] if group_info is None else \
         ['group', 'data_version', 'binning', '# bins', 'mse', 'r2']
+
     results_df = pd.DataFrame(columns=cols)
 
     # go over all combinations, process raw test set, test and save metric scores.
@@ -3312,7 +3371,8 @@ def test_LSTM(train_config, raw_test_data, group_info=None):
         file_name = data_version['desc']
         folder_name = data_version['name']
         if not data_version['reprocess']:
-            test_lstm = data.process(test_df, data_version['name'], None, None, False)
+            test_lstm = data.process(test_df, data_version['name'], None, None, False, df_for_regs=df_for_regs,
+                                     registers=None)
         for binning_method in binning_methods:
             method_folder = folders[binning_method]
             for number_of_bins in numbers_of_bins:
@@ -3321,10 +3381,12 @@ def test_LSTM(train_config, raw_test_data, group_info=None):
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
                     if group_info is not None:
-                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(group_info, model_name)
+                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(
+                            group_info if group_info is not "all_plcs" else "all plcs"
+                            , model_name)
 
                     lstm_in = data.process(test_df, data_version['name'], number_of_bins, binning_method, True,
-                                           binner_path=suffix)
+                                           binner_path=suffix, df_for_regs=df_for_regs)
                 else:
                     lstm_in = test_lstm.copy()
                     cols_not_to_bin = data_version['no_bin']
@@ -3333,7 +3395,9 @@ def test_LSTM(train_config, raw_test_data, group_info=None):
                     suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}'.format(model_name)
 
                     if group_info is not None:
-                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(group_info, model_name)
+                        suffix = '//{}_{}'.format(method_folder, folder_name) + '//{}_{}'.format(
+                            group_info if group_info is not "all_plcs" else "all plcs"
+                            , model_name)
 
                     # scale everything, bin by config file.
                     for col_name in lstm_in.columns:
@@ -3354,6 +3418,11 @@ def test_LSTM(train_config, raw_test_data, group_info=None):
                 version_part = data_version['name']
                 model_name = '{}_{}_{}'.format(data_version['desc'], binning_method, number_of_bins)
                 dump_model = data.modeles_path + '//{}_{}'.format(bin_part, version_part)
+
+                if group_info is not None:
+                    dump_model = data.modeles_path + '//{}_{}_{}'.format(group_info, bin_part, version_part)
+                    if group_info == "all_plcs":
+                        dump_model = data.modeles_path + '//{}_{}_{}'.format("all plcs", bin_part, version_part)
 
                 LSTM = keras.models.load_model(dump_model + '//' + model_name)
 
@@ -3387,39 +3456,67 @@ def test_LSTM(train_config, raw_test_data, group_info=None):
         sheet = 'LSTM scores names'
         if sheet in writer.sheets.keys():
             row = writer.sheets[sheet].max_row
-        results_df.to_excel(writer, sheet_name='LSTM scores names', startrow=row)
+        header = row == 0
+        results_df.to_excel(writer, sheet_name='LSTM scores names', startrow=row, header=header)
 
 
 def test_LSTM_single_plc_split(train_config):
     for active_ip in data.active_ips:
         group_info = f'single_plc_{active_ip}'
-        raw_test_set_path = f'//raw//{group_info}'
-        test_LSTM(train_config, raw_test_set_path, group_info=group_info)
+        df_for_regs_path = data.datasets_path + f'//single_plc//{active_ip}_train'
+
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+
+        test_LSTM(train_config, group_info=group_info, df_for_regs=df_for_regs)
 
 
 def test_LSTM_all_plcs_split(train_config):
     group_info = f'all_plcs'
-    raw_test_set_path = f'//raw//{group_info}'
-    test_LSTM(train_config, raw_test_set_path, group_info=group_info)
+
+    df_for_regs_path = data.datasets_path + f'//all_plcs//train'
+    with open(df_for_regs_path, mode='rb') as df_f:
+        df_for_regs = pickle.load(df_f)
+
+    test_LSTM(train_config, group_info=group_info, df_for_regs=df_for_regs)
 
 
 def test_LSTM_spearman_split(train_config):
     for group in spearman_groups:
-        raw_test_set_path = f'//raw//{group}'
-        test_LSTM(train_config, raw_test_set_path, group_info=group)
+        df_for_regs_path = data.datasets_path + f'//spearman//{group}_train'
+
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+
+        test_LSTM(train_config, group_info=group, df_for_regs=df_for_regs)
 
 
 def test_LSTM_pearson_split(train_config):
     for group in pearson_groups:
-        raw_test_set_path = f'//raw//{group}'
-        test_LSTM(train_config, raw_test_set_path, group_info=group)
+        df_for_regs_path = data.datasets_path + f'//pearson//{group}_train'
+
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+
+        test_LSTM(train_config, group_info=group, df_for_regs=df_for_regs)
 
 
 def test_LSTM_k_means_split(train_config):
     for group in k_means_groups:
-        raw_test_set_path = f'//raw//{group}'
-        test_LSTM(train_config, raw_test_set_path, group_info=group)
+        df_for_regs_path = data.datasets_path + f'//k_means//{group}_train'
 
+        with open(df_for_regs_path, mode='rb') as df_f:
+            df_for_regs = pickle.load(df_f)
+
+        test_LSTM(train_config, group_info=group, df_for_regs=df_for_regs)
+
+
+def test_all_LSTM_regressors(train_config):
+    test_LSTM_single_plc_split(train_config)
+    test_LSTM_all_plcs_split(train_config)
+    test_LSTM_pearson_split(train_config)
+    test_LSTM_spearman_split(train_config)
+    test_LSTM_k_means_split(train_config)
 
 def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
@@ -4724,3 +4821,5 @@ if __name__ == '__main__':
     # stat_test_algos()
     # examine_datasets_for_many_PLCs()
     print('hello world')
+    #test_LSTM_OCSVM_all_splits_all_injections("lstm_config", "ocsvm_config", "injection_config")
+    test_DFA_all_splits_all_injections("injection_config")
