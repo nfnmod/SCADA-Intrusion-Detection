@@ -35,6 +35,24 @@ spearman_groups = [['132.72.249.42', '132.72.248.211', '132.72.155.245'], ['132.
 pearson_groups = [['132.72.75.40', '132.72.248.211', '132.72.155.245'], ['132.72.249.42', '132.72.35.161']]
 k_means_groups = [['132.72.75.40', '132.72.248.211', '132.72.35.161'], ['132.72.249.42', '132.72.155.245']]
 
+plcs_to_bin = ['132.72.155.245', '132.72.75.40', '']
+regs_plc = ['132.72.155.245']
+single_plcs_to_number_of_used_regs = {
+    '132.72.75.40': 5,
+    '132.72.155.245': 3,
+    '132.72.249.42': 5,
+    '132.72.248.211': 2,
+    '132.72.35.161': 5
+}
+
+plcs_to_used_registers = {
+    '132.72.249.42': [13, 26, 25, 24, 23],
+    '132.72.248.211': [4, 5],
+    '132.72.155.245': [4, 3, 2],
+    '132.72.75.40': [3, 4, 5, 6],
+    '132.72.35.161': [14, 15, 16, 17, 18]
+}
+
 
 # ---------------------------------------------------------------------------------------------------------------------------#
 # helper function used to perform min-max scaling on a single column
@@ -517,6 +535,23 @@ def load(dir_path, filename):
 def dump(dir_path, filename, obj):
     with open(dir_path + "\\" + filename, "wb") as file:
         pickle.dump(obj, file)
+
+
+def filter_payload(df, ip_to_regs_dict):
+    df_c = df.copy()
+    for i in range(len(df_c)):
+        pkt = df_c.iloc[i]
+
+        if pkt['src_port'] == plc_port:
+            payload = pkt['payload']
+            plc_ip = pkt['src_ip']
+            new_payload = dict()
+
+            for reg, value in payload.items():
+                if reg in ip_to_regs_dict[plc_ip]:
+                    new_payload[reg] = value
+            df_c.iloc[i, -1] = new_payload
+    return df_c
 
 
 # ---------------------------------------------------------------------------------------------------------------------------#
@@ -1164,7 +1199,7 @@ def process_data_v3_2(pkt_df, n, binner=None, n_bins=None, scale=True, abstract=
             else:
                 time_vals_df[col_name] = scale_col(time_vals_df, col_name, None)
 
-    return time_vals_df
+    return time_vals_df, registers_map
 
 
 # for DFA, FSTM, .

@@ -1,17 +1,25 @@
-# TODO: fix the columns of the excel files for DFA and LSTM tests.
+# TODO: fix the columns of the excel files for DFA.
 # TODO: Why does the DFA sheet have twice as many rows?
-# TODO: create the averaged performance files.
 # TODO: update run.py.
-
 # TODO: HTM training and testing.
+# TODO: check global variables and commented out lines before running any function!!!!
+---------------------------------------------------
+LSTM experiments:
+1) TEST BASELINE LSTM - 3,0 STANDARD DEVIATIONS, COUNT OCSVM DETECTIONS AND ANOMALY PERCENTAGES
+2) try to train for more epochs.
+3) try to train OCSVMs regardless of the r2 score and test.
+4) test only on cases where the percentage of P windows in the data is at most 10. (?)
+... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ... ...
+1) Define for each PLC the number of registers to use, sort them by the standard deviation. DONE
+2) Calculate the regs, stds, # vals statistics. DONE
+3) Define the wanted regs for each PLC by the std value. DONE
+4) Filter the unwanted regs from the payloads in the full dataset. DONE
+5) Retrain and recreate the models, datasets. DONE
+6) Test.
+7) Return the plc,reg -> column dict and use it to bin when training/testing. (first try without it)
 
+---------------------------------------------------
 IDEAS:
-LSTMs didn't learn well because of the dimensionality of the data.
-Too many PLCs.
-The splits are bad.
-Not enough data.
-Configurations of algorithms- look at logs, play with threshold. If that doesn't help:
-                 play with LSTMs data dimensioonality and the OCSVMs parameters values.
 For quicker tests, try testing a model trained on a group only with injections matching to thes split that the group is part of.
 This should give the best results for each model.
 
@@ -22,6 +30,13 @@ main test function.
 logging.
 temporary dataset sizes.
 edge cases for file names.
+
+# EXPERIMENT PLAN:
+0. calculate the default metrics.
+1. train and test the baseline algorithm: trained LSTM and OCSVM. need to test LSTM and full pipeline.
+2. train and test DFAs.
+3. train and test LSTMs.
+4. train and test HTMs.
 
 --------------------------------------------------------------------------------------
 

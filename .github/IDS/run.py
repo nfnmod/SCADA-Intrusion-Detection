@@ -2667,12 +2667,9 @@ def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config
                 averaged_results_df = averaged_results_df.add(sub_groups_in_split_res, fill_value=0)
                 averaged_results_df = data.reset_df_index(averaged_results_df)
 
-            print('printing averaged results df')
-            print(len(averaged_results_df))
-
         effected_plcs_suffix_total_df = pd.concat(
             [results_df.iloc[:(len(averaged_results_df)), :-3], averaged_results_df], axis=1,
-            ignore_index=False)  # DROP THE GROUP COLUMN.
+            ignore_index=False)
         effected_plcs_suffix_total_df = effected_plcs_suffix_total_df.drop('group', axis=1)
 
         effected_plcs_suffix_total_df = data.reset_df_index(effected_plcs_suffix_total_df)
@@ -2685,10 +2682,11 @@ def test_LSTM_based_OCSVM_plcs_split(lstm_config, ocsvm_config, injection_config
                         if_sheet_exists="overlay") as writer:
         row = 0
         if sheet_name in writer.sheets.keys():
-            row = writer.sheets[sheet_name].max_row
+            row = writer.sheets[sheet_name + "_std0"].max_row
         total_df['algorithm'] = 'LSTM-OCSVM'
         total_df['split type'] = split_type
         total_df['injection type'] = injection_type
+        total_df["# std count"] = 0
         h = True
         if row > 0:
             h = False
@@ -3517,6 +3515,7 @@ def test_all_LSTM_regressors(train_config):
     test_LSTM_pearson_split(train_config)
     test_LSTM_spearman_split(train_config)
     test_LSTM_k_means_split(train_config)
+
 
 def detect_LSTM(lstm_config, injection_config, d='L2', t='# std'):
     injection_lengths, step_overs, percentages, injection_epsilons = get_injection_params(injection_config)
@@ -4821,5 +4820,5 @@ if __name__ == '__main__':
     # stat_test_algos()
     # examine_datasets_for_many_PLCs()
     print('hello world')
-    #test_LSTM_OCSVM_all_splits_all_injections("lstm_config", "ocsvm_config", "injection_config")
-    test_DFA_all_splits_all_injections("injection_config")
+    test_LSTM_OCSVM_all_splits_all_injections("lstm_config", "ocsvm_config", "injection_config")
+    # test_DFA_all_splits_all_injections("injection_config")
