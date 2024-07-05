@@ -2090,4 +2090,22 @@ def analyze_plc_correlations():
 
 
 if __name__ == '__main__':
-    analyze_plc_correlations()
+    # analyze_plc_correlations()
+    mb_path = 'C:\\Users\\michaelzaslavski\\OneDrive\\Desktop\\SCADA\\datasets\\TRAIN'
+
+    with open(mb_path, mode='rb') as mb_f:
+        raw_mb = pickle.load(mb_f)
+
+    regs = set()
+
+    responses = raw_mb.loc[raw_mb['src_port'] == plc_port]
+    plc_responses = responses.loc[responses['src_ip'] == plc]
+
+    for i in range(len(plc_responses)):
+        payload = plc_responses.iloc[i]['payload']
+
+        used_regs = payload.keys()
+        regs = regs.union(used_regs)
+
+    print(regs)
+    print(len(regs))

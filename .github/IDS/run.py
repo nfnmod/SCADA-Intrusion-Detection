@@ -243,16 +243,18 @@ def train_OCSVM_k_means_split(train_config):
 
 
 # single plc or groups of plcs.
-def train_automaton(group=None, train_data_path=None):
+def train_automaton(group=None, train_data_path=None, train_data=None):
     """
     :param group: group name, if none then we do it for a single plc.
                   otherwise, it can be used to train a PLC for each "real" group or for each PLC separately
                   it depends on the partitioning of the PLCs into group.
     :return:
     """
-    if group is not None:
+    if group is not None or train_data_path is not None:
         with open(train_data_path, mode='rb') as train_f:
             pkts = pickle.load(train_f)
+    elif train_data is not None:
+        pkts = train_data
     else:
         pkts = data.load(data.datasets_path, "TRAIN")
 
@@ -4809,6 +4811,48 @@ def analyze_htm_log_for_scores():
 
     # Save the DataFrame to an Excel file
     df.to_excel('HTM v3_2 sheets compl.xlsx', index=False, engine='openpyxl')
+
+
+def test_scalability():
+    # 0. for each percentage of the data to use:
+    # 1. create the raw train set
+    # 2. train the LSTMs  and OCSVMs (each LSTM records in CV and fitting time, and OCSVM too)
+    # 3. test the method, record inference times
+    # 4. train the DFAs (each DFA records the train time)
+    # 5. test DFAs, record inference times.
+    LSTM_train_config = ...
+    OCSVM_train_config = ...
+    injection_config = ...
+
+    for dataset_percentage in [20, 40, 60, 80, 100]:
+        modbus_train_set = data.load(data.datasets_path, "TRAIN")
+        data_to_use = int((dataset_percentage / 100) * len(modbus_train_set))
+        modbus_train_set = modbus_train_set[:data_to_use]
+
+        train_LSTM(LSTM_train_config, train_df=modbus_train_set, group_info=None)
+        train_OCSVM(OCSVM_train_config_file_path=OCSVM_train_config, group_info=None)
+        test_LSTM_based_OCSVM(LSTM_train_config, OCSVM_train_config, injection_config)
+
+        train_automaton(group=None, train_data=modbus_train_set)
+        test_DFA(injection_config=injection_config)
+
+
+def add_entry_to_df(result_dict, df_cols, excel_path, sheet_name):
+    res_df = pd.DataFrame.from_dict(data={'0': result_dict},
+                                    columns=df_cols,
+                                    orient='index')
+
+    row = 0
+
+    with pd.ExcelWriter(excel_path, mode="a", engine="openpyxl",
+                        if_sheet_exists="overlay") as writer:
+        if sheet_name in writer.sheets.keys():
+            row = writer.sheets[sheet_name].max_row
+        h = True
+        if row > 0:
+            h = False
+        res_df.to_excel(excel_writer=writer, sheet_name=sheet_name,
+                        startrow=row, header=h, index=False)
 
 
 if __name__ == '__main__':

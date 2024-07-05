@@ -18,6 +18,9 @@ LSTM experiments:
 6) Test.
 7) Return the plc,reg -> column dict and use it to bin when training/testing. (first try without it)
 
+1) Recreate the train sets for the LSTMs without restrictions on the used registers.
+2) Compare used registers versus restricted ones.
+3) Try to train the PLCs with very low variances of registers values without any binning.
 ---------------------------------------------------
 IDEAS:
 For quicker tests, try testing a model trained on a group only with injections matching to thes split that the group is part of.
@@ -86,3 +89,6 @@ test KLSTM based classifiers.
 
 train FSTM.
 test FSTM.
+
+# check RESULT ADDING
+# run
